@@ -1,0 +1,30 @@
+# Binaries
+morpheus
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Config files with secrets
+config.local.yaml
+secrets.yaml
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+infrastructure:
+  provider: hetzner
+  defaults:
+    server_type: cpx31
+    image: ubuntu-24.04
+    ssh_key: main
+  locations:
+    - fsn1
+    - nbg1
+    - hel1
+
+secrets:
+  # Hetzner API token - can also be set via HETZNER_API_TOKEN environment variable
+  hetzner_api_token: ""
