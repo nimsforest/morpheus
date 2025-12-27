@@ -157,26 +157,13 @@ Host morpheus
 ssh morpheus
 ```
 
-### Add Shortcuts on Server
-
-On your control server, add these aliases:
+Then just use Morpheus commands:
 
 ```bash
-# On the server, run:
-cat >> ~/.bashrc << 'EOF'
-alias mp='morpheus plant cloud'
-alias ml='morpheus list'
-alias ms='morpheus status'
-alias mt='morpheus teardown'
-EOF
-
-source ~/.bashrc
-
-# Now use short commands:
-mp wood          # Create 1-node forest
-ml               # List forests
-ms forest-123    # Check status
-mt forest-123    # Delete forest
+morpheus plant cloud wood
+morpheus list
+morpheus status forest-123
+morpheus teardown forest-123
 ```
 
 ## Common Issues
@@ -221,15 +208,17 @@ Hetzner charges by the minute, so tear down forests when not needed!
 You now have:
 - ✅ Morpheus running on a Hetzner server
 - ✅ Access from your phone via Termux
-- ✅ Simple aliases for quick commands
 
 **Daily workflow:**
 ```bash
 # Open Termux
-ssh morpheus     # Connect to server
-mp wood          # Create infrastructure
-ml               # Check what's running
-mt forest-123    # Tear down when done
+ssh morpheus
+
+# Use Morpheus commands
+morpheus plant cloud wood
+morpheus list
+morpheus status forest-123
+morpheus teardown forest-123
 ```
 
 ---
