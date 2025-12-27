@@ -39,6 +39,8 @@ Be respectful, inclusive, and constructive in all interactions.
 
 #### Development Setup
 
+**Local Development:**
+
 ```bash
 # Clone your fork
 git clone https://github.com/YOUR_USERNAME/morpheus.git
@@ -52,6 +54,24 @@ make deps
 
 # Build
 make build
+```
+
+**Mobile/Private Repo Setup:**
+
+If you're working from mobile or need to access a private repository, see the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
+- GitHub token authentication
+- Setting up a development server
+- Mobile-friendly workflows
+
+Quick setup for private repos:
+```bash
+# Authenticate with GitHub token
+echo 'ghp_YOUR_TOKEN' | gh auth login --with-token
+
+# Clone your fork
+gh repo clone YOUR_USERNAME/morpheus
+cd morpheus
+make deps && make build
 ```
 
 #### Making Changes

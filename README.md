@@ -58,6 +58,14 @@ make build    # Build binary
 make install  # Install to /usr/local/bin (optional)
 ```
 
+### Control Server Setup (Mobile/Private Repo)
+
+Working from mobile or have a private repository? See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
+- Setting up a dedicated Morpheus server
+- GitHub token authentication for private repos
+- Mobile-friendly workflows and shortcuts
+- Security best practices
+
 ### Get Hetzner API Token
 
 1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
@@ -355,6 +363,8 @@ MIT License - see [LICENSE](LICENSE)
 
 - **GitHub**: https://github.com/yourusername/morpheus
 - **Documentation**: [docs/](docs/)
+  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Mobile/private repo guide
+  - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
 - **Issues**: https://github.com/yourusername/morpheus/issues
 - **NimsForest**: https://github.com/yourusername/nimsforest
 
