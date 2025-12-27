@@ -10,6 +10,7 @@ morpheus
 
 # Output of the go coverage tool
 *.out
+coverage.html
 
 # Go workspace file
 go.work
@@ -23,8 +24,12 @@ go.work
 
 # Config files with secrets
 config.local.yaml
+config.yaml
 secrets.yaml
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local registry
+.morpheus/

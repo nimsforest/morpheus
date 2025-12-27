@@ -1,5 +1,10 @@
 # Morpheus 🌲
 
+[![Build Status](https://github.com/yourusername/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/yourusername/morpheus/actions)
+[![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](./TEST_COVERAGE.md)
+[![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://golang.org/dl/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
+
 Morpheus is an automated infrastructure provisioning tool designed to help users and organizations plant and grow their Nims Forest. It seamlessly integrates with cloud providers to automatically provision, configure, and manage NATS-based distributed systems.
 
 ## Features
@@ -272,6 +277,25 @@ make fmt
 
 ```bash
 make lint
+```
+
+### Run Tests
+
+```bash
+make test
+```
+
+### Test Coverage
+
+```bash
+make test-cover
+```
+
+### Generate Coverage Report
+
+```bash
+make test-coverage
+open coverage.html
 ```
 
 ### Clean

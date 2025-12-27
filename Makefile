@@ -30,6 +30,16 @@ test: ## Run tests
 	@echo "Running tests..."
 	$(GO) test -v ./...
 
+test-cover: ## Run tests with coverage
+	@echo "Running tests with coverage..."
+	$(GO) test -cover ./...
+
+test-coverage: ## Generate HTML coverage report
+	@echo "Generating coverage report..."
+	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "✓ Coverage report generated: coverage.html"
+
 run: build ## Build and run morpheus
 	@$(BUILD_DIR)/$(BINARY_NAME)
 
