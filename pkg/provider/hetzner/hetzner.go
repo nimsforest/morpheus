@@ -21,7 +21,7 @@ func NewProvider(apiToken string) (*Provider, error) {
 	}
 
 	client := hcloud.NewClient(hcloud.WithToken(apiToken))
-	
+
 	return &Provider{
 		client: client,
 	}, nil
@@ -71,13 +71,13 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 
 	// Create server
 	createOpts := hcloud.ServerCreateOpts{
-		Name:       req.Name,
-		ServerType: serverType,
-		Image:      image,
-		Location:   location,
-		SSHKeys:    sshKeys,
-		UserData:   req.UserData,
-		Labels:     req.Labels,
+		Name:             req.Name,
+		ServerType:       serverType,
+		Image:            image,
+		Location:         location,
+		SSHKeys:          sshKeys,
+		UserData:         req.UserData,
+		Labels:           req.Labels,
 		StartAfterCreate: hcloud.Ptr(true),
 	}
 
@@ -144,7 +144,7 @@ func (p *Provider) WaitForServer(ctx context.Context, serverID string, state pro
 			}
 
 			// Log progress
-			fmt.Printf("Server %s current state: %s, waiting for: %s\n", 
+			fmt.Printf("Server %s current state: %s, waiting for: %s\n",
 				serverID, server.State, state)
 		}
 	}
@@ -153,7 +153,7 @@ func (p *Provider) WaitForServer(ctx context.Context, serverID string, state pro
 // ListServers lists all servers with optional filters
 func (p *Provider) ListServers(ctx context.Context, filters map[string]string) ([]*provider.Server, error) {
 	opts := hcloud.ServerListOpts{}
-	
+
 	if len(filters) > 0 {
 		opts.LabelSelector = formatLabelSelector(filters)
 	}

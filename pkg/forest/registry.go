@@ -184,8 +184,8 @@ func (r *Registry) Load() error {
 	}
 
 	var state struct {
-		Forests map[string]*Forest     `json:"forests"`
-		Nodes   map[string][]*Node     `json:"nodes"`
+		Forests map[string]*Forest `json:"forests"`
+		Nodes   map[string][]*Node `json:"nodes"`
 	}
 
 	if err := json.Unmarshal(data, &state); err != nil {
@@ -201,8 +201,8 @@ func (r *Registry) Load() error {
 // save writes the registry to disk (must be called with lock held)
 func (r *Registry) save() error {
 	state := struct {
-		Forests map[string]*Forest     `json:"forests"`
-		Nodes   map[string][]*Node     `json:"nodes"`
+		Forests map[string]*Forest `json:"forests"`
+		Nodes   map[string][]*Node `json:"nodes"`
 	}{
 		Forests: r.forests,
 		Nodes:   r.nodes,
