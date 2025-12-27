@@ -1,5 +1,6 @@
 # Binaries
-morpheus
+/morpheus
+bin/
 *.exe
 *.dll
 *.so

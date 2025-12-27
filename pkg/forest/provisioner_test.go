@@ -19,7 +19,7 @@ func TestGetNodeCount(t *testing.T) {
 		t.Run(tt.size, func(t *testing.T) {
 			count := getNodeCount(tt.size)
 			if count != tt.expected {
-				t.Errorf("For size '%s', expected %d nodes, got %d", 
+				t.Errorf("For size '%s', expected %d nodes, got %d",
 					tt.size, tt.expected, count)
 			}
 		})

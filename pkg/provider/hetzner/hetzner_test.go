@@ -103,11 +103,11 @@ func TestFormatLabelSelector(t *testing.T) {
 
 func TestConvertServer(t *testing.T) {
 	now := time.Now()
-	
+
 	// Create IP addresses
 	ipv4 := net.ParseIP("95.217.0.1")
 	ipv6 := net.ParseIP("2001:db8::1")
-	
+
 	hcloudServer := &hcloud.Server{
 		ID:   12345,
 		Name: "test-server",

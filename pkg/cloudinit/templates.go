@@ -19,8 +19,8 @@ const (
 type TemplateData struct {
 	NodeRole    NodeRole
 	ForestID    string
-	RegistryURL string  // Optional: Morpheus registry for infrastructure state
-	CallbackURL string  // Optional: NimsForest callback URL for bootstrap trigger
+	RegistryURL string // Optional: Morpheus registry for infrastructure state
+	CallbackURL string // Optional: NimsForest callback URL for bootstrap trigger
 	SSHKeys     []string
 }
 
@@ -311,7 +311,7 @@ final_message: "Morpheus infrastructure provisioning complete. Ready for NimsFor
 // Generate creates a cloud-init script for the given role and data
 func Generate(role NodeRole, data TemplateData) (string, error) {
 	var tmplStr string
-	
+
 	switch role {
 	case RoleEdge:
 		tmplStr = EdgeNodeTemplate

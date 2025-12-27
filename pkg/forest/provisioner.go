@@ -36,7 +36,7 @@ type ProvisionRequest struct {
 
 // Provision creates a new forest with the specified configuration
 func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error {
-	fmt.Printf("Starting forest provisioning: %s (size: %s, location: %s)\n", 
+	fmt.Printf("Starting forest provisioning: %s (size: %s, location: %s)\n",
 		req.ForestID, req.Size, req.Location)
 
 	// Register forest
@@ -54,14 +54,14 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 
 	// Determine number of nodes based on size
 	nodeCount := getNodeCount(req.Size)
-	
+
 	fmt.Printf("Provisioning %d node(s)...\n", nodeCount)
 
 	// Provision nodes
 	var provisionedServers []*provider.Server
 	for i := 0; i < nodeCount; i++ {
 		nodeName := fmt.Sprintf("%s-node-%d", req.ForestID, i+1)
-		
+
 		server, err := p.provisionNode(ctx, req, nodeName, i)
 		if err != nil {
 			// Rollback on failure
@@ -71,7 +71,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		}
 
 		provisionedServers = append(provisionedServers, server)
-		
+
 		// Register node in registry
 		node := &Node{
 			ID:       server.ID,
@@ -161,7 +161,7 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 	// Delete all servers
 	for _, node := range nodes {
 		fmt.Printf("Deleting server %s (IP: %s)...\n", node.ID, node.IP)
-		
+
 		if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
 			fmt.Printf("Warning: failed to delete server %s: %s\n", node.ID, err)
 		} else {
@@ -181,10 +181,10 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 // rollback removes all provisioned servers on failure
 func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*provider.Server) {
 	fmt.Printf("Rolling back %d server(s)...\n", len(servers))
-	
+
 	for _, server := range servers {
 		if err := p.provider.DeleteServer(ctx, server.ID); err != nil {
-			fmt.Printf("Warning: failed to delete server %s during rollback: %s\n", 
+			fmt.Printf("Warning: failed to delete server %s during rollback: %s\n",
 				server.ID, err)
 		}
 	}
