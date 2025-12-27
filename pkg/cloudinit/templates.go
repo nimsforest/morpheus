@@ -17,14 +17,16 @@ const (
 
 // TemplateData contains data for cloud-init template rendering
 type TemplateData struct {
-	NodeRole     NodeRole
-	ForestID     string
-	NATSServers  []string
-	RegistryURL  string
-	SSHKeys      []string
+	NodeRole    NodeRole
+	ForestID    string
+	RegistryURL string  // Optional: Morpheus registry for infrastructure state
+	CallbackURL string  // Optional: NimsForest callback URL for bootstrap trigger
+	SSHKeys     []string
 }
 
 // EdgeNodeTemplate is the cloud-init script for edge nodes
+// Morpheus responsibility: Infrastructure setup only (OS, network, firewall)
+// NimsForest responsibility: NATS installation and configuration
 const EdgeNodeTemplate = `#cloud-config
 
 package_update: true
@@ -36,94 +38,104 @@ packages:
   - git
   - docker.io
   - ufw
+  - jq
 
 write_files:
-  - path: /etc/systemd/system/nats-server.service
+  - path: /etc/morpheus/node-info.json
     content: |
-      [Unit]
-      Description=NATS Server
-      After=network.target
+      {
+        "forest_id": "{{.ForestID}}",
+        "role": "{{.NodeRole}}",
+        "provisioner": "morpheus",
+        "provisioned_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "registry_url": "{{.RegistryURL}}",
+        "callback_url": "{{.CallbackURL}}"
+      }
+    permissions: '0644'
 
-      [Service]
-      Type=simple
-      ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats-server.conf
-      Restart=on-failure
-      User=nats
-      Group=nats
-
-      [Install]
-      WantedBy=multi-user.target
-
-  - path: /etc/nats/nats-server.conf
+  - path: /usr/local/bin/morpheus-bootstrap
     content: |
-      port: 4222
-      http_port: 8222
+      #!/bin/bash
+      # Morpheus bootstrap script - called by NimsForest
+      set -e
       
-      server_name: {{.ForestID}}-edge
+      INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+      INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "unknown")
+      LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
       
-      jetstream {
-        store_dir: /var/lib/nats
-        max_memory_store: 1GB
-        max_file_store: 10GB
-      }
-
-      cluster {
-        name: {{.ForestID}}
-        port: 6222
-        {{- if .NATSServers}}
-        routes = [
-          {{- range $i, $server := .NATSServers}}
-          nats://{{$server}}:6222{{if lt $i (sub (len $.NATSServers) 1)}},{{end}}
-          {{- end}}
-        ]
-        {{- end}}
-      }
-
-      accounts {
-        $SYS {
-          users = [
-            { user: "admin", password: "$NATS_ADMIN_PASSWORD" }
-          ]
-        }
-      }
+      echo "Instance IP: $INSTANCE_IP"
+      echo "Instance ID: $INSTANCE_ID"
+      echo "Location: $LOCATION"
+      
+      # Export for nimsforest
+      export MORPHEUS_IP=$INSTANCE_IP
+      export MORPHEUS_INSTANCE_ID=$INSTANCE_ID
+      export MORPHEUS_LOCATION=$LOCATION
+    permissions: '0755'
 
 runcmd:
-  # Install NATS server
-  - curl -L https://github.com/nats-io/nats-server/releases/download/v2.10.7/nats-server-v2.10.7-linux-amd64.tar.gz -o /tmp/nats-server.tar.gz
-  - tar -xzf /tmp/nats-server.tar.gz -C /tmp
-  - mv /tmp/nats-server-v2.10.7-linux-amd64/nats-server /usr/local/bin/
-  - chmod +x /usr/local/bin/nats-server
-  - rm -rf /tmp/nats-server*
-  
-  # Create NATS user and directories
-  - useradd -r -s /bin/false nats
-  - mkdir -p /var/lib/nats /etc/nats
-  - chown -R nats:nats /var/lib/nats /etc/nats
-  
-  # Configure firewall
-  - ufw allow 22/tcp
-  - ufw allow 4222/tcp
-  - ufw allow 6222/tcp
-  - ufw allow 8222/tcp
+  # Configure firewall - NATS ports for nimsforest
+  - ufw allow 22/tcp comment 'SSH'
+  - ufw allow 4222/tcp comment 'NATS client port'
+  - ufw allow 6222/tcp comment 'NATS cluster port'
+  - ufw allow 8222/tcp comment 'NATS monitoring port'
+  - ufw allow 7777/tcp comment 'NATS leafnode port'
   - ufw --force enable
   
-  # Start NATS server
-  - systemctl daemon-reload
-  - systemctl enable nats-server
-  - systemctl start nats-server
+  # Set up Docker for nimsforest
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker ubuntu || true
   
-  # Register with forest registry
+  # Create directories for nimsforest
+  - mkdir -p /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
+  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
+  
+  # Get instance metadata
+  - /usr/local/bin/morpheus-bootstrap
+  
+  # Signal readiness to registry (infrastructure ready, waiting for nimsforest)
   - |
-    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-    curl -X POST {{.RegistryURL}}/nodes \
-      -H "Content-Type: application/json" \
-      -d "{\"forest_id\":\"{{.ForestID}}\",\"role\":\"edge\",\"ip\":\"$INSTANCE_IP\",\"location\":\"$LOCATION\",\"status\":\"active\"}"
+    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+    
+    if [ "{{.RegistryURL}}" != "" ]; then
+      curl -X POST {{.RegistryURL}}/api/v1/nodes \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"role\": \"{{.NodeRole}}\",
+          \"ip\": \"$INSTANCE_IP\",
+          \"location\": \"$LOCATION\",
+          \"status\": \"infrastructure_ready\",
+          \"provisioner\": \"morpheus\"
+        }" || echo "Registry notification failed (expected if registry not available)"
+    fi
+  
+  # Trigger nimsforest bootstrap if callback URL provided
+  - |
+    if [ "{{.CallbackURL}}" != "" ]; then
+      INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+      INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+      
+      curl -X POST {{.CallbackURL}}/api/v1/bootstrap \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"node_ip\": \"$INSTANCE_IP\",
+          \"role\": \"{{.NodeRole}}\"
+        }" || echo "NimsForest callback failed (will retry via polling)"
+    fi
 
-final_message: "Edge node {{.ForestID}} is ready!"
+final_message: "Morpheus infrastructure provisioning complete. Ready for NimsForest bootstrap."
 `
 
 // ComputeNodeTemplate is the cloud-init script for compute nodes
+// Morpheus responsibility: Infrastructure setup only
+// NimsForest responsibility: Worker/compute service installation
 const ComputeNodeTemplate = `#cloud-config
 
 package_update: true
@@ -135,49 +147,78 @@ packages:
   - git
   - docker.io
   - ufw
+  - jq
 
 write_files:
-  - path: /etc/systemd/system/nats-client.service
+  - path: /etc/morpheus/node-info.json
     content: |
-      [Unit]
-      Description=NATS Client Worker
-      After=network.target
-
-      [Service]
-      Type=simple
-      ExecStart=/usr/local/bin/worker --forest={{.ForestID}} --role=compute
-      Restart=on-failure
-      User=worker
-      Group=worker
-
-      [Install]
-      WantedBy=multi-user.target
+      {
+        "forest_id": "{{.ForestID}}",
+        "role": "{{.NodeRole}}",
+        "provisioner": "morpheus",
+        "provisioned_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "registry_url": "{{.RegistryURL}}",
+        "callback_url": "{{.CallbackURL}}"
+      }
+    permissions: '0644'
 
 runcmd:
-  # Configure firewall
-  - ufw allow 22/tcp
+  # Configure firewall - minimal for compute
+  - ufw allow 22/tcp comment 'SSH'
+  - ufw allow 4222/tcp comment 'NATS client connection'
   - ufw --force enable
   
   # Setup Docker
   - systemctl enable docker
   - systemctl start docker
-  - usermod -aG docker ubuntu
+  - usermod -aG docker ubuntu || true
   
-  # Create worker user
-  - useradd -r -s /bin/false worker
+  # Create directories for nimsforest
+  - mkdir -p /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
+  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
   
-  # Register with forest registry
+  # Signal readiness
   - |
-    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-    curl -X POST {{.RegistryURL}}/nodes \
-      -H "Content-Type: application/json" \
-      -d "{\"forest_id\":\"{{.ForestID}}\",\"role\":\"compute\",\"ip\":\"$INSTANCE_IP\",\"location\":\"$LOCATION\",\"status\":\"active\"}"
+    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+    
+    if [ "{{.RegistryURL}}" != "" ]; then
+      curl -X POST {{.RegistryURL}}/api/v1/nodes \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"role\": \"{{.NodeRole}}\",
+          \"ip\": \"$INSTANCE_IP\",
+          \"location\": \"$LOCATION\",
+          \"status\": \"infrastructure_ready\",
+          \"provisioner\": \"morpheus\"
+        }" || echo "Registry notification failed"
+    fi
+  
+  # Trigger nimsforest bootstrap
+  - |
+    if [ "{{.CallbackURL}}" != "" ]; then
+      INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+      INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+      
+      curl -X POST {{.CallbackURL}}/api/v1/bootstrap \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"node_ip\": \"$INSTANCE_IP\",
+          \"role\": \"{{.NodeRole}}\"
+        }" || echo "NimsForest callback failed"
+    fi
 
-final_message: "Compute node {{.ForestID}} is ready!"
+final_message: "Morpheus infrastructure provisioning complete. Ready for NimsForest bootstrap."
 `
 
 // StorageNodeTemplate is the cloud-init script for storage nodes
+// Morpheus responsibility: Infrastructure setup (NFS, firewall)
+// NimsForest responsibility: Storage orchestration and management
 const StorageNodeTemplate = `#cloud-config
 
 package_update: true
@@ -188,16 +229,31 @@ packages:
   - wget
   - nfs-kernel-server
   - ufw
+  - jq
 
 write_files:
+  - path: /etc/morpheus/node-info.json
+    content: |
+      {
+        "forest_id": "{{.ForestID}}",
+        "role": "{{.NodeRole}}",
+        "provisioner": "morpheus",
+        "provisioned_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "registry_url": "{{.RegistryURL}}",
+        "callback_url": "{{.CallbackURL}}"
+      }
+    permissions: '0644'
+
   - path: /etc/exports
     content: |
-      /mnt/forest-storage *(rw,sync,no_subtree_check,no_root_squash)
+      # NFS exports - managed by NimsForest
+      /mnt/nimsforest-storage *(rw,sync,no_subtree_check,no_root_squash)
 
 runcmd:
-  # Setup storage directory
-  - mkdir -p /mnt/forest-storage
-  - chmod 777 /mnt/forest-storage
+  # Setup base storage directory
+  - mkdir -p /mnt/nimsforest-storage
+  - chmod 755 /mnt/nimsforest-storage
+  - chown ubuntu:ubuntu /mnt/nimsforest-storage
   
   # Configure NFS
   - systemctl enable nfs-kernel-server
@@ -205,19 +261,51 @@ runcmd:
   - exportfs -ra
   
   # Configure firewall
-  - ufw allow 22/tcp
-  - ufw allow 2049/tcp
+  - ufw allow 22/tcp comment 'SSH'
+  - ufw allow 2049/tcp comment 'NFS'
+  - ufw allow 111/tcp comment 'RPC'
+  - ufw allow 111/udp comment 'RPC'
+  - ufw allow 4222/tcp comment 'NATS client'
   - ufw --force enable
   
-  # Register with forest registry
+  # Signal readiness
   - |
-    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-    curl -X POST {{.RegistryURL}}/nodes \
-      -H "Content-Type: application/json" \
-      -d "{\"forest_id\":\"{{.ForestID}}\",\"role\":\"storage\",\"ip\":\"$INSTANCE_IP\",\"location\":\"$LOCATION\",\"capacity\":\"100GB\",\"status\":\"active\"}"
+    INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+    INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+    LOCATION=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone || echo "unknown")
+    
+    if [ "{{.RegistryURL}}" != "" ]; then
+      curl -X POST {{.RegistryURL}}/api/v1/nodes \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"role\": \"{{.NodeRole}}\",
+          \"ip\": \"$INSTANCE_IP\",
+          \"location\": \"$LOCATION\",
+          \"status\": \"infrastructure_ready\",
+          \"provisioner\": \"morpheus\",
+          \"storage_path\": \"/mnt/nimsforest-storage\"
+        }" || echo "Registry notification failed"
+    fi
+  
+  # Trigger nimsforest bootstrap
+  - |
+    if [ "{{.CallbackURL}}" != "" ]; then
+      INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
+      INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)
+      
+      curl -X POST {{.CallbackURL}}/api/v1/bootstrap \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"forest_id\": \"{{.ForestID}}\",
+          \"node_id\": \"$INSTANCE_ID\",
+          \"node_ip\": \"$INSTANCE_IP\",
+          \"role\": \"{{.NodeRole}}\"
+        }" || echo "NimsForest callback failed"
+    fi
 
-final_message: "Storage node {{.ForestID}} is ready!"
+final_message: "Morpheus infrastructure provisioning complete. Ready for NimsForest bootstrap."
 `
 
 // Generate creates a cloud-init script for the given role and data

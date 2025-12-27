@@ -9,6 +9,14 @@ infrastructure:
     - nbg1
     - hel1
 
+integration:
+  # NimsForest callback URL for bootstrap notifications
+  # Morpheus will call this when infrastructure is ready
+  nimsforest_url: ""  # e.g., "https://nimsforest.example.com"
+  
+  # Optional: Morpheus registry URL for infrastructure state tracking
+  registry_url: ""  # e.g., "https://registry.example.com"
+
 secrets:
   # Hetzner API token - can also be set via HETZNER_API_TOKEN environment variable
   hetzner_api_token: ""

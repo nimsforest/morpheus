@@ -7,10 +7,10 @@ import (
 
 func TestGenerateEdgeNode(t *testing.T) {
 	data := TemplateData{
-		NodeRole:     RoleEdge,
-		ForestID:     "test-forest",
-		NATSServers:  []string{"10.0.0.1", "10.0.0.2"},
-		RegistryURL:  "http://registry.example.com",
+		NodeRole:    RoleEdge,
+		ForestID:    "test-forest",
+		RegistryURL: "http://registry.example.com",
+		CallbackURL: "http://nimsforest.example.com",
 	}
 
 	script, err := Generate(RoleEdge, data)
@@ -23,29 +23,34 @@ func TestGenerateEdgeNode(t *testing.T) {
 		t.Error("Script should start with #cloud-config")
 	}
 
-	// Check for NATS installation
-	if !strings.Contains(script, "nats-server") {
-		t.Error("Script should contain NATS server installation")
-	}
-
 	// Check for forest ID
 	if !strings.Contains(script, "test-forest") {
 		t.Error("Script should contain forest ID")
 	}
 
-	// Check for NATS cluster configuration
-	if !strings.Contains(script, "10.0.0.1") {
-		t.Error("Script should contain NATS server addresses")
-	}
-
-	// Check for firewall configuration
+	// Check for firewall configuration (Morpheus responsibility)
 	if !strings.Contains(script, "ufw") {
 		t.Error("Script should contain UFW firewall configuration")
 	}
 
-	// Check for registry URL
-	if !strings.Contains(script, "http://registry.example.com") {
-		t.Error("Script should contain registry URL")
+	// Check for NATS ports in firewall (infrastructure preparation)
+	if !strings.Contains(script, "4222") {
+		t.Error("Script should configure NATS client port in firewall")
+	}
+
+	// Check for callback URL (NimsForest integration)
+	if !strings.Contains(script, "nimsforest.example.com") {
+		t.Error("Script should contain NimsForest callback URL")
+	}
+
+	// Check for morpheus metadata file
+	if !strings.Contains(script, "/etc/morpheus/node-info.json") {
+		t.Error("Script should create Morpheus metadata file")
+	}
+
+	// Check that NATS installation is NOT in Morpheus template
+	if strings.Contains(script, "nats-server-v2") || strings.Contains(script, "nats-server.tar.gz") {
+		t.Error("Script should NOT install NATS (that's NimsForest's responsibility)")
 	}
 }
 
@@ -118,12 +123,12 @@ func TestGenerateInvalidRole(t *testing.T) {
 	}
 }
 
-func TestGenerateWithoutNATSServers(t *testing.T) {
+func TestGenerateWithoutCallbacks(t *testing.T) {
 	data := TemplateData{
-		NodeRole:     RoleEdge,
-		ForestID:     "test-forest",
-		NATSServers:  []string{}, // Empty servers list
-		RegistryURL:  "http://registry.example.com",
+		NodeRole:    RoleEdge,
+		ForestID:    "test-forest",
+		RegistryURL: "", // No registry
+		CallbackURL: "", // No callback
 	}
 
 	script, err := Generate(RoleEdge, data)
@@ -134,6 +139,11 @@ func TestGenerateWithoutNATSServers(t *testing.T) {
 	// Should still generate valid script
 	if !strings.HasPrefix(script, "#cloud-config") {
 		t.Error("Script should start with #cloud-config")
+	}
+
+	// Should still have basic infrastructure setup
+	if !strings.Contains(script, "ufw") {
+		t.Error("Script should configure firewall even without callbacks")
 	}
 }
 

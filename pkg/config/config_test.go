@@ -22,6 +22,10 @@ infrastructure:
     - fsn1
     - nbg1
 
+integration:
+  nimsforest_url: "https://nimsforest.example.com"
+  registry_url: "https://registry.example.com"
+
 secrets:
   hetzner_api_token: test-token
 `
@@ -49,6 +53,14 @@ secrets:
 
 	if cfg.Secrets.HetznerAPIToken != "test-token" {
 		t.Errorf("Expected token 'test-token', got '%s'", cfg.Secrets.HetznerAPIToken)
+	}
+
+	if cfg.Integration.NimsForestURL != "https://nimsforest.example.com" {
+		t.Errorf("Expected nimsforest_url 'https://nimsforest.example.com', got '%s'", cfg.Integration.NimsForestURL)
+	}
+
+	if cfg.Integration.RegistryURL != "https://registry.example.com" {
+		t.Errorf("Expected registry_url 'https://registry.example.com', got '%s'", cfg.Integration.RegistryURL)
 	}
 }
 

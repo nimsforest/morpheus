@@ -102,20 +102,11 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 // provisionNode provisions a single node
 func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int) (*provider.Server, error) {
 	// Generate cloud-init script
-	var existingIPs []string
-	if index > 0 {
-		// Get IPs of previously provisioned nodes for clustering
-		nodes, _ := p.registry.GetNodes(req.ForestID)
-		for _, node := range nodes {
-			existingIPs = append(existingIPs, node.IP)
-		}
-	}
-
 	cloudInitData := cloudinit.TemplateData{
 		NodeRole:    req.Role,
 		ForestID:    req.ForestID,
-		NATSServers: existingIPs,
-		RegistryURL: "http://localhost:8080", // TODO: Make configurable
+		RegistryURL: p.config.Integration.RegistryURL,
+		CallbackURL: p.config.Integration.NimsForestURL,
 	}
 
 	userData, err := cloudinit.Generate(req.Role, cloudInitData)

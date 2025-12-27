@@ -10,14 +10,21 @@ import (
 // Config represents the Morpheus configuration
 type Config struct {
 	Infrastructure InfrastructureConfig `yaml:"infrastructure"`
+	Integration    IntegrationConfig    `yaml:"integration"`
 	Secrets        SecretsConfig        `yaml:"secrets"`
 }
 
 // InfrastructureConfig defines infrastructure provider settings
 type InfrastructureConfig struct {
-	Provider  string                 `yaml:"provider"`
-	Defaults  DefaultServerConfig    `yaml:"defaults"`
-	Locations []string               `yaml:"locations"`
+	Provider  string              `yaml:"provider"`
+	Defaults  DefaultServerConfig `yaml:"defaults"`
+	Locations []string            `yaml:"locations"`
+}
+
+// IntegrationConfig defines integration with NimsForest
+type IntegrationConfig struct {
+	NimsForestURL string `yaml:"nimsforest_url"` // URL for NimsForest bootstrap callbacks
+	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
 }
 
 // DefaultServerConfig defines default server settings
