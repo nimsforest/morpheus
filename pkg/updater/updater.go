@@ -172,19 +172,39 @@ func (u *Updater) PerformUpdate() error {
 	// Remove old backup if it exists
 	os.Remove(backupPath)
 
-	// Rename current binary to backup (this works even if the binary is running)
-	if err := os.Rename(execPath, backupPath); err != nil {
+	// On Linux/Termux, we can't rename a running executable directly
+	// Instead, we:
+	// 1. Copy the running binary to backup
+	// 2. Remove the original (unlinks it, but process keeps running)
+	// 3. Move the new binary into place
+	// 4. On next execution, the new binary will be used
+
+	// Copy current binary to backup
+	if err := copyFile(execPath, backupPath); err != nil {
 		os.Remove(tmpFile)
 		return fmt.Errorf("failed to backup current version: %w", err)
 	}
 
-	// Replace current binary with new one using atomic rename
+	// Remove the current binary (unlink it from filesystem)
+	// The running process can continue executing from the unlinked inode
 	fmt.Printf("✨ Installing update to %s\n", execPath)
+	if err := os.Remove(execPath); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to remove old binary: %w", err)
+	}
+
+	// Move the new binary into place
 	if err := os.Rename(tmpFile, execPath); err != nil {
-		// Restore backup on failure
-		os.Rename(backupPath, execPath)
+		// Try to restore backup on failure
+		copyFile(backupPath, execPath)
 		os.Remove(tmpFile)
 		return fmt.Errorf("failed to install update: %w", err)
+	}
+
+	// Make sure it's executable
+	if err := os.Chmod(execPath, 0755); err != nil {
+		// Not fatal, but warn
+		fmt.Printf("⚠️  Warning: failed to set executable permissions: %v\n", err)
 	}
 
 	// Clean up temporary file
@@ -230,6 +250,39 @@ func downloadFile(url, filepath string) error {
 	}
 
 	return nil
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	// Sync to ensure data is written
+	err = destFile.Sync()
+	if err != nil {
+		return err
+	}
+
+	// Copy permissions from source file
+	sourceInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	return os.Chmod(dst, sourceInfo.Mode())
 }
 
 // GetPlatform returns the current platform string
