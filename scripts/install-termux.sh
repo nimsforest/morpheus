@@ -14,12 +14,7 @@ echo "  3. Build Morpheus binary"
 echo "  4. Set up configuration"
 echo "  5. Generate SSH key (if needed)"
 echo ""
-read -p "Continue? (y/n) " -n 1 -r < /dev/tty
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Installation cancelled."
-    exit 0
-fi
+echo "Starting installation..."
 
 # Step 1: Update and install packages
 echo ""
@@ -41,18 +36,10 @@ echo ""
 echo "📥 Step 2/5: Cloning Morpheus repository..."
 echo "----"
 if [[ -d "$HOME/morpheus" ]]; then
-    echo "⚠️  Directory $HOME/morpheus already exists."
-    read -p "Remove and re-clone? (y/n) " -n 1 -r < /dev/tty
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf "$HOME/morpheus"
-    else
-        echo "Skipping clone. Using existing directory."
-        cd "$HOME/morpheus"
-    fi
-fi
-
-if [[ ! -d "$HOME/morpheus" ]]; then
+    echo "⚠️  Directory $HOME/morpheus already exists. Using existing directory."
+    cd "$HOME/morpheus"
+    git pull origin main || echo "⚠️  Could not update repository. Using existing version."
+else
     cd "$HOME"
     git clone https://github.com/nimsforest/morpheus.git
     cd morpheus
@@ -94,29 +81,14 @@ if [[ -z "$HETZNER_API_TOKEN" ]]; then
     echo ""
     echo "⚠️  HETZNER_API_TOKEN not set."
     echo ""
-    echo "To get your Hetzner API token:"
+    echo "You'll need to set it manually:"
+    echo "  export HETZNER_API_TOKEN=\"your_token\""
+    echo "  echo 'export HETZNER_API_TOKEN=\"your_token\"' >> ~/.bashrc"
+    echo ""
+    echo "To get your token:"
     echo "  1. Open: https://console.hetzner.cloud/"
     echo "  2. Go to: Security → API Tokens"
     echo "  3. Generate new token (Read & Write permissions)"
-    echo "  4. Copy the token"
-    echo ""
-    read -p "Do you have your Hetzner API token ready? (y/n) " -n 1 -r < /dev/tty
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        read -p "Enter your Hetzner API token: " TOKEN < /dev/tty
-        echo ""
-        if [[ -n "$TOKEN" ]]; then
-            echo "export HETZNER_API_TOKEN=\"$TOKEN\"" >> "$HOME/.bashrc"
-            export HETZNER_API_TOKEN="$TOKEN"
-            echo "✓ Token saved to ~/.bashrc"
-        fi
-    else
-        echo ""
-        echo "You can set it later with:"
-        echo "  export HETZNER_API_TOKEN=\"your_token\""
-        echo "  echo 'export HETZNER_API_TOKEN=\"your_token\"' >> ~/.bashrc"
-    fi
 fi
 
 # Step 5: SSH Key
@@ -146,17 +118,12 @@ echo "  4. Paste the key above"
 echo "  5. Name it: android"
 echo ""
 
-# Install to PATH (optional)
+# Install to PATH
 echo ""
-read -p "Install morpheus to PATH? (y/n) " -n 1 -r < /dev/tty
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    make install
-    echo "✓ Morpheus installed to /data/data/com.termux/files/usr/bin/"
-    echo "  You can now run 'morpheus' from anywhere."
-else
-    echo "Skipping install. Run with: ~/morpheus/bin/morpheus"
-fi
+echo "Installing morpheus to PATH..."
+make install
+echo "✓ Morpheus installed to /data/data/com.termux/files/usr/bin/"
+echo "  You can now run 'morpheus' from anywhere."
 
 # Final instructions
 echo ""
