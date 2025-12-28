@@ -299,7 +299,7 @@ Deletes all servers and cleans up resources.
 
 ### Update Morpheus
 
-Check for and install updates:
+**Automatic Update (v1.1.1+):**
 
 ```bash
 morpheus update        # Check for updates and install if available
@@ -313,16 +313,24 @@ The update command will:
 4. Clone, build, and install the new version
 5. Back up your current version to `<path>.backup`
 
-**Manual Update:**
+**First-Time Update (for v1.1.0 or earlier):**
 
-If automatic update fails, you can always update manually:
+If you're on v1.1.0 or earlier (without the update feature), you need to manually update **one last time**:
 
 ```bash
-git clone https://github.com/nimsforest/morpheus.git
-cd morpheus
+# Desktop/Laptop
+cd /path/to/morpheus
+git pull
 make build
-make install
+sudo make install
+
+# Termux - or just re-run installer:
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
+
+See [UPGRADE_TO_v1.1.1.md](UPGRADE_TO_v1.1.1.md) for detailed instructions.
+
+After updating to v1.1.1, you'll have the automatic update feature! 🎉
 
 ### Other Commands
 
