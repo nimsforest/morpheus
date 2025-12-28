@@ -24,9 +24,25 @@
 
 ### Quick Install (Recommended)
 
-**One command install!** Just open Termux and run:
+**One command install!** The script runs non-interactively - no prompts or questions.
+
+**Step 1: Get your Hetzner API token (optional but recommended)**
+
+1. Go to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Navigate to **Security → API Tokens**
+3. Click **"Generate API Token"**
+4. Name: `morpheus-android`
+5. Permissions: **Read & Write**
+6. Copy the token (starts with something like `abc123...`)
+
+**Step 2: Run the installer**
 
 ```bash
+# Recommended: Set token first
+export HETZNER_API_TOKEN="your_token_here"
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+
+# Or: Set token later manually
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
@@ -36,7 +52,13 @@ This automatically:
 - ✅ Builds the binary (~5 minutes)
 - ✅ Sets up configuration
 - ✅ Generates SSH key if needed
-- ✅ Guides you through API token setup
+- ✅ Saves API token to `~/.bashrc` (if set)
+- ✅ Installs to PATH
+
+**Environment variables (optional):**
+- `HETZNER_API_TOKEN` - Your API token
+- `MORPHEUS_FORCE_CLONE=1` - Force re-clone if directory exists
+- `MORPHEUS_SKIP_INSTALL=1` - Skip installing to PATH
 
 **Time:** 10 minutes total
 

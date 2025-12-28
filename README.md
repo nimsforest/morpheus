@@ -27,15 +27,28 @@ F-Droid is an open-source app store for Android. Get it from:
 
 Or direct link: https://f-droid.org/en/packages/com.termux/
 
-**Step 3: Install Morpheus (One Command!)**
+**Step 3: Get Your Hetzner API Token**
 
-Open Termux and paste this:
+1. Create a free account at [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Go to **Security → API Tokens**
+3. Click **"Generate API Token"**
+4. Set permissions to **Read & Write**
+5. Copy the token
+
+**Step 4: Install Morpheus (One Command!)**
+
+Open Termux and paste this (optionally with your token):
 
 ```bash
+# Option 1: With token (recommended)
+export HETZNER_API_TOKEN="your_token_here"
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+
+# Option 2: Set token later
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
-**Step 4: Use Morpheus**
+**Step 5: Use Morpheus**
 
 ```bash
 morpheus plant cloud wood    # Create infrastructure
@@ -43,8 +56,6 @@ morpheus list                # View forests
 morpheus status forest-123   # Check status
 morpheus teardown forest-123 # Clean up
 ```
-
-You'll also need a free [Hetzner Cloud account](https://console.hetzner.cloud/) for the API token.
 
 📖 **Full guide:** [Termux Quick Start](docs/TERMUX_QUICKSTART.md)
 
@@ -111,6 +122,8 @@ make install  # Install to /usr/local/bin (optional)
 Morpheus is a CLI tool. Termux is a terminal. Running it directly is the natural way:
 
 ```bash
+# Quick install (non-interactive)
+export HETZNER_API_TOKEN="your_token"
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
@@ -118,6 +131,7 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 - ✅ Native CLI experience
 - ✅ Full functionality from your pocket
 - ✅ Works offline for local commands
+- ✅ Fully automated installation
 
 **Alternative: Control Server** (only for specific needs)
 
