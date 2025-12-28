@@ -1,11 +1,16 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Morpheus Quick Install Script for Termux
 # This script automates the entire setup process
+#
+# Non-interactive installation - uses environment variables for configuration:
+#   MORPHEUS_FORCE_CLONE=1    - Force re-clone if directory exists (default: skip)
+#   MORPHEUS_SKIP_INSTALL=1   - Skip installing to PATH (default: install)
+#   HETZNER_API_TOKEN=xxx     - Hetzner API token (will be saved to ~/.bashrc)
 
 set -e
 
-echo "🌲 Morpheus Termux Quick Installer"
-echo "==================================="
+echo "🌲 Morpheus Termux Quick Installer (Non-Interactive)"
+echo "===================================================="
 echo ""
 echo "This script will:"
 echo "  1. Install required packages (Go, Git, Make, OpenSSH)"
@@ -13,13 +18,10 @@ echo "  2. Clone Morpheus repository"
 echo "  3. Build Morpheus binary"
 echo "  4. Set up configuration"
 echo "  5. Generate SSH key (if needed)"
+echo "  6. Install to PATH"
 echo ""
-read -p "Continue? (y/n) " -n 1 -r < /dev/tty
+echo "Starting installation..."
 echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Installation cancelled."
-    exit 0
-fi
 
 # Step 1: Update and install packages
 echo ""
@@ -41,18 +43,18 @@ echo ""
 echo "📥 Step 2/5: Cloning Morpheus repository..."
 echo "----"
 if [[ -d "$HOME/morpheus" ]]; then
-    echo "⚠️  Directory $HOME/morpheus already exists."
-    read -p "Remove and re-clone? (y/n) " -n 1 -r < /dev/tty
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if [[ "${MORPHEUS_FORCE_CLONE}" == "1" ]]; then
+        echo "⚠️  Directory $HOME/morpheus exists. MORPHEUS_FORCE_CLONE=1, removing..."
         rm -rf "$HOME/morpheus"
+        cd "$HOME"
+        git clone https://github.com/nimsforest/morpheus.git
+        cd morpheus
     else
-        echo "Skipping clone. Using existing directory."
+        echo "⚠️  Directory $HOME/morpheus already exists. Using existing directory."
+        echo "    (Set MORPHEUS_FORCE_CLONE=1 to force re-clone)"
         cd "$HOME/morpheus"
     fi
-fi
-
-if [[ ! -d "$HOME/morpheus" ]]; then
+else
     cd "$HOME"
     git clone https://github.com/nimsforest/morpheus.git
     cd morpheus
@@ -100,22 +102,19 @@ if [[ -z "$HETZNER_API_TOKEN" ]]; then
     echo "  3. Generate new token (Read & Write permissions)"
     echo "  4. Copy the token"
     echo ""
-    read -p "Do you have your Hetzner API token ready? (y/n) " -n 1 -r < /dev/tty
+    echo "Set it before running this script:"
+    echo "  export HETZNER_API_TOKEN=\"your_token\""
     echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo ""
-        read -p "Enter your Hetzner API token: " TOKEN < /dev/tty
-        echo ""
-        if [[ -n "$TOKEN" ]]; then
-            echo "export HETZNER_API_TOKEN=\"$TOKEN\"" >> "$HOME/.bashrc"
-            export HETZNER_API_TOKEN="$TOKEN"
-            echo "✓ Token saved to ~/.bashrc"
-        fi
+    echo "Or add it to ~/.bashrc for persistence:"
+    echo "  echo 'export HETZNER_API_TOKEN=\"your_token\"' >> ~/.bashrc"
+    echo ""
+else
+    # Token is set, save it to .bashrc if not already there
+    if ! grep -q "HETZNER_API_TOKEN" "$HOME/.bashrc" 2>/dev/null; then
+        echo "export HETZNER_API_TOKEN=\"$HETZNER_API_TOKEN\"" >> "$HOME/.bashrc"
+        echo "✓ Token saved to ~/.bashrc"
     else
-        echo ""
-        echo "You can set it later with:"
-        echo "  export HETZNER_API_TOKEN=\"your_token\""
-        echo "  echo 'export HETZNER_API_TOKEN=\"your_token\"' >> ~/.bashrc"
+        echo "✓ HETZNER_API_TOKEN is set"
     fi
 fi
 
@@ -146,16 +145,16 @@ echo "  4. Paste the key above"
 echo "  5. Name it: android"
 echo ""
 
-# Install to PATH (optional)
+# Install to PATH (default: yes)
 echo ""
-read -p "Install morpheus to PATH? (y/n) " -n 1 -r < /dev/tty
-echo ""
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [[ "${MORPHEUS_SKIP_INSTALL}" == "1" ]]; then
+    echo "⚠️  MORPHEUS_SKIP_INSTALL=1, skipping PATH installation"
+    echo "   Run with: ~/morpheus/bin/morpheus"
+else
+    echo "📦 Installing morpheus to PATH..."
     make install
     echo "✓ Morpheus installed to /data/data/com.termux/files/usr/bin/"
     echo "  You can now run 'morpheus' from anywhere."
-else
-    echo "Skipping install. Run with: ~/morpheus/bin/morpheus"
 fi
 
 # Final instructions

@@ -15,53 +15,62 @@
 **Download from F-Droid** (NOT Google Play):
 - https://f-droid.org/en/packages/com.termux/
 
-### Step 2: Run Installer
+### Step 2: Get Hetzner API Token (Recommended)
+
+Get your Hetzner API token first for a smoother experience. See the [main README](../README.md#get-hetzner-api-token) for detailed instructions.
+
+### Step 3: Run Installer
 
 Open Termux and paste this command:
 
 ```bash
+# Recommended: With your token
+export HETZNER_API_TOKEN="your_token_here"
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+
+# Or: Without token (set it manually later)
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
-That's it! The installer will:
-1. Install dependencies (Go, Git, Make, OpenSSH)
-2. Clone Morpheus
-3. Build the binary (~5 minutes)
-4. Generate SSH key
-5. Help you configure API token
+That's it! The installer automatically:
+1. Installs dependencies (Go, Git, Make, OpenSSH)
+2. Clones Morpheus
+3. Builds the binary (~5 minutes)
+4. Generates SSH key
+5. Saves your API token (if provided)
+6. Installs to PATH
+
+**Non-interactive:** The script runs without prompts or questions.
 
 ## Configuration
 
 **What gets installed:**
 - Go (whatever version Termux provides - typically recent)
 - Git, Make, OpenSSH
-- Morpheus binary
+- Morpheus binary at `/data/data/com.termux/files/usr/bin/morpheus`
 
-The installer will ask you for:
+### SSH Key Upload
 
-### 1. Hetzner API Token
+After installation, the script will display your SSH public key.
 
-Get it here: https://console.hetzner.cloud/
-
-1. Go to **Security** → **API Tokens**
-2. Click **"Generate API Token"**
-3. Name: `morpheus`
-4. Permissions: **Read & Write**
-5. Copy the token
-
-Paste it when the installer asks.
-
-### 2. SSH Key Upload
-
-The installer will show you your SSH public key.
-
-Upload it here: https://console.hetzner.cloud/
+Upload it to Hetzner: https://console.hetzner.cloud/
 
 1. Go to **Security** → **SSH Keys**
 2. Click **"Add SSH Key"**
-3. Paste your public key
+3. Paste your public key (from the installer output)
 4. Name: `android`
 5. Save
+
+### If You Skipped the Token
+
+If you didn't set the token before running the installer:
+
+```bash
+# Set it now
+export HETZNER_API_TOKEN="your_token_here"
+echo 'export HETZNER_API_TOKEN="your_token"' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ## First Test
 

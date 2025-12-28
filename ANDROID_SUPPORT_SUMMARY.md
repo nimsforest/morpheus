@@ -86,15 +86,20 @@ This implementation positions Termux as the **primary mobile approach**, with co
 
 2. **`scripts/install-termux.sh`** (new, executable)
    - Automated installer for Termux
-   - Interactive prompts with confirmations
+   - Non-interactive (no prompts or confirmations)
+   - Uses environment variables for configuration
    - Handles entire setup process:
      1. Installs packages (Go, Git, Make, OpenSSH)
-     2. Clones Morpheus repository
+     2. Clones Morpheus repository (or uses existing)
      3. Builds binary (~2-5 minutes)
      4. Sets up configuration files
      5. Generates SSH key if needed
-     6. Guides through API token setup
-     7. Optionally installs to PATH
+     6. Saves API token if provided via HETZNER_API_TOKEN
+     7. Installs to PATH (by default)
+   - Environment variables:
+     - `HETZNER_API_TOKEN` - API token (saved to ~/.bashrc)
+     - `MORPHEUS_FORCE_CLONE=1` - Force re-clone if exists
+     - `MORPHEUS_SKIP_INSTALL=1` - Skip PATH installation
    - User-friendly output with emojis and progress
    - Error handling with clear messages
    - Can be run locally or via curl

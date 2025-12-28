@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/ch
 
 ### `install-termux.sh`
 
-Automated installer for Morpheus on Termux. Handles the entire setup process interactively.
+Automated installer for Morpheus on Termux. Handles the entire setup process non-interactively.
 
 **Usage:**
 ```bash
@@ -44,6 +44,13 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 
 # Or from local clone
 ./scripts/install-termux.sh
+
+# With Hetzner token pre-configured
+export HETZNER_API_TOKEN="your_token_here"
+./scripts/install-termux.sh
+
+# With custom options
+MORPHEUS_FORCE_CLONE=1 MORPHEUS_SKIP_INSTALL=1 ./scripts/install-termux.sh
 ```
 
 **What it does:**
@@ -52,10 +59,15 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 3. Builds Morpheus binary
 4. Sets up configuration files
 5. Generates SSH key (if needed)
-6. Guides through Hetzner API token setup
-7. Optionally installs to PATH
+6. Saves Hetzner API token (if provided)
+7. Installs to PATH (by default)
 
-**Interactive:** The script asks for confirmation at each major step and guides you through token and SSH key setup.
+**Environment Variables:**
+- `HETZNER_API_TOKEN` - Your Hetzner Cloud API token (will be saved to `~/.bashrc`)
+- `MORPHEUS_FORCE_CLONE=1` - Force re-clone repository if it already exists (default: skip)
+- `MORPHEUS_SKIP_INSTALL=1` - Skip installing to PATH (default: install)
+
+**Non-Interactive:** The script runs without prompts, using environment variables for configuration. This makes it suitable for automation, CI/CD, or scripted deployments.
 
 ## Contributing
 
