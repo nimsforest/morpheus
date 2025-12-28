@@ -310,12 +310,26 @@ The update command will:
 1. Check GitHub for the latest release
 2. Show release notes
 3. Ask for confirmation
-4. Clone, build, and install the new version
+4. Download and install the pre-built binary for your platform
 5. Back up your current version to `<path>.backup`
 
-**Manual update (alternative):**
+**Manual update with pre-built binaries:**
 
-If automatic update fails, you can always update manually:
+If automatic update fails, you can download binaries directly:
+
+```bash
+# Example: Download latest Linux ARM64 binary
+gh release download --pattern 'morpheus-linux-arm64'
+chmod +x morpheus-linux-arm64
+sudo mv morpheus-linux-arm64 /usr/local/bin/morpheus
+
+# Or with curl
+curl -LO https://github.com/nimsforest/morpheus/releases/latest/download/morpheus-linux-arm64
+chmod +x morpheus-linux-arm64
+sudo mv morpheus-linux-arm64 /usr/local/bin/morpheus
+```
+
+**Manual update by building from source (if needed):**
 
 ```bash
 # Desktop/Laptop
@@ -331,20 +345,15 @@ make build
 cp bin/morpheus $PREFIX/bin/
 ```
 
-**Pre-built binaries:**
+**Available pre-built binaries:**
 
-Every release includes pre-built binaries for:
+Every release includes binaries for:
 - Linux (amd64, arm64, arm)
 - macOS (amd64, arm64)
 
 Download from: https://github.com/nimsforest/morpheus/releases
 
-```bash
-# Example: Download latest Linux ARM64 binary
-gh release download --pattern 'morpheus-linux-arm64'
-chmod +x morpheus-linux-arm64
-mv morpheus-linux-arm64 /usr/local/bin/morpheus
-```
+The `morpheus update` command automatically downloads the correct binary for your platform!
 
 ### Other Commands
 

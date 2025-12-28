@@ -100,6 +100,17 @@ func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
 
 // PerformUpdate downloads and installs the latest version
 func (u *Updater) PerformUpdate() error {
+	// Get update info first to know which version to download
+	updateInfo, err := u.CheckForUpdate()
+	if err != nil {
+		return fmt.Errorf("failed to check for updates: %w", err)
+	}
+
+	if !updateInfo.Available {
+		fmt.Println("Already on the latest version!")
+		return nil
+	}
+
 	// Get the path of the current executable
 	execPath, err := os.Executable()
 	if err != nil {
@@ -112,59 +123,58 @@ func (u *Updater) PerformUpdate() error {
 		return fmt.Errorf("failed to resolve symlink: %w", err)
 	}
 
-	// Get temporary directory
+	// Determine platform and architecture
+	platform := GetPlatform()
+	binaryName := fmt.Sprintf("morpheus-%s-%s", runtime.GOOS, runtime.GOARCH)
+
+	// Construct download URL
+	version := "v" + updateInfo.LatestVersion
+	downloadURL := fmt.Sprintf("https://github.com/nimsforest/morpheus/releases/download/%s/%s", version, binaryName)
+
+	fmt.Printf("📦 Downloading Morpheus %s for %s...\n", version, platform)
+
+	// Download binary to temporary file
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, "morpheus-update")
 
-	// Clone the repository and build
-	fmt.Println("📦 Cloning latest version from GitHub...")
-	repoDir := filepath.Join(tmpDir, "morpheus-repo")
-
-	// Clean up old clone if exists
-	os.RemoveAll(repoDir)
-
-	// Clone repository (with all tags for version detection)
-	cmd := exec.Command("git", "clone", "https://github.com/nimsforest/morpheus.git", repoDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to clone repository: %w", err)
+	if err := downloadFile(downloadURL, tmpFile); err != nil {
+		return fmt.Errorf("failed to download binary: %w\n\nFallback: You can manually download from:\n%s", err, updateInfo.UpdateURL)
 	}
 
-	// Get version from git tags
-	versionCmd := exec.Command("git", "describe", "--tags", "--always", "--dirty")
-	versionCmd.Dir = repoDir
-	versionOutput, err := versionCmd.Output()
+	// Verify downloaded file is not empty
+	fileInfo, err := os.Stat(tmpFile)
 	if err != nil {
-		return fmt.Errorf("failed to get version: %w", err)
+		return fmt.Errorf("failed to check downloaded file: %w", err)
 	}
-	gitVersion := strings.TrimSpace(string(versionOutput))
-
-	// Build the binary with version injection
-	fmt.Printf("🔨 Building version %s...\n", gitVersion)
-	ldflags := fmt.Sprintf("-X main.version=%s", gitVersion)
-	cmd = exec.Command("go", "build", "-ldflags", ldflags, "-o", tmpFile, "./cmd/morpheus")
-	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to build: %w", err)
+	if fileInfo.Size() == 0 {
+		os.Remove(tmpFile)
+		return fmt.Errorf("downloaded file is empty")
 	}
 
 	// Make it executable
 	if err := os.Chmod(tmpFile, 0755); err != nil {
+		os.Remove(tmpFile)
 		return fmt.Errorf("failed to make executable: %w", err)
+	}
+
+	// Verify the binary works
+	fmt.Println("🔍 Verifying downloaded binary...")
+	verifyCmd := exec.Command(tmpFile, "version")
+	if output, err := verifyCmd.CombinedOutput(); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("downloaded binary verification failed: %w\nOutput: %s", err, string(output))
 	}
 
 	// Backup current version
 	backupPath := execPath + ".backup"
 	fmt.Printf("📋 Backing up current version to %s\n", backupPath)
-	
+
 	// Remove old backup if it exists
 	os.Remove(backupPath)
-	
+
 	// Rename current binary to backup (this works even if the binary is running)
 	if err := os.Rename(execPath, backupPath); err != nil {
+		os.Remove(tmpFile)
 		return fmt.Errorf("failed to backup current version: %w", err)
 	}
 
@@ -173,12 +183,12 @@ func (u *Updater) PerformUpdate() error {
 	if err := os.Rename(tmpFile, execPath); err != nil {
 		// Restore backup on failure
 		os.Rename(backupPath, execPath)
+		os.Remove(tmpFile)
 		return fmt.Errorf("failed to install update: %w", err)
 	}
 
-	// Clean up
+	// Clean up temporary file
 	os.Remove(tmpFile)
-	os.RemoveAll(repoDir)
 
 	fmt.Println("\n✅ Update completed successfully!")
 	fmt.Printf("\nRun 'morpheus version' to verify the update.\n")
@@ -187,31 +197,39 @@ func (u *Updater) PerformUpdate() error {
 	return nil
 }
 
-// copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
+// downloadFile downloads a file from a URL to a local path
+func downloadFile(url, filepath string) error {
+	// Create the file
+	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer out.Close()
 
-	destFile, err := os.Create(dst)
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Minute, // Binary downloads may take a while
+	}
+
+	// Get the data
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer resp.Body.Close()
 
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return err
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Copy permissions
-	sourceInfo, err := os.Stat(src)
+	// Writer the body to file
+	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
 
-	return os.Chmod(dst, sourceInfo.Mode())
+	return nil
 }
 
 // GetPlatform returns the current platform string

@@ -2,20 +2,23 @@
 # Morpheus Quick Install Script for Termux
 # This script automates the entire setup process
 #
-# Non-interactive installation - uses environment variables for configuration:
-#   MORPHEUS_FORCE_CLONE=1    - Force re-clone if directory exists (default: skip)
-#   MORPHEUS_SKIP_INSTALL=1   - Skip installing to PATH (default: install)
-#   MORPHEUS_BUILD_FROM_SOURCE=1 - Force build from source instead of downloading binary
-#   HETZNER_API_TOKEN=xxx     - Hetzner API token (will be saved to ~/.bashrc)
+# By default, downloads pre-built binaries (fast, no dependencies).
+# Falls back to building from source if binary download fails.
+#
+# Environment variables:
+#   HETZNER_API_TOKEN=xxx        - Hetzner API token (will be saved to ~/.bashrc)
+#   MORPHEUS_SKIP_INSTALL=1      - Skip installing to PATH (default: install)
+#   MORPHEUS_BUILD_FROM_SOURCE=1 - Force build from source instead of binary download
+#   MORPHEUS_FORCE_CLONE=1       - Force re-clone if directory exists (for source builds)
 
 set -e
 
-echo "🌲 Morpheus Termux Quick Installer (Non-Interactive)"
-echo "===================================================="
+echo "🌲 Morpheus Termux Quick Installer"
+echo "===================================="
 echo ""
 echo "This script will:"
-echo "  1. Install required packages (Git, OpenSSH, optional: Go)"
-echo "  2. Download or build Morpheus binary"
+echo "  1. Install required packages (Git, OpenSSH)"
+echo "  2. Download pre-built Morpheus binary"
 echo "  3. Set up configuration"
 echo "  4. Generate SSH key (if needed)"
 echo "  5. Install to PATH"
@@ -41,23 +44,12 @@ echo "📦 Step 1/5: Installing packages..."
 echo "----"
 pkg update -y
 
-# Always install git and openssh
+# Always install git, openssh, and curl
 pkg install -y git openssh curl
-
-# Only install Go if building from source or if binary download is disabled
-if [[ "${MORPHEUS_BUILD_FROM_SOURCE}" == "1" || -z "$BINARY_ARCH" ]]; then
-    echo "Installing Go, Make (building from source)..."
-    pkg install -y golang make
-fi
 
 # Verify installations
 echo ""
-echo "Verifying installations:"
-git --version
-ssh -V 2>&1 | head -1
-if command -v go &> /dev/null; then
-    go version
-fi
+echo "✓ Installed: git, openssh, curl"
 
 # Step 2: Get Morpheus binary
 echo ""
@@ -68,10 +60,16 @@ echo "----"
 mkdir -p "$HOME/.morpheus-tmp"
 BINARY_PATH="$HOME/.morpheus-tmp/morpheus"
 
-# Try to download pre-built binary first (unless forced to build)
+# Download pre-built binary (unless forced to build from source)
 DOWNLOAD_SUCCESS=0
-if [[ "${MORPHEUS_BUILD_FROM_SOURCE}" != "1" && -n "$BINARY_ARCH" ]]; then
-    echo "Attempting to download pre-built binary for linux-$BINARY_ARCH..."
+if [[ "${MORPHEUS_BUILD_FROM_SOURCE}" == "1" ]]; then
+    echo "MORPHEUS_BUILD_FROM_SOURCE=1 detected, skipping binary download..."
+elif [[ -z "$BINARY_ARCH" ]]; then
+    echo "⚠️  Unknown architecture: $ARCH"
+    echo "    Supported: aarch64 (arm64), armv7/armv8l (arm), x86_64 (amd64)"
+    echo "    Will attempt to build from source..."
+else
+    echo "Downloading pre-built binary for linux-$BINARY_ARCH..."
     
     # Get latest release info
     LATEST_URL="https://api.github.com/repos/nimsforest/morpheus/releases/latest"
@@ -81,68 +79,83 @@ if [[ "${MORPHEUS_BUILD_FROM_SOURCE}" != "1" && -n "$BINARY_ARCH" ]]; then
         VERSION=$(echo "$RELEASE_INFO" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
         DOWNLOAD_URL="https://github.com/nimsforest/morpheus/releases/download/${VERSION}/morpheus-linux-${BINARY_ARCH}"
         
-        echo "Downloading Morpheus $VERSION for linux-$BINARY_ARCH..."
-        if curl -L -f -o "$BINARY_PATH" "$DOWNLOAD_URL" 2>/dev/null; then
+        echo "  Version: $VERSION"
+        echo "  Platform: linux-$BINARY_ARCH"
+        echo ""
+        
+        if curl -L -f -o "$BINARY_PATH" "$DOWNLOAD_URL" 2>&1 | grep -v "^  "; then
             chmod +x "$BINARY_PATH"
             
             # Verify the binary works
             if "$BINARY_PATH" version &>/dev/null; then
-                echo "✓ Downloaded pre-built binary successfully!"
+                echo ""
+                echo "✓ Successfully downloaded and verified binary!"
                 DOWNLOAD_SUCCESS=1
             else
-                echo "⚠️  Downloaded binary doesn't work. Will build from source."
+                echo ""
+                echo "⚠️  Downloaded binary verification failed"
                 rm -f "$BINARY_PATH"
             fi
         else
-            echo "⚠️  Download failed. Will build from source."
+            echo ""
+            echo "⚠️  Download failed (HTTP error or network issue)"
         fi
     else
-        echo "⚠️  Could not fetch release info. Will build from source."
+        echo "⚠️  Could not fetch release info from GitHub"
+    fi
+    
+    if [[ $DOWNLOAD_SUCCESS -eq 0 ]]; then
+        echo "    Will attempt to build from source..."
     fi
 fi
 
-# Build from source if download failed or was disabled
+# Build from source if download failed (fallback)
 if [[ $DOWNLOAD_SUCCESS -eq 0 ]]; then
     echo ""
-    echo "🔨 Building from source..."
+    echo "🔨 Building from source (fallback)..."
     echo "----"
+    echo "NOTE: This requires Go and may take 2-5 minutes"
+    echo ""
     
-    # Make sure Go is installed
+    # Install Go and Make if not present
     if ! command -v go &> /dev/null; then
         echo "Installing Go and Make..."
         pkg install -y golang make
     fi
     
-    # Clone repository if needed
-    if [[ -d "$HOME/morpheus" ]]; then
-        if [[ "${MORPHEUS_FORCE_CLONE}" == "1" ]]; then
-            echo "⚠️  Directory $HOME/morpheus exists. MORPHEUS_FORCE_CLONE=1, removing..."
-            rm -rf "$HOME/morpheus"
-            cd "$HOME"
-            git clone https://github.com/nimsforest/morpheus.git
-            cd morpheus
-        else
-            echo "⚠️  Directory $HOME/morpheus already exists. Using existing directory."
-            echo "    (Set MORPHEUS_FORCE_CLONE=1 to force re-clone)"
-            cd "$HOME/morpheus"
-            git pull || true
-        fi
+    # Clone or update repository
+    if [[ -d "$HOME/morpheus" && "${MORPHEUS_FORCE_CLONE}" != "1" ]]; then
+        echo "Using existing repository at $HOME/morpheus"
+        echo "(Set MORPHEUS_FORCE_CLONE=1 to force re-clone)"
+        cd "$HOME/morpheus"
+        git pull || true
     else
-        cd "$HOME"
-        git clone https://github.com/nimsforest/morpheus.git
-        cd morpheus
+        if [[ -d "$HOME/morpheus" ]]; then
+            echo "Removing existing directory (MORPHEUS_FORCE_CLONE=1)..."
+            rm -rf "$HOME/morpheus"
+        fi
+        echo "Cloning repository..."
+        git clone https://github.com/nimsforest/morpheus.git "$HOME/morpheus"
+        cd "$HOME/morpheus"
     fi
     
-    echo "This may take 2-5 minutes on first build..."
+    echo "Building binary..."
     make deps
     make build
     
     # Copy built binary
     if [[ -f "./bin/morpheus" ]]; then
         cp "./bin/morpheus" "$BINARY_PATH"
+        echo ""
         echo "✓ Build successful!"
     else
-        echo "✗ Build failed. Check errors above."
+        echo ""
+        echo "✗ Build failed"
+        echo ""
+        echo "Please check the errors above or try:"
+        echo "  - Check your internet connection"
+        echo "  - Ensure you have enough storage space"
+        echo "  - Report the issue at: https://github.com/nimsforest/morpheus/issues"
         exit 1
     fi
 fi
