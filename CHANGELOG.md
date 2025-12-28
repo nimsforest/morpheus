@@ -191,23 +191,27 @@ When `morpheus update` encounters network problems (DNS failures, connection iss
 - ✅ **Automatic Retry Logic:** Retries failed requests up to 3 times with exponential backoff
 - ✅ **Better DNS Handling:** Custom HTTP transport with improved IPv4/IPv6 dual-stack support
 - ✅ **Enhanced Error Messages:** Provides specific troubleshooting advice based on error type:
-  - DNS resolution failures → Suggests checking `/etc/resolv.conf` and DNS configuration
+  - DNS resolution failures → Suggests checking DNS configuration
   - Localhost DNS issues → Detects misconfigured localhost DNS and provides fix instructions
   - Connection refused → Advises on firewall/proxy checks
   - Timeouts → Suggests network connectivity troubleshooting
 
-**Common DNS Issue Fixed:**
+**Common DNS Issue Fixed (especially on Termux/Android):**
 ```
 Error: lookup api.github.com on [::1]:53: connection refused
 
 Now shows:
 DNS configuration issue detected:
   • Your system is trying to use localhost as DNS server
-  • Check /etc/resolv.conf for incorrect DNS settings
-  • Common fix: Replace localhost DNS with:
-      nameserver 8.8.8.8
-      nameserver 1.1.1.1
+  • [On Linux] Check /etc/resolv.conf for incorrect DNS settings
+  • [On Termux] Disable Private DNS in Android Settings
+  • [On Termux] Restart Termux or disable VPN apps
 ```
+
+**Termux-Specific Improvements:**
+- Added comprehensive Termux DNS troubleshooting guide
+- Updated Android/Termux documentation with DNS fixes
+- Most common fix: Disable "Private DNS" in Android Settings
 
 **Technical Details:**
 - Added `maxRetries = 3` constant for network operations
