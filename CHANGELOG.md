@@ -182,6 +182,48 @@ infrastructure:
 
 ## [Unreleased]
 
+### Improved - Network Resilience in Update System
+
+**Enhanced Update System:** Morpheus updater now handles network issues gracefully!
+
+When `morpheus update` encounters network problems (DNS failures, connection issues, timeouts), it now:
+
+- ✅ **Automatic Retry Logic:** Retries failed requests up to 3 times with exponential backoff
+- ✅ **Better DNS Handling:** Custom HTTP transport with improved IPv4/IPv6 dual-stack support
+- ✅ **Enhanced Error Messages:** Provides specific troubleshooting advice based on error type:
+  - DNS resolution failures → Suggests checking `/etc/resolv.conf` and DNS configuration
+  - Localhost DNS issues → Detects misconfigured localhost DNS and provides fix instructions
+  - Connection refused → Advises on firewall/proxy checks
+  - Timeouts → Suggests network connectivity troubleshooting
+
+**Common DNS Issue Fixed:**
+```
+Error: lookup api.github.com on [::1]:53: connection refused
+
+Now shows:
+DNS configuration issue detected:
+  • Your system is trying to use localhost as DNS server
+  • Check /etc/resolv.conf for incorrect DNS settings
+  • Common fix: Replace localhost DNS with:
+      nameserver 8.8.8.8
+      nameserver 1.1.1.1
+```
+
+**Technical Details:**
+- Added `maxRetries = 3` constant for network operations
+- Implemented exponential backoff (2s, 4s, 6s intervals)
+- Custom `net.Dialer` with optimized timeout settings
+- Intelligent error detection and classification
+- Only retries transient network errors (not API errors)
+
+**Benefits:**
+- More reliable updates on unstable networks
+- Better user experience with actionable error messages
+- Handles common DNS misconfigurations gracefully
+- Especially helpful for Termux/mobile environments with varying network quality
+
+See [UPDATER_NETWORK_IMPROVEMENTS.md](UPDATER_NETWORK_IMPROVEMENTS.md) for complete technical documentation.
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load

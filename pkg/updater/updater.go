@@ -1,9 +1,11 @@
 package updater
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,6 +20,7 @@ import (
 const (
 	githubAPIURL = "https://api.github.com/repos/nimsforest/morpheus/releases/latest"
 	timeout      = 10 * time.Second
+	maxRetries   = 3
 )
 
 // GitHubRelease represents the GitHub API response for a release
@@ -49,16 +52,66 @@ type Updater struct {
 
 // NewUpdater creates a new Updater instance
 func NewUpdater(currentVersion string) *Updater {
+	// Create a custom dialer with fallback to IPv4 if IPv6 fails
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	// Create a custom transport with DNS fallback
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Try dual-stack (both IPv4 and IPv6)
+			return dialer.DialContext(ctx, network, addr)
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
 	return &Updater{
 		currentVersion: currentVersion,
 		client: &http.Client{
-			Timeout: timeout,
+			Timeout:   timeout,
+			Transport: transport,
 		},
 	}
 }
 
 // CheckForUpdate checks if a new version is available
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
+	var lastErr error
+
+	// Retry logic for network resilience
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		info, err := u.checkForUpdateOnce()
+		if err == nil {
+			return info, nil
+		}
+
+		lastErr = err
+
+		// Check if it's a DNS or network error
+		if isNetworkError(err) {
+			if attempt < maxRetries {
+				// Wait before retrying (exponential backoff)
+				backoff := time.Duration(attempt) * 2 * time.Second
+				time.Sleep(backoff)
+				continue
+			}
+		} else {
+			// Non-network errors should not be retried
+			break
+		}
+	}
+
+	return nil, enhanceNetworkError(lastErr)
+}
+
+// checkForUpdateOnce performs a single update check
+func (u *Updater) checkForUpdateOnce() (*UpdateInfo, error) {
 	req, err := http.NewRequest("GET", githubAPIURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -96,6 +149,67 @@ func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
 	}
 
 	return info, nil
+}
+
+// isNetworkError checks if an error is network-related
+func isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "dial tcp") ||
+		strings.Contains(errStr, "lookup") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "network is unreachable") ||
+		strings.Contains(errStr, "timeout")
+}
+
+// enhanceNetworkError adds helpful troubleshooting info to network errors
+func enhanceNetworkError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	errStr := err.Error()
+	
+	// DNS resolution errors
+	if strings.Contains(errStr, "lookup") || strings.Contains(errStr, "no such host") {
+		return fmt.Errorf("%w\n\nNetwork troubleshooting:\n"+
+			"  • Check your internet connection\n"+
+			"  • Verify DNS is configured correctly (check /etc/resolv.conf)\n"+
+			"  • Try: ping api.github.com\n"+
+			"  • If on IPv6-only network, ensure IPv6 DNS is working\n"+
+			"  • Try using a different DNS server (e.g., 8.8.8.8, 1.1.1.1)", err)
+	}
+
+	// Connection refused errors
+	if strings.Contains(errStr, "connection refused") {
+		if strings.Contains(errStr, "[::1]:53") || strings.Contains(errStr, "127.0.0.1:53") {
+			return fmt.Errorf("%w\n\nDNS configuration issue detected:\n"+
+				"  • Your system is trying to use localhost as DNS server\n"+
+				"  • Check /etc/resolv.conf for incorrect DNS settings\n"+
+				"  • Common fix: Replace localhost DNS with:\n"+
+				"      nameserver 8.8.8.8\n"+
+				"      nameserver 1.1.1.1\n"+
+				"  • On some systems, edit /etc/systemd/resolved.conf", err)
+		}
+		return fmt.Errorf("%w\n\nConnection issue:\n"+
+			"  • Firewall may be blocking the connection\n"+
+			"  • Check if you're behind a proxy\n"+
+			"  • Verify you can access: https://api.github.com", err)
+	}
+
+	// Timeout errors
+	if strings.Contains(errStr, "timeout") {
+		return fmt.Errorf("%w\n\nConnection timeout:\n"+
+			"  • Check your internet connection\n"+
+			"  • Network may be slow or unstable\n"+
+			"  • Try again later", err)
+	}
+
+	// Generic network error
+	return fmt.Errorf("%w\n\nNetwork issue detected. Check your internet connection.", err)
 }
 
 // PerformUpdate downloads and installs the latest version
