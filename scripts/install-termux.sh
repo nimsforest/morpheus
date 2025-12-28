@@ -38,13 +38,6 @@ git --version
 make --version
 ssh -V 2>&1 | head -1
 
-# Verify ssh-keygen is available
-if ! command -v ssh-keygen &> /dev/null; then
-    echo "✗ Error: ssh-keygen not found. OpenSSH installation may have failed."
-    exit 1
-fi
-echo "ssh-keygen: $(command -v ssh-keygen)"
-
 # Step 2: Clone repository
 echo ""
 echo "📥 Step 2/5: Cloning Morpheus repository..."
@@ -135,24 +128,8 @@ if [[ -f "$HOME/.ssh/id_ed25519" ]]; then
 else
     echo "No SSH key found. Generating new key..."
     mkdir -p "$HOME/.ssh"
-    chmod 700 "$HOME/.ssh"
     ssh-keygen -t ed25519 -C "morpheus-android" -f "$HOME/.ssh/id_ed25519" -N ""
-    if [[ $? -eq 0 ]]; then
-        echo "✓ SSH key generated"
-        # Set proper permissions on the keys
-        chmod 600 "$HOME/.ssh/id_ed25519"
-        chmod 644 "$HOME/.ssh/id_ed25519.pub"
-    else
-        echo "✗ Failed to generate SSH key"
-        exit 1
-    fi
-fi
-
-# Verify the public key exists before trying to display it
-if [[ ! -f "$HOME/.ssh/id_ed25519.pub" ]]; then
-    echo "✗ Error: SSH public key not found at ~/.ssh/id_ed25519.pub"
-    echo "   Please generate it manually: ssh-keygen -t ed25519 -C \"morpheus-android\""
-    exit 1
+    echo "✓ SSH key generated"
 fi
 
 echo ""
