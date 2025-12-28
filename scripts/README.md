@@ -2,6 +2,42 @@
 
 This directory contains helper scripts for various Morpheus workflows.
 
+## Universal Installer
+
+### `install.sh`
+
+**Universal installer that works on all platforms.** Auto-detects OS and architecture, then downloads and installs the appropriate pre-built binary.
+
+**Usage:**
+```bash
+# Works on Linux, macOS, and Termux
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+```
+
+**Supported Platforms:**
+- **Linux**: x86_64 (amd64), aarch64 (arm64), armv7/armv8l (arm)
+- **macOS**: x86_64 (Intel), arm64 (Apple Silicon)
+- **Termux**: aarch64 (most Android), armv7/armv8l
+
+**What it does:**
+1. ✅ Detects your OS (Linux/Darwin/Termux)
+2. ✅ Detects your architecture
+3. ✅ Fetches latest release from GitHub
+4. ✅ Downloads pre-built binary for your platform
+5. ✅ Verifies binary works (`morpheus version`)
+6. ✅ Installs to appropriate location:
+   - Termux: `$PREFIX/bin/morpheus`
+   - Linux/macOS with sudo: `/usr/local/bin/morpheus`
+   - Linux/macOS without sudo: `~/.local/bin/morpheus`
+
+**Why use this?**
+- 🚀 Fast: Downloads binary (no compilation)
+- 🔒 Safe: No dependencies on Go/Make
+- 🌍 Universal: One command for all platforms
+- ✨ Simple: Auto-detects everything
+
+---
+
 ## Android/Termux Scripts
 
 ### `check-termux.sh`
@@ -35,39 +71,42 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/ch
 
 ### `install-termux.sh`
 
-Automated installer for Morpheus on Termux. Handles the entire setup process non-interactively.
+**Legacy Termux-specific installer with full setup automation.**
+
+This script is more comprehensive than `install.sh` - it sets up configuration, generates SSH keys, and can build from source as a fallback.
 
 **Usage:**
 ```bash
-# Download and run directly (recommended)
+# Download and run directly
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-
-# Or from local clone
-./scripts/install-termux.sh
 
 # With Hetzner token pre-configured
 export HETZNER_API_TOKEN="your_token_here"
-./scripts/install-termux.sh
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 
-# With custom options
-MORPHEUS_FORCE_CLONE=1 MORPHEUS_SKIP_INSTALL=1 ./scripts/install-termux.sh
+# Force build from source instead of binary
+export MORPHEUS_BUILD_FROM_SOURCE=1
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
 **What it does:**
-1. Installs required packages (Go, Git, Make, OpenSSH)
-2. Clones Morpheus repository
-3. Builds Morpheus binary
-4. Sets up configuration files
+1. Installs required packages (Git, OpenSSH, curl)
+2. Downloads pre-built binary (fast)
+3. Falls back to building from source if download fails
+4. Sets up `~/.morpheus/config.yaml`
 5. Generates SSH key (if needed)
-6. Saves Hetzner API token (if provided)
-7. Installs to PATH (by default)
+6. Saves Hetzner API token to `~/.bashrc` (if provided)
+7. Installs to PATH
 
 **Environment Variables:**
-- `HETZNER_API_TOKEN` - Your Hetzner Cloud API token (will be saved to `~/.bashrc`)
-- `MORPHEUS_FORCE_CLONE=1` - Force re-clone repository if it already exists (default: skip)
-- `MORPHEUS_SKIP_INSTALL=1` - Skip installing to PATH (default: install)
+- `HETZNER_API_TOKEN` - Your Hetzner Cloud API token (saved to `~/.bashrc`)
+- `MORPHEUS_BUILD_FROM_SOURCE=1` - Force build from source (skips binary download)
+- `MORPHEUS_FORCE_CLONE=1` - Force re-clone repository if it exists
+- `MORPHEUS_SKIP_INSTALL=1` - Skip installing to PATH
 
-**Non-Interactive:** The script runs without prompts, using environment variables for configuration. This makes it suitable for automation, CI/CD, or scripted deployments.
+**When to use this vs `install.sh`:**
+- Use `install.sh` (universal): Just want to install Morpheus binary quickly
+- Use `install-termux.sh`: Need full Termux setup (SSH keys, config, API token saving)
 
 ## Contributing
 

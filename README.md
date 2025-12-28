@@ -33,16 +33,13 @@ Get your token from [Hetzner Cloud Console](https://console.hetzner.cloud/). See
 
 **Step 4: Install Morpheus (One Command!)**
 
-Open Termux and paste this (optionally with your token):
+Open Termux and paste this:
 
 ```bash
-# Option 1: With token (recommended)
-export HETZNER_API_TOKEN="your_token_here"
-curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-
-# Option 2: Set token later
-curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
 ```
+
+**Note:** This works on any Linux, macOS, or Termux! The script auto-detects your OS and architecture.
 
 **Step 5: Use Morpheus**
 
@@ -59,15 +56,18 @@ morpheus teardown forest-123 # Clean up
 
 ### 💻 Desktop/Laptop
 
+**Quick Install (Recommended):**
+
 ```bash
-# Clone and build
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+```
+
+**Or Build from Source:**
+
+```bash
 git clone https://github.com/nimsforest/morpheus.git
 cd morpheus
 make build
-
-# Configure
-export HETZNER_API_TOKEN="your-token"
-cp config.example.yaml config.yaml
 
 # Use it
 ./bin/morpheus plant cloud wood
@@ -88,19 +88,29 @@ Morpheus handles **infrastructure only**:
 
 ## Installation
 
-### Prerequisites
+### Quick Install (All Platforms)
 
-**For Termux:**
-- Android phone with [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/)
-- Hetzner Cloud account (free to create)
-- *Go is automatically installed by the installer*
+**One command works everywhere:**
 
-**For Desktop:**
-- Go 1.25+ (or whatever version you have)
-- Hetzner Cloud account with API token
-- SSH key (Morpheus will automatically upload it to Hetzner if not already there)
+```bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+```
 
-### Build from Source (Desktop)
+This automatically:
+- ✅ Detects your OS (Linux, macOS, Termux)
+- ✅ Detects your architecture (amd64, arm64, arm)
+- ✅ Downloads the correct pre-built binary
+- ✅ Installs to the right location
+- ✅ Verifies everything works
+
+**Supported Platforms:**
+- Linux: x86_64, aarch64 (ARM64), armv7/armv8l (ARM)
+- macOS: x86_64 (Intel), arm64 (Apple Silicon)
+- Termux: aarch64 (most Android phones), armv7/armv8l
+
+### Build from Source (Optional)
+
+If you prefer to build from source or contribute to development:
 
 ```bash
 git clone https://github.com/nimsforest/morpheus.git
@@ -109,7 +119,9 @@ make build    # Build binary
 make install  # Install to /usr/local/bin (optional)
 ```
 
-**Note:** Termux users should use the automated installer instead.
+**Prerequisites for building:**
+- Go 1.25+ (or whatever version you have)
+- Make
 
 ### Mobile Usage
 
