@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/yourusername/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/yourusername/morpheus/actions)
 [![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/yourusername/morpheus/actions)
-[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 **Infrastructure provisioning tool for Nims Forest** - Automatically provision cloud servers with the right configuration for NATS-based distributed systems.
@@ -18,6 +18,8 @@ Morpheus handles **infrastructure only**:
 **Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
 
 ## Quick Start
+
+### Desktop/Laptop
 
 ```bash
 # 1. Build
@@ -41,10 +43,26 @@ cp config.example.yaml config.yaml
 ./bin/morpheus teardown forest-<id>
 ```
 
+### Android/Termux (NEW!)
+
+```bash
+# 1. Install Termux from F-Droid
+# https://f-droid.org/en/packages/com.termux/
+
+# 2. Run automated installer
+curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+
+# 3. Use Morpheus from your phone!
+morpheus plant cloud wood
+morpheus list
+```
+
+See [Android/Termux Guide](docs/ANDROID_TERMUX.md) for detailed instructions.
+
 ## Installation
 
 ### Prerequisites
-- Go 1.25+
+- Go 1.21+ (Termux typically provides Go 1.21+)
 - Hetzner Cloud account with API token
 - SSH key uploaded to Hetzner Cloud
 
@@ -58,12 +76,20 @@ make build    # Build binary
 make install  # Install to /usr/local/bin (optional)
 ```
 
-### Control Server Setup (Mobile/Private Repo)
+### Mobile Usage
 
-Working from mobile or have a private repository? See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
+**Option 1: Run directly on Android** (Recommended for personal use)
+See the [Android/Termux Guide](docs/ANDROID_TERMUX.md) for:
+- Running Morpheus natively on your Android phone
+- No control server needed (~€4.50/month savings)
+- Full CLI access from your pocket
+- Perfect for personal projects and testing
+
+**Option 2: Control Server Setup** (Recommended for production)
+See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
 - Setting up a dedicated Morpheus server
 - GitHub token authentication for private repos
-- Mobile-friendly workflows and shortcuts
+- Persistent environment for team collaboration
 - Security best practices
 
 ### Get Hetzner API Token
@@ -363,6 +389,7 @@ MIT License - see [LICENSE](LICENSE)
 
 - **GitHub**: https://github.com/yourusername/morpheus
 - **Documentation**: [docs/](docs/)
+  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Run Morpheus on your Android phone
   - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Mobile/private repo guide
   - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
 - **Issues**: https://github.com/yourusername/morpheus/issues

@@ -49,6 +49,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-12-28
+
+### Added - Android/Termux Support
+
+**NEW**: Morpheus can now run natively on Android devices via Termux!
+
+- ✅ Full Android/ARM64 and ARM32 support
+- ✅ Native Termux compatibility (no emulation needed)
+- ✅ Comprehensive Android/Termux installation guide
+- ✅ Automated installer script (`scripts/install-termux.sh`)
+- ✅ Compatibility checker script (`scripts/check-termux.sh`)
+- ✅ Mobile-friendly documentation and workflows
+- ✅ No CGO dependencies (pure Go)
+- ✅ No platform-specific system calls
+- ✅ Reduced Go version requirement to 1.21+ (from 1.25+)
+
+**Documentation:**
+- Added `docs/ANDROID_TERMUX.md` - Complete guide for running Morpheus on Android
+- Added `scripts/README.md` - Documentation for helper scripts
+- Updated main README with Android/Termux quick start links
+
+**Scripts:**
+- `scripts/check-termux.sh` - Verify Termux environment compatibility
+- `scripts/install-termux.sh` - Automated installation for Termux
+
+**Use Cases:**
+- Personal infrastructure management from mobile device
+- Testing and development on the go
+- Cost savings vs control server (~€4.50/month)
+- Offline command support (list, status)
+
+**Installation:**
+```bash
+# Quick install via curl
+curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+
+# Or manual installation - see docs/ANDROID_TERMUX.md
+```
+
+### Changed
+- Go version requirement reduced from 1.25+ to 1.21+
+- Updated README badges to reflect Go 1.21+
+- Enhanced prerequisites section with Termux note
+- Reorganized mobile documentation (Android vs Control Server)
+
+### Fixed
+- Verified no CGO dependencies blocking Android support
+- Verified no platform-specific build tags
+- Ensured pure Go implementation for cross-platform compatibility
+
+## [Unreleased]
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load
@@ -57,3 +109,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Private network support
 - Load balancer integration
 - Backup and disaster recovery
+- iOS support via a-Shell (similar to Termux)
