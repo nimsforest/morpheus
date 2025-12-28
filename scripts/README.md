@@ -2,6 +2,50 @@
 
 This directory contains helper scripts for various Morpheus workflows.
 
+## Universal Installer
+
+### `install.sh`
+
+**Universal installer for all platforms** - Works on Linux, macOS, and Termux/Android with automatic detection and binary download.
+
+**Usage:**
+```bash
+# Download and run directly (recommended)
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+
+# Or from local clone
+./scripts/install.sh
+```
+
+**Features:**
+- ✅ Auto-detects OS (Linux, macOS/Darwin)
+- ✅ Auto-detects architecture (x86_64→amd64, aarch64/arm64→arm64, armv7/armv8l→arm)
+- ✅ Auto-detects Termux environment (checks $PREFIX)
+- ✅ Downloads latest pre-built binary from GitHub releases
+- ✅ Verifies binary works before installing (`morpheus version`)
+- ✅ Smart installation location:
+  - Termux: `$PREFIX/bin` (no sudo needed)
+  - Linux/macOS: `/usr/local/bin` (with or without sudo)
+  - Fallback: `~/.local/bin` (if no sudo available)
+- ✅ Cleans up temporary files automatically
+- ✅ Provides helpful PATH warnings if needed
+
+**Binary Download Pattern:**
+1. Fetches latest release from `https://api.github.com/repos/nimsforest/morpheus/releases/latest`
+2. Parses `tag_name` from JSON response
+3. Downloads: `https://github.com/nimsforest/morpheus/releases/download/{VERSION}/morpheus-{OS}-{ARCH}`
+4. Examples: `morpheus-linux-arm64`, `morpheus-darwin-amd64`, etc.
+
+**Exit Codes:**
+- `0` - Installation successful
+- `1` - Error during installation (unsupported OS/arch, download failed, verification failed, etc.)
+
+**Why use this over building from source:**
+- ⚡ Instant installation (no compilation time)
+- 📦 No Go toolchain required
+- ✅ Works on all supported platforms
+- 🔒 Binary verification before installation
+
 ## Android/Termux Scripts
 
 ### `check-termux.sh`
