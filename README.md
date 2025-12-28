@@ -7,27 +7,36 @@
 
 **Infrastructure provisioning tool for Nims Forest** - Automatically provision cloud servers with the right configuration for NATS-based distributed systems.
 
-## What Does Morpheus Do?
+## Getting Started
 
-Morpheus handles **infrastructure only**:
-- ✅ Provision cloud servers (Hetzner, AWS, GCP, etc.)
-- ✅ Configure OS, networking, and firewalls
-- ✅ Prepare directories and storage
-- ✅ Hand off to NimsForest for application setup
+### 📱 Run Morpheus from Your Android Phone
 
-**Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
+**Step 1: Install F-Droid (if you don't have it yet)**
 
-## Quick Start
+F-Droid is an open-source app store for Android. Get it from:
+- **Website:** https://f-droid.org/
+- Tap "Download F-Droid" and install the APK
 
-### Android/Termux (Recommended for Mobile)
+**Step 2: Install Termux from F-Droid**
 
-**One command install:**
+⚠️ **Important:** Do NOT use Google Play Store (it's outdated)
+
+1. Open F-Droid app
+2. Search for "Termux"
+3. Install Termux
+
+Or direct link: https://f-droid.org/en/packages/com.termux/
+
+**Step 3: Install Morpheus (One Command!)**
+
+Open Termux and paste this:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
-Then use it:
+**Step 4: Use Morpheus**
+
 ```bash
 morpheus plant cloud wood    # Create infrastructure
 morpheus list                # View forests
@@ -35,15 +44,13 @@ morpheus status forest-123   # Check status
 morpheus teardown forest-123 # Clean up
 ```
 
-**Prerequisites:**
-1. Install [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/) (NOT Google Play)
-2. Get a free [Hetzner Cloud account](https://console.hetzner.cloud/)
+You'll also need a free [Hetzner Cloud account](https://console.hetzner.cloud/) for the API token.
 
-See [Termux Quick Start Guide](docs/TERMUX_QUICKSTART.md) for details.
+📖 **Full guide:** [Termux Quick Start](docs/TERMUX_QUICKSTART.md)
 
 ---
 
-### Desktop/Laptop
+### 💻 Desktop/Laptop
 
 ```bash
 # Clone and build
@@ -54,13 +61,23 @@ make build
 # Configure
 export HETZNER_API_TOKEN="your-token"
 cp config.example.yaml config.yaml
-# Edit config.yaml with your settings
 
 # Use it
 ./bin/morpheus plant cloud wood
 ./bin/morpheus list
-./bin/morpheus teardown forest-<id>
 ```
+
+---
+
+## What Does Morpheus Do?
+
+Morpheus handles **infrastructure only**:
+- ✅ Provision cloud servers (Hetzner, AWS, GCP, etc.)
+- ✅ Configure OS, networking, and firewalls
+- ✅ Prepare directories and storage
+- ✅ Hand off to NimsForest for application setup
+
+**Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
 
 ## Installation
 
