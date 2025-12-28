@@ -108,6 +108,39 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 
 ## [Unreleased]
 
+### Added - Automated Releases
+
+**NEW**: GitHub releases are now fully automated with pre-built binaries!
+
+When a version tag is pushed (e.g., `v1.2.0`), GitHub Actions automatically:
+- ✅ Builds binaries for multiple platforms (Linux amd64/arm64/arm, macOS amd64/arm64)
+- ✅ Creates GitHub release with binaries attached
+- ✅ Extracts release notes from CHANGELOG.md
+- ✅ Publishes to GitHub Releases (hosted on GitHub CDN)
+
+**Benefits:**
+- Faster installation - no need to build from source
+- Easier updates - pre-built binaries for all platforms
+- Consistent releases - automated process reduces human error
+- Better user experience - especially for Termux users (no Go compilation needed)
+
+**Features:**
+- Updated Termux installer to prefer downloading pre-built binaries (10x faster!)
+- Falls back to building from source if download fails
+- Added `MORPHEUS_BUILD_FROM_SOURCE=1` flag to force source build
+- Created RELEASE.md documentation for maintainers
+- Binaries hosted on GitHub Releases (free, fast CDN)
+
+**For Maintainers:**
+```bash
+# Release is now as simple as:
+git tag v1.2.0
+git push origin v1.2.0
+# Done! GitHub Actions handles the rest
+```
+
+See [RELEASE.md](RELEASE.md) for complete release process documentation.
+
 ### Fixed
 - Fixed "text file busy" error when updating morpheus on Termux/Android
   - Replaced file copy with atomic rename operation for binary updates

@@ -299,7 +299,7 @@ Deletes all servers and cleans up resources.
 
 ### Update Morpheus
 
-Check for and install updates:
+**Automatic update (recommended):**
 
 ```bash
 morpheus update        # Check for updates and install if available
@@ -313,15 +313,37 @@ The update command will:
 4. Clone, build, and install the new version
 5. Back up your current version to `<path>.backup`
 
-**Manual Update:**
+**Manual update (alternative):**
 
 If automatic update fails, you can always update manually:
 
 ```bash
-git clone https://github.com/nimsforest/morpheus.git
+# Desktop/Laptop
 cd morpheus
+git pull
 make build
-make install
+sudo make install
+
+# Termux
+cd ~/morpheus
+git pull
+make build
+cp bin/morpheus $PREFIX/bin/
+```
+
+**Pre-built binaries:**
+
+Every release includes pre-built binaries for:
+- Linux (amd64, arm64, arm)
+- macOS (amd64, arm64)
+
+Download from: https://github.com/nimsforest/morpheus/releases
+
+```bash
+# Example: Download latest Linux ARM64 binary
+gh release download --pattern 'morpheus-linux-arm64'
+chmod +x morpheus-linux-arm64
+mv morpheus-linux-arm64 /usr/local/bin/morpheus
 ```
 
 ### Other Commands
