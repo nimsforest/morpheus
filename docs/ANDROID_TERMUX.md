@@ -63,7 +63,7 @@ pkg install git golang make openssh -y
 
 # Verify Go installation
 go version
-# Should show: go version go1.21.x or higher
+# Will show whatever Go version Termux provides (typically recent)
 ```
 
 **Optional - Check compatibility first:**
@@ -72,7 +72,7 @@ go version
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 
-**Note:** Termux typically provides Go 1.21+. Morpheus requires Go 1.20+ to compile.
+**Note:** Termux automatically installs whatever Go version is in their repository (usually recent). Morpheus will build with any reasonably modern Go version.
 
 ### Step 3: Clone and Build Morpheus
 

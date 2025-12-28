@@ -86,9 +86,10 @@ Morpheus handles **infrastructure only**:
 **For Termux:**
 - Android phone with [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/)
 - Hetzner Cloud account (free to create)
+- *Go is automatically installed by the installer*
 
 **For Desktop:**
-- Go 1.21+
+- Go 1.21+ (or whatever version you have)
 - Hetzner Cloud account with API token
 - SSH key uploaded to Hetzner Cloud
 

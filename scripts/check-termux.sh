@@ -53,10 +53,10 @@ if command -v go &> /dev/null; then
     MINOR=$(echo $GO_VERSION | cut -d. -f2)
     
     if [[ $MAJOR -ge 1 ]] && [[ $MINOR -ge 20 ]]; then
-        echo -e "$SUCCESS Go $GO_VERSION"
+        echo -e "$SUCCESS Go $GO_VERSION (Termux provides this)"
     else
-        echo -e "$WARNING Go $GO_VERSION (recommended: 1.20+)"
-        echo "   Morpheus may require Go 1.20 or higher."
+        echo -e "$WARNING Go $GO_VERSION (older version)"
+        echo "   Morpheus builds best with Go 1.20+, but will try with what's available."
         ((WARNINGS++))
     fi
 else

@@ -32,6 +32,11 @@ That's it! The installer will:
 
 ## Configuration
 
+**What gets installed:**
+- Go (whatever version Termux provides - typically recent)
+- Git, Make, OpenSSH
+- Morpheus binary
+
 The installer will ask you for:
 
 ### 1. Hetzner API Token

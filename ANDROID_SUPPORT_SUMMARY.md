@@ -103,9 +103,10 @@ This implementation positions Termux as the **primary mobile approach**, with co
 
 1. **`go.mod`**
    - **Changed:** Go version from `1.25` → `1.21`
-   - **Reason:** More realistic version (1.25 doesn't exist yet)
-   - **Impact:** Makes Morpheus compatible with standard Termux Go packages
-   - **Verified:** Build and all tests pass with Go 1.21
+   - **Reason:** Minimum required version for building (1.25 doesn't exist yet)
+   - **Impact:** Sets reasonable minimum; Termux users get whatever version Termux provides
+   - **Reality:** Termux typically provides Go 1.21+ (installer handles this automatically)
+   - **Verified:** Build and all tests pass with Go 1.21+
 
 2. **No code changes needed!**
    - ✅ No CGO dependencies (verified)
