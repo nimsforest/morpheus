@@ -108,6 +108,12 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 
 ## [Unreleased]
 
+### Fixed
+- Fixed "text file busy" error when updating morpheus on Termux/Android
+  - Replaced file copy with atomic rename operation for binary updates
+  - Removed write permission check that was opening the running executable
+  - Update process now works correctly even while morpheus is running
+
 ### Added - Automatic SSH Key Upload
 
 **NEW**: Morpheus now automatically uploads SSH keys to Hetzner Cloud!

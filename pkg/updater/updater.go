@@ -112,11 +112,6 @@ func (u *Updater) PerformUpdate() error {
 		return fmt.Errorf("failed to resolve symlink: %w", err)
 	}
 
-	// Check if we have write permission
-	if err := u.checkWritePermission(execPath); err != nil {
-		return fmt.Errorf("cannot update: %w\nTry running with sudo or reinstall manually", err)
-	}
-
 	// Get temporary directory
 	tmpDir := os.TempDir()
 	tmpFile := filepath.Join(tmpDir, "morpheus-update")
@@ -154,21 +149,21 @@ func (u *Updater) PerformUpdate() error {
 	// Backup current version
 	backupPath := execPath + ".backup"
 	fmt.Printf("📋 Backing up current version to %s\n", backupPath)
-	if err := copyFile(execPath, backupPath); err != nil {
+	
+	// Remove old backup if it exists
+	os.Remove(backupPath)
+	
+	// Rename current binary to backup (this works even if the binary is running)
+	if err := os.Rename(execPath, backupPath); err != nil {
 		return fmt.Errorf("failed to backup current version: %w", err)
 	}
 
-	// Replace current binary
+	// Replace current binary with new one using atomic rename
 	fmt.Printf("✨ Installing update to %s\n", execPath)
-	if err := copyFile(tmpFile, execPath); err != nil {
+	if err := os.Rename(tmpFile, execPath); err != nil {
 		// Restore backup on failure
-		copyFile(backupPath, execPath)
+		os.Rename(backupPath, execPath)
 		return fmt.Errorf("failed to install update: %w", err)
-	}
-
-	// Make it executable
-	if err := os.Chmod(execPath, 0755); err != nil {
-		return fmt.Errorf("failed to set permissions: %w", err)
 	}
 
 	// Clean up
@@ -179,17 +174,6 @@ func (u *Updater) PerformUpdate() error {
 	fmt.Printf("\nRun 'morpheus version' to verify the update.\n")
 	fmt.Printf("Backup of previous version saved at: %s\n", backupPath)
 
-	return nil
-}
-
-// checkWritePermission checks if we can write to the executable path
-func (u *Updater) checkWritePermission(path string) error {
-	// Try to open the file for writing
-	file, err := os.OpenFile(path, os.O_WRONLY, 0755)
-	if err != nil {
-		return err
-	}
-	file.Close()
 	return nil
 }
 
