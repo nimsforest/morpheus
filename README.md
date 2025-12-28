@@ -78,19 +78,20 @@ make install  # Install to /usr/local/bin (optional)
 
 ### Mobile Usage
 
-**Option 1: Run directly on Android** (Recommended for personal use)
+**Run Morpheus on Android via Termux** (Primary approach)
 See the [Android/Termux Guide](docs/ANDROID_TERMUX.md) for:
 - Running Morpheus natively on your Android phone
-- No control server needed (~€4.50/month savings)
-- Full CLI access from your pocket
-- Perfect for personal projects and testing
+- Native CLI experience - Morpheus is a CLI tool, Termux is a terminal!
+- Free - no server costs
+- Full functionality from your pocket
+- Works for personal and professional use
 
-**Option 2: Control Server Setup** (Recommended for production)
-See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
-- Setting up a dedicated Morpheus server
-- GitHub token authentication for private repos
-- Persistent environment for team collaboration
-- Security best practices
+**Alternative: Control Server** (For specific use cases)
+See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for when you need:
+- 24/7 persistent environment (always-on availability)
+- Team collaboration with shared infrastructure
+- Long-running operations without phone dependency
+- CI/CD integration
 
 ### Get Hetzner API Token
 
@@ -389,8 +390,9 @@ MIT License - see [LICENSE](LICENSE)
 
 - **GitHub**: https://github.com/yourusername/morpheus
 - **Documentation**: [docs/](docs/)
-  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Run Morpheus on your Android phone
-  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Mobile/private repo guide
+  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Run Morpheus on your Android phone (primary mobile approach)
+  - [Mobile Philosophy](docs/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
+  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
   - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
 - **Issues**: https://github.com/yourusername/morpheus/issues
 - **NimsForest**: https://github.com/yourusername/nimsforest

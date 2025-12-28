@@ -4,11 +4,14 @@
 
 ## Why Run Morpheus on Android?
 
-- ✅ No need for a control server (~€4.50/month savings)
+**Because Morpheus is a CLI tool, and Termux is a terminal!** This is the natural way to use Morpheus on mobile:
+
+- ✅ Native CLI experience - use Morpheus directly, not over SSH
 - ✅ Run Morpheus anywhere - on the go, from your phone
-- ✅ Fully native experience
-- ✅ No SSH connection needed
+- ✅ Free - no control server costs (~€4.50/month savings)
+- ✅ Simple - no SSH, no remote server to maintain
 - ✅ Works offline (for local commands like `list`, `status`)
+- ✅ Full functionality - all commands work exactly as on desktop
 
 ## Requirements
 
@@ -338,22 +341,28 @@ Morpheus stores data in:
 
 Total storage: ~50MB including Go toolchain and dependencies.
 
-## Comparison: Native vs Control Server
+## Comparison: Termux vs Control Server
 
-| Feature | Native Termux | Control Server (SSH) |
-|---------|---------------|----------------------|
+| Feature | Termux (Recommended) | Control Server |
+|---------|----------------------|----------------|
+| **Philosophy** | Direct CLI usage | Remote access workaround |
 | **Cost** | Free | €4.50/month |
 | **Setup Time** | 10-15 min | 15-20 min |
-| **Performance** | Phone CPU | Server CPU (faster) |
+| **Complexity** | Simple (no SSH) | More complex (SSH, server) |
+| **Performance** | Phone CPU | Server CPU |
 | **Battery Usage** | Minimal | None (offloaded) |
 | **Offline Commands** | Yes (list, status) | No |
-| **Requires Internet** | For provisioning | For all commands |
-| **Persistent** | As long as phone is on | Always available |
-| **Recommended For** | Personal use, learning | Team use, production |
+| **Requires Internet** | For provisioning only | For all commands |
+| **Persistent** | When phone is on | 24/7 always-on |
+| **Best For** | Most users | Specific use cases* |
 
-**Recommendation:**
-- **Native Termux:** Perfect for personal projects, testing, learning
-- **Control Server:** Better for production, team collaboration, or if you want persistent environment
+**\*Control Server is only needed when:**
+- You need 24/7 always-on availability (CI/CD pipelines)
+- Multiple team members share the same Morpheus instance
+- Running very long operations and phone can't stay on
+- Integrating with automated workflows
+
+**For 90% of users: Use Termux directly!** It's simpler, free, and the natural way to use a CLI tool.
 
 ## Alternative: Hybrid Approach
 
@@ -458,8 +467,11 @@ Termux saves your command history. Search with:
 
 ## FAQ
 
+**Q: Is this really the recommended way to use Morpheus on mobile?**  
+A: Yes! Morpheus is a CLI tool. Termux is a terminal. Running it directly is the natural approach. The control server is only for specific use cases (24/7 availability, team collaboration, CI/CD).
+
 **Q: Does this work on iPhone/iOS?**  
-A: No. iOS doesn't support Termux. Use the [Control Server approach](CONTROL_SERVER_SETUP.md) with a-Shell app instead.
+A: No. iOS doesn't support Termux. For iOS, you'll need to use the [Control Server approach](CONTROL_SERVER_SETUP.md) with SSH via a-Shell app.
 
 **Q: Can I run Morpheus on a tablet?**  
 A: Yes! Same steps as phone. More screen space = better experience.
@@ -477,7 +489,7 @@ A: Hetzner servers are already created. Check with `morpheus list` or Hetzner co
 A: Yes! Share the same `~/.morpheus/registry.json` via cloud storage (Syncthing, Dropbox, etc.) or use a shared control server.
 
 **Q: Is this production-ready?**  
-A: For personal projects, yes! For team/production use, consider a control server for stability.
+A: Absolutely! This is the primary way to use Morpheus on mobile. For team/enterprise use with specific requirements (24/7, CI/CD), consider a control server.
 
 ## Next Steps
 

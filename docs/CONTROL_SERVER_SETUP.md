@@ -1,15 +1,30 @@
 # Morpheus Control Server Setup
 
-**TL;DR:** Run Morpheus from a cheap Hetzner server using your phone with Termux.
+**TL;DR:** Set up a dedicated server for specific use cases where direct Termux usage isn't suitable.
 
-## Why a Control Server?
+## Do You Need a Control Server?
 
-Morpheus is a CLI tool. If you work from a laptop, just run it there. But if you:
-- ✅ Work from your phone/tablet
-- ✅ Have a private GitHub repository
-- ✅ Want a persistent environment
+**Most users should use Termux directly!** See the [Android/Termux Guide](ANDROID_TERMUX.md) for the primary approach.
 
-Then set up a small Hetzner server (~€4.50/month) to run Morpheus.
+A control server is only needed for specific scenarios:
+
+### When to Use a Control Server
+
+- ✅ **24/7 Availability:** CI/CD pipelines, automated workflows, always-on infrastructure
+- ✅ **Team Collaboration:** Multiple people need to access the same Morpheus instance
+- ✅ **Long Operations:** Running operations that take hours and phone can't stay on
+- ✅ **Private Repos:** Need GitHub token authentication for private repositories (though Termux can do this too)
+- ✅ **Resource Intensive:** Need more CPU/RAM than phone provides (rare for Morpheus)
+
+### When to Use Termux Instead (Most Users)
+
+- ✅ Personal infrastructure management
+- ✅ On-demand provisioning (plant forests when needed)
+- ✅ Learning and testing
+- ✅ Ad-hoc infrastructure management
+- ✅ Cost-conscious (Termux is free)
+
+**Bottom line:** If you're just managing your own infrastructure occasionally, use Termux directly. Only set up a control server if you have one of the specific needs above.
 
 ## Prerequisites
 
@@ -220,6 +235,20 @@ morpheus list
 morpheus status forest-123
 morpheus teardown forest-123
 ```
+
+---
+
+## Alternative: Run Morpheus Directly on Termux
+
+**Remember:** For most users, running Morpheus directly on Termux is simpler and free!
+
+See the [Android/Termux Guide](ANDROID_TERMUX.md) for:
+- No server costs (save €4.50/month)
+- No SSH overhead
+- Simpler setup
+- Direct CLI usage (the natural way!)
+
+Only use this control server approach if you specifically need 24/7 availability, team collaboration, or integration with automated systems.
 
 ---
 

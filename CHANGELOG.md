@@ -51,12 +51,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.2.0] - 2025-12-28
 
-### Added - Android/Termux Support
+### Added - Android/Termux Support (Primary Mobile Approach)
 
 **NEW**: Morpheus can now run natively on Android devices via Termux!
 
+**Philosophy:** Morpheus is a CLI tool, Termux is a terminal - running directly on Android is the natural approach. Control servers are only for specific use cases (24/7 availability, teams, CI/CD).
+
 - ✅ Full Android/ARM64 and ARM32 support
 - ✅ Native Termux compatibility (no emulation needed)
+- ✅ Direct CLI usage - no SSH overhead
+- ✅ Free alternative to control server (~€4.50/month savings)
 - ✅ Comprehensive Android/Termux installation guide
 - ✅ Automated installer script (`scripts/install-termux.sh`)
 - ✅ Compatibility checker script (`scripts/check-termux.sh`)
@@ -89,10 +93,13 @@ curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/i
 ```
 
 ### Changed
+- **Mobile approach repositioned:** Termux is now the primary/recommended approach for mobile users
+- Control server repositioned as alternative for specific use cases (24/7, teams, CI/CD)
 - Go version requirement reduced from 1.25+ to 1.21+
 - Updated README badges to reflect Go 1.21+
 - Enhanced prerequisites section with Termux note
-- Reorganized mobile documentation (Android vs Control Server)
+- Reorganized mobile documentation to emphasize Termux-first approach
+- Updated CONTROL_SERVER_SETUP.md to clarify it's for specific scenarios only
 
 ### Fixed
 - Verified no CGO dependencies blocking Android support
