@@ -518,5 +518,5 @@ MIT License - see [LICENSE](LICENSE)
 ---
 
 **Status**: Production Ready ✅  
-**Version**: 1.1.0  
-**Last Updated**: December 26, 2025
+**Version**: 1.1.1  
+**Last Updated**: December 28, 2025
