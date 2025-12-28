@@ -40,7 +40,7 @@ This implementation positions Termux as the **primary mobile approach**, with co
    - Reorganized mobile usage documentation (Termux as primary, control server as alternative)
    - Repositioned control server as "for specific use cases"
    - Added references to new Android guide and philosophy doc
-   - Updated Go version badge (1.21+)
+   - Updated Go version badge (1.25+)
    - Enhanced prerequisites section
 
 4. **New `docs/MOBILE_PHILOSOPHY.md`**
