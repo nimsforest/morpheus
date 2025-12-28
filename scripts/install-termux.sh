@@ -152,8 +152,20 @@ if [[ "${MORPHEUS_SKIP_INSTALL}" == "1" ]]; then
     echo "   Run with: ~/morpheus/bin/morpheus"
 else
     echo "📦 Installing morpheus to PATH..."
-    make install
-    echo "✓ Morpheus installed to /data/data/com.termux/files/usr/bin/"
+    # Termux doesn't use sudo and has a different bin path
+    TERMUX_BIN="$PREFIX/bin"
+    if [[ -z "$PREFIX" ]]; then
+        TERMUX_BIN="/data/data/com.termux/files/usr/bin"
+    fi
+    
+    if [[ ! -f "./bin/morpheus" ]]; then
+        echo "✗ Error: Binary not found at ./bin/morpheus"
+        exit 1
+    fi
+    
+    cp ./bin/morpheus "$TERMUX_BIN/morpheus"
+    chmod +x "$TERMUX_BIN/morpheus"
+    echo "✓ Morpheus installed to $TERMUX_BIN/"
     echo "  You can now run 'morpheus' from anywhere."
 fi
 
