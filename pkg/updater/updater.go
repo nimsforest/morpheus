@@ -142,8 +142,8 @@ func (u *Updater) PerformUpdate() error {
 
 	// Build the binary with version injection
 	fmt.Printf("🔨 Building version %s...\n", gitVersion)
-	ldflags := fmt.Sprintf("-ldflags=-X main.version=%s", gitVersion)
-	cmd = exec.Command("go", "build", ldflags, "-o", tmpFile, "./cmd/morpheus")
+	ldflags := fmt.Sprintf("-X main.version=%s", gitVersion)
+	cmd = exec.Command("go", "build", "-ldflags", ldflags, "-o", tmpFile, "./cmd/morpheus")
 	cmd.Dir = repoDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
