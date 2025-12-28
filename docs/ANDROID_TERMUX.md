@@ -250,6 +250,36 @@ ms forest-123     # Instead of: morpheus status forest-123
 
 ## Troubleshooting
 
+### "Failed to check for updates" or DNS errors
+
+If you see errors like:
+```
+lookup api.github.com on [::1]:53: connection refused
+```
+
+This is a Termux-specific DNS issue. **Quick fixes:**
+
+1. **Disable Private DNS** (most common fix):
+   - Android Settings → Network & Internet → Private DNS
+   - Set to "Off" or "Automatic"
+
+2. **Restart Termux**:
+   ```bash
+   exit
+   # Force stop Termux from Android Settings
+   # Reopen and try again
+   ```
+
+3. **Check VPN/DNS apps**: Temporarily disable any VPN or DNS filtering apps
+
+4. **Test DNS**:
+   ```bash
+   pkg install dnsutils -y
+   nslookup api.github.com
+   ```
+
+**See detailed troubleshooting:** [TERMUX_DNS_FIX.md](../TERMUX_DNS_FIX.md)
+
 ### "Go version too old"
 
 ```bash
@@ -320,6 +350,18 @@ termux-wake-lock
 # After done, release lock
 termux-wake-unlock
 ```
+
+### Network/connectivity issues
+
+If commands fail with network errors:
+
+1. **Check internet**: `ping -c 4 8.8.8.8`
+2. **Test DNS**: `nslookup api.github.com`
+3. **Switch networks**: Try WiFi vs mobile data
+4. **Disable VPN**: Temporarily disable any VPN apps
+5. **Private DNS**: Disable in Android Settings
+
+The enhanced morpheus updater now provides specific troubleshooting advice for network errors.
 
 ## Architecture Notes
 
