@@ -88,62 +88,72 @@ All tests pass ✅
 
 1. **Version Check**
    - Queries GitHub API: `https://api.github.com/repos/nimsforest/morpheus/releases/latest`
-   - Parses JSON response to get tag name (version)
+   - Parses JSON response to get tag name (version) and release assets
    - Compares using semantic versioning
 
 2. **Update Process**
-   - Clones repository to `/tmp/morpheus-repo`
-   - Extracts version from git tags using `git describe --tags`
-   - Builds binary with `go build -ldflags="-X main.version=<version>"`
+   - Detects your platform (OS + architecture)
+   - Downloads pre-built binary for your platform from GitHub releases
+   - Verifies downloaded binary works correctly
    - Checks write permissions on current binary
    - Creates backup of current binary
-   - Replaces binary with new version
-   - Sets executable permissions
+   - Replaces binary with new version atomically
    - Cleans up temporary files
 
-3. **Version Synchronization** ✨ **NEW**
+3. **Version Synchronization** ✨
    - Version is **automatically injected at build time** via `-ldflags`
-   - Uses `git describe --tags` to get current version from git
-   - Works for: local builds (`make build`), CI/CD builds, and self-updates
+   - CI/CD builds use `git describe --tags` for version detection
+   - Pre-built binaries in releases have correct versions baked in
    - No more manual version updates needed!
 
 4. **Error Handling**
    - Network errors show manual update instructions
    - Permission errors suggest using sudo
-   - Build failures are reported clearly
+   - Binary verification failures prevent installation
    - Backup is restored on installation failure
+   - Platform detection handles all supported architectures
 
 ## Features
 
+✅ **Fast** - Downloads pre-built binaries (seconds vs minutes)  
 ✅ **Works everywhere** - Desktop, Termux, any Linux/macOS system  
 ✅ **Safe** - Creates backup before updating  
 ✅ **Interactive** - Shows release notes and asks for confirmation  
 ✅ **Scriptable** - `check-update` for automation  
-✅ **Fallback** - Shows manual update instructions on failure  
-✅ **Self-contained** - No external dependencies except git and go  
-✅ **Auto-versioning** - Version automatically syncs with git tags ✨ **NEW**  
+✅ **Reliable** - No build dependencies, no compilation errors  
+✅ **Verified** - Tests binary before installation  
+✅ **Auto-versioning** - Version automatically syncs with git tags  
 
 ## Requirements
 
-- Git (for cloning repository)
-- Go (for building from source)
+- Internet connection (to download binary)
 - Write permission to morpheus binary location
+- ~10MB disk space for download
+
+**No longer required:**
+- ❌ Git
+- ❌ Go compiler
+- ❌ Build tools
 
 ## Edge Cases Handled
 
 - No internet connection → Clear error message with manual instructions
 - No releases published → Handles 404 gracefully
 - No write permission → Suggests sudo or manual update
-- Build failure → Shows error, doesn't corrupt existing binary
+- Binary download failure → Shows error with fallback instructions
+- Binary verification failure → Prevents installation, shows error
 - Installation failure → Restores backup automatically
+- Platform detection → Supports all major platforms (Linux/macOS, amd64/arm64/arm)
 
 ## Future Enhancements (Optional)
 
-- [ ] Download pre-built binaries instead of building from source
+- [x] ~~Download pre-built binaries instead of building from source~~ ✅ **DONE**
 - [ ] Automatic update checks on startup (configurable)
 - [ ] Update notifications
 - [ ] Rollback command to restore previous version
 - [ ] Support for beta/rc channels
+- [ ] Progress bar for downloads
+- [ ] Resume interrupted downloads
 
 ## Testing
 
@@ -179,17 +189,19 @@ Updated README.md with:
 - `cmd/morpheus/main.go` - Added update handlers and commands, changed version to build-time variable
 - `go.mod` - Fixed Go version (1.25 → 1.21)
 - `README.md` - Added update documentation
-- `Makefile` - Added automatic version injection via -ldflags ✨ **NEW**
-- `.github/workflows/build.yml` - Added git tag fetching for version detection ✨ **NEW**
-- `pkg/updater/updater.go` - Added version injection during self-update ✨ **NEW**
+- `Makefile` - Added automatic version injection via -ldflags
+- `.github/workflows/build.yml` - Added git tag fetching for version detection
+- `.github/workflows/release.yml` - Builds multi-platform binaries
+- `pkg/updater/updater.go` - Downloads pre-built binaries instead of building from source ✨ **UPDATED**
+- `scripts/install-termux.sh` - Prioritizes binary downloads over source builds ✨ **UPDATED**
 
 **Total:** ~450 lines of code added (including tests and docs)
 
-## Version Synchronization Details ✨ **NEW**
+## Version Synchronization Details ✨
 
 ### How Version Injection Works
 
-The version is now automatically determined from git tags and injected at build time:
+The version is automatically determined from git tags and injected at build time:
 
 1. **Local Development Builds** (`make build`):
    ```bash
@@ -204,30 +216,37 @@ The version is now automatically determined from git tags and injected at build 
    # - dirty: uncommitted changes
    ```
 
-2. **CI/CD Builds**:
-   - GitHub Actions workflow updated to `fetch-depth: 0` to get all tags
-   - Version automatically detected from tags during build
+2. **CI/CD Builds** (Release Workflow):
+   - GitHub Actions workflow fetches all tags (`fetch-depth: 0`)
+   - Builds binaries for all platforms with version from tag
+   - Uploads pre-built binaries to GitHub releases
 
-3. **Self-Update**:
-   - Update process clones full repository (not `--depth 1`)
-   - Extracts version from cloned repo: `git describe --tags --always --dirty`
-   - Injects version during build: `go build -ldflags="-X main.version=<version>"`
+3. **Self-Update** (User Update):
+   - Downloads pre-built binary from GitHub releases
+   - Binary already has correct version baked in
+   - No cloning or building required!
 
 ### Benefits
 
 - ✅ No manual version updates needed
 - ✅ Version always matches git tags
 - ✅ Easy to see if binary is from a release or development build
-- ✅ Commit hash included for traceability
+- ✅ Commit hash included for traceability (development builds)
 - ✅ Works seamlessly across all build methods
+- ✅ Fast updates (download vs build)
+- ✅ No build dependencies required
 
 ### For Maintainers
 
 To release a new version:
 
-1. Tag the commit: `git tag v1.2.0`
-2. Push the tag: `git push origin v1.2.0`
-3. Users run: `morpheus update`
-4. Binary automatically reports correct version ✨
+1. Update `CHANGELOG.md` with release notes
+2. Tag the commit: `git tag v1.2.0`
+3. Push the tag: `git push origin v1.2.0`
+4. GitHub Actions automatically:
+   - Builds binaries for all platforms
+   - Creates GitHub release
+   - Uploads binaries
+5. Users run: `morpheus update` to download the new version ✨
 
-No need to update `main.go` or any other files!
+No need to manually update version numbers anywhere!
