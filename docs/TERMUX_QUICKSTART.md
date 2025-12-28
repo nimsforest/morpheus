@@ -17,14 +17,7 @@
 
 ### Step 2: Get Hetzner API Token (Recommended)
 
-Get your token first for a smoother experience:
-
-1. Go to https://console.hetzner.cloud/
-2. Go to **Security** → **API Tokens**
-3. Click **"Generate API Token"**
-4. Name: `morpheus`
-5. Permissions: **Read & Write**
-6. Copy the token
+Get your Hetzner API token first for a smoother experience. See the [main README](../README.md#get-hetzner-api-token) for detailed instructions.
 
 ### Step 3: Run Installer
 

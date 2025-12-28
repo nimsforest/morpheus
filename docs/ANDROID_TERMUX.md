@@ -28,12 +28,7 @@
 
 **Step 1: Get your Hetzner API token (optional but recommended)**
 
-1. Go to [Hetzner Cloud Console](https://console.hetzner.cloud/)
-2. Navigate to **Security → API Tokens**
-3. Click **"Generate API Token"**
-4. Name: `morpheus-android`
-5. Permissions: **Read & Write**
-6. Copy the token (starts with something like `abc123...`)
+Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../README.md#get-hetzner-api-token) for step-by-step instructions.
 
 **Step 2: Run the installer**
 
@@ -140,13 +135,7 @@ Using your phone browser:
 
 ### Step 6: Get Hetzner API Token
 
-Still in the Hetzner console:
-
-1. Go to: **Security → API Tokens**
-2. Click **"Generate API Token"**
-3. Name: `morpheus-android`
-4. Permissions: **Read & Write**
-5. Copy the token (starts with something like `abc123...`)
+Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../README.md#get-hetzner-api-token) for detailed instructions.
 
 ### Step 7: Configure Morpheus
 

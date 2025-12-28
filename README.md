@@ -29,11 +29,7 @@ Or direct link: https://f-droid.org/en/packages/com.termux/
 
 **Step 3: Get Your Hetzner API Token**
 
-1. Create a free account at [Hetzner Cloud Console](https://console.hetzner.cloud/)
-2. Go to **Security → API Tokens**
-3. Click **"Generate API Token"**
-4. Set permissions to **Read & Write**
-5. Copy the token
+Get your token from [Hetzner Cloud Console](https://console.hetzner.cloud/). See [Get Hetzner API Token](#get-hetzner-api-token) below for detailed instructions.
 
 **Step 4: Install Morpheus (One Command!)**
 
