@@ -12,6 +12,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/forest"
 	"github.com/nimsforest/morpheus/pkg/provider"
 	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
+	"github.com/nimsforest/morpheus/pkg/updater"
 )
 
 const version = "1.1.0"
@@ -35,6 +36,10 @@ func main() {
 		handleTeardown()
 	case "version":
 		fmt.Printf("morpheus version %s\n", version)
+	case "update":
+		handleUpdate()
+	case "check-update":
+		handleCheckUpdate()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -311,6 +316,76 @@ func getRegistryPath() string {
 	return filepath.Join(registryDir, "registry.json")
 }
 
+func handleUpdate() {
+	u := updater.NewUpdater(version)
+
+	fmt.Println("🔍 Checking for updates...")
+	info, err := u.CheckForUpdate()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to check for updates: %s\n", err)
+		fmt.Fprintf(os.Stderr, "\nYou can manually update by running:\n")
+		fmt.Fprintf(os.Stderr, "  git clone https://github.com/nimsforest/morpheus.git\n")
+		fmt.Fprintf(os.Stderr, "  cd morpheus && make build && make install\n")
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nCurrent version: %s\n", info.CurrentVersion)
+	fmt.Printf("Latest version:  %s\n", info.LatestVersion)
+
+	if !info.Available {
+		fmt.Println("\n✅ You are already running the latest version!")
+		return
+	}
+
+	fmt.Println("\n🎉 A new version is available!")
+	fmt.Println("\nRelease notes:")
+	fmt.Println("─────────────────────────────────────────────────")
+	if info.ReleaseNotes != "" {
+		fmt.Println(info.ReleaseNotes)
+	} else {
+		fmt.Println("No release notes available.")
+	}
+	fmt.Println("─────────────────────────────────────────────────")
+	fmt.Printf("\nView full release: %s\n", info.UpdateURL)
+
+	// Ask for confirmation
+	fmt.Print("\nDo you want to update now? (yes/no): ")
+	var response string
+	fmt.Scanln(&response)
+
+	if response != "yes" && response != "y" {
+		fmt.Println("\nUpdate cancelled.")
+		fmt.Printf("To update later, run: morpheus update\n")
+		return
+	}
+
+	// Perform update
+	fmt.Println()
+	if err := u.PerformUpdate(); err != nil {
+		fmt.Fprintf(os.Stderr, "\n❌ Update failed: %s\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleCheckUpdate() {
+	u := updater.NewUpdater(version)
+
+	info, err := u.CheckForUpdate()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to check for updates: %s\n", err)
+		os.Exit(1)
+	}
+
+	if info.Available {
+		fmt.Printf("Update available: %s → %s\n", info.CurrentVersion, info.LatestVersion)
+		fmt.Printf("Run 'morpheus update' to install.\n")
+		os.Exit(0)
+	} else {
+		fmt.Printf("Already up to date: %s\n", info.CurrentVersion)
+		os.Exit(0)
+	}
+}
+
 func printHelp() {
 	fmt.Println("Morpheus - Nims Forest Infrastructure Provisioning Tool")
 	fmt.Println()
@@ -324,6 +399,8 @@ func printHelp() {
 	fmt.Println("  status <forest-id>    Show detailed forest status")
 	fmt.Println("  teardown <forest-id>  Delete a forest and all its resources")
 	fmt.Println("  version               Show version information")
+	fmt.Println("  update                Check for updates and install if available")
+	fmt.Println("  check-update          Check for updates without installing")
 	fmt.Println("  help                  Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -332,6 +409,7 @@ func printHelp() {
 	fmt.Println("  morpheus list                 # List all forests")
 	fmt.Println("  morpheus status forest-12345  # Show forest details")
 	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
+	fmt.Println("  morpheus update               # Update to latest version")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")

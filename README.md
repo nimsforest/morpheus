@@ -214,6 +214,15 @@ secrets:
 
 All commands work the same on Desktop and Termux!
 
+**Quick Reference:**
+- `plant cloud <size>` - Create infrastructure
+- `list` - View all forests
+- `status <id>` - Check forest details
+- `teardown <id>` - Delete forest
+- `update` - Update to latest version
+- `version` - Show current version
+- `help` - Show help
+
 ### Plant a Forest
 
 ```bash
@@ -287,6 +296,33 @@ morpheus teardown forest-<id>
 ```
 
 Deletes all servers and cleans up resources.
+
+### Update Morpheus
+
+Check for and install updates:
+
+```bash
+morpheus update        # Check for updates and install if available
+morpheus check-update  # Just check for updates without installing
+```
+
+The update command will:
+1. Check GitHub for the latest release
+2. Show release notes
+3. Ask for confirmation
+4. Clone, build, and install the new version
+5. Back up your current version to `<path>.backup`
+
+**Manual Update:**
+
+If automatic update fails, you can always update manually:
+
+```bash
+git clone https://github.com/nimsforest/morpheus.git
+cd morpheus
+make build
+make install
+```
 
 ### Other Commands
 
