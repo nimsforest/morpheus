@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yourusername/morpheus/pkg/cloudinit"
-	"github.com/yourusername/morpheus/pkg/config"
-	"github.com/yourusername/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/cloudinit"
+	"github.com/nimsforest/morpheus/pkg/config"
+	"github.com/nimsforest/morpheus/pkg/provider"
 )
 
 // Provisioner handles forest provisioning

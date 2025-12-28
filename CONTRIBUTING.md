@@ -10,7 +10,7 @@ Be respectful, inclusive, and constructive in all interactions.
 
 ### Reporting Bugs
 
-1. Check if the bug has already been reported in [Issues](https://github.com/yourusername/morpheus/issues)
+1. Check if the bug has already been reported in [Issues](https://github.com/nimsforest/morpheus/issues)
 2. If not, create a new issue with:
    - Clear title and description
    - Steps to reproduce
@@ -21,7 +21,7 @@ Be respectful, inclusive, and constructive in all interactions.
 
 ### Suggesting Features
 
-1. Check [Discussions](https://github.com/yourusername/morpheus/discussions) for similar ideas
+1. Check [Discussions](https://github.com/nimsforest/morpheus/discussions) for similar ideas
 2. Open a new discussion to propose your feature
 3. Explain:
    - The problem it solves
@@ -47,7 +47,7 @@ git clone https://github.com/YOUR_USERNAME/morpheus.git
 cd morpheus
 
 # Add upstream remote
-git remote add upstream https://github.com/yourusername/morpheus.git
+git remote add upstream https://github.com/nimsforest/morpheus.git
 
 # Install dependencies
 make deps
@@ -334,8 +334,8 @@ Maintainers will handle releases:
 
 ## Getting Help
 
-- **Questions**: Use [GitHub Discussions](https://github.com/yourusername/morpheus/discussions)
-- **Bugs**: Open an [Issue](https://github.com/yourusername/morpheus/issues)
+- **Questions**: Use [GitHub Discussions](https://github.com/nimsforest/morpheus/discussions)
+- **Bugs**: Open an [Issue](https://github.com/nimsforest/morpheus/issues)
 - **Chat**: Join our community chat (if available)
 
 ## License

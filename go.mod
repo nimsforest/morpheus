@@ -1,4 +1,4 @@
-module github.com/yourusername/morpheus
+module github.com/nimsforest/morpheus
 
 go 1.25
 

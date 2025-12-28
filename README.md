@@ -1,11 +1,73 @@
 # Morpheus 🌲
 
-[![Build Status](https://github.com/yourusername/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/yourusername/morpheus/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/yourusername/morpheus/actions)
+[![Build Status](https://github.com/nimsforest/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/nimsforest/morpheus/actions)
+[![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/nimsforest/morpheus/actions)
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 **Infrastructure provisioning tool for Nims Forest** - Automatically provision cloud servers with the right configuration for NATS-based distributed systems.
+
+## Getting Started
+
+### 📱 Run Morpheus from Your Android Phone
+
+**Step 1: Install F-Droid (if you don't have it yet)**
+
+F-Droid is an open-source app store for Android. Get it from:
+- **Website:** https://f-droid.org/
+- Tap "Download F-Droid" and install the APK
+
+**Step 2: Install Termux from F-Droid**
+
+⚠️ **Important:** Do NOT use Google Play Store (it's outdated)
+
+1. Open F-Droid app
+2. Search for "Termux"
+3. Install Termux
+
+Or direct link: https://f-droid.org/en/packages/com.termux/
+
+**Step 3: Install Morpheus (One Command!)**
+
+Open Termux and paste this:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+```
+
+**Step 4: Use Morpheus**
+
+```bash
+morpheus plant cloud wood    # Create infrastructure
+morpheus list                # View forests
+morpheus status forest-123   # Check status
+morpheus teardown forest-123 # Clean up
+```
+
+You'll also need a free [Hetzner Cloud account](https://console.hetzner.cloud/) for the API token.
+
+📖 **Full guide:** [Termux Quick Start](docs/TERMUX_QUICKSTART.md)
+
+---
+
+### 💻 Desktop/Laptop
+
+```bash
+# Clone and build
+git clone https://github.com/nimsforest/morpheus.git
+cd morpheus
+make build
+
+# Configure
+export HETZNER_API_TOKEN="your-token"
+cp config.example.yaml config.yaml
+
+# Use it
+./bin/morpheus plant cloud wood
+./bin/morpheus list
+```
+
+---
 
 ## What Does Morpheus Do?
 
@@ -17,54 +79,54 @@ Morpheus handles **infrastructure only**:
 
 **Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
 
-## Quick Start
-
-```bash
-# 1. Build
-git clone https://github.com/yourusername/morpheus.git
-cd morpheus
-make build
-
-# 2. Configure
-export HETZNER_API_TOKEN="your-token"
-cp config.example.yaml config.yaml
-# Edit config.yaml with your settings
-
-# 3. Plant a forest (1 node)
-./bin/morpheus plant cloud wood
-
-# 4. Check status
-./bin/morpheus list
-./bin/morpheus status forest-<id>
-
-# 5. Teardown when done
-./bin/morpheus teardown forest-<id>
-```
-
 ## Installation
 
 ### Prerequisites
-- Go 1.25+
+
+**For Termux:**
+- Android phone with [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/)
+- Hetzner Cloud account (free to create)
+- *Go is automatically installed by the installer*
+
+**For Desktop:**
+- Go 1.25+ (or whatever version you have)
 - Hetzner Cloud account with API token
 - SSH key uploaded to Hetzner Cloud
 
-### Build from Source
+### Build from Source (Desktop)
 
 ```bash
-git clone https://github.com/yourusername/morpheus.git
+git clone https://github.com/nimsforest/morpheus.git
 cd morpheus
-make deps     # Download dependencies
 make build    # Build binary
 make install  # Install to /usr/local/bin (optional)
 ```
 
-### Control Server Setup (Mobile/Private Repo)
+**Note:** Termux users should use the automated installer instead.
 
-Working from mobile or have a private repository? See the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
-- Setting up a dedicated Morpheus server
-- GitHub token authentication for private repos
-- Mobile-friendly workflows and shortcuts
-- Security best practices
+### Mobile Usage
+
+**Primary: Run directly on Android/Termux**
+
+Morpheus is a CLI tool. Termux is a terminal. Running it directly is the natural way:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+```
+
+- ✅ Free (no server costs)
+- ✅ Native CLI experience
+- ✅ Full functionality from your pocket
+- ✅ Works offline for local commands
+
+**Alternative: Control Server** (only for specific needs)
+
+Use a control server only if you need:
+- 24/7 persistent environment (CI/CD, automation)
+- Team collaboration (shared instance)
+- Long-running operations (phone can't stay on)
+
+See: [Control Server Guide](docs/CONTROL_SERVER_SETUP.md)
 
 ### Get Hetzner API Token
 
@@ -114,7 +176,9 @@ secrets:
 - `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - High load
 - `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise
 
-## Usage
+## Commands
+
+All commands work the same on Desktop and Termux!
 
 ### Plant a Forest
 
@@ -361,11 +425,14 @@ MIT License - see [LICENSE](LICENSE)
 
 ## Links
 
-- **GitHub**: https://github.com/yourusername/morpheus
+- **GitHub**: https://github.com/nimsforest/morpheus
 - **Documentation**: [docs/](docs/)
-  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Mobile/private repo guide
+  - [Termux Quick Start](docs/TERMUX_QUICKSTART.md) - 10-minute setup with one command
+  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Complete guide (primary mobile approach)
+  - [Mobile Philosophy](docs/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
+  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
   - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
-- **Issues**: https://github.com/yourusername/morpheus/issues
+- **Issues**: https://github.com/nimsforest/morpheus/issues
 - **NimsForest**: https://github.com/yourusername/nimsforest
 
 ---

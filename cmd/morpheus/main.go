@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yourusername/morpheus/pkg/cloudinit"
-	"github.com/yourusername/morpheus/pkg/config"
-	"github.com/yourusername/morpheus/pkg/forest"
-	"github.com/yourusername/morpheus/pkg/provider"
-	"github.com/yourusername/morpheus/pkg/provider/hetzner"
+	"github.com/nimsforest/morpheus/pkg/cloudinit"
+	"github.com/nimsforest/morpheus/pkg/config"
+	"github.com/nimsforest/morpheus/pkg/forest"
+	"github.com/nimsforest/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
 )
 
 const version = "1.1.0"
@@ -339,5 +339,5 @@ func printHelp() {
 	fmt.Println("    - ~/.morpheus/config.yaml")
 	fmt.Println("    - /etc/morpheus/config.yaml")
 	fmt.Println()
-	fmt.Println("For more information, see: https://github.com/yourusername/morpheus")
+	fmt.Println("For more information, see: https://github.com/nimsforest/morpheus")
 }
