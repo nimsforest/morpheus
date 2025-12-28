@@ -15,7 +15,8 @@ import (
 	"github.com/nimsforest/morpheus/pkg/updater"
 )
 
-const version = "1.1.0"
+// version is set at build time via -ldflags
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {

@@ -123,17 +123,27 @@ func (u *Updater) PerformUpdate() error {
 	// Clean up old clone if exists
 	os.RemoveAll(repoDir)
 
-	// Clone repository
-	cmd := exec.Command("git", "clone", "--depth", "1", "https://github.com/nimsforest/morpheus.git", repoDir)
+	// Clone repository (with all tags for version detection)
+	cmd := exec.Command("git", "clone", "https://github.com/nimsforest/morpheus.git", repoDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	// Build the binary
-	fmt.Println("🔨 Building latest version...")
-	cmd = exec.Command("go", "build", "-o", tmpFile, "./cmd/morpheus")
+	// Get version from git tags
+	versionCmd := exec.Command("git", "describe", "--tags", "--always", "--dirty")
+	versionCmd.Dir = repoDir
+	versionOutput, err := versionCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get version: %w", err)
+	}
+	gitVersion := strings.TrimSpace(string(versionOutput))
+
+	// Build the binary with version injection
+	fmt.Printf("🔨 Building version %s...\n", gitVersion)
+	ldflags := fmt.Sprintf("-ldflags=-X main.version=%s", gitVersion)
+	cmd = exec.Command("go", "build", ldflags, "-o", tmpFile, "./cmd/morpheus")
 	cmd.Dir = repoDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

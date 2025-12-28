@@ -5,6 +5,10 @@ BUILD_DIR=bin
 GO=go
 GOFLAGS=-v
 
+# Get version from git tags, fallback to "dev" if no tags
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS=-ldflags "-X main.version=$(VERSION)"
+
 help: ## Show this help message
 	@echo "Morpheus - Nims Forest Provisioning Tool"
 	@echo ""
@@ -12,9 +16,9 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
 build: ## Build the morpheus binary
-	@echo "Building $(BINARY_NAME)..."
+	@echo "Building $(BINARY_NAME) version $(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/morpheus
+	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/morpheus
 
 install: build ## Install morpheus to /usr/local/bin
 	@echo "Installing $(BINARY_NAME) to /usr/local/bin..."
