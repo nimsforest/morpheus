@@ -108,6 +108,45 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 
 ## [Unreleased]
 
+### Added - Automatic SSH Key Upload
+
+**NEW**: Morpheus now automatically uploads SSH keys to Hetzner Cloud!
+
+Users no longer need to manually upload SSH keys through the Hetzner console. When provisioning servers, Morpheus will:
+
+1. Check if the configured SSH key exists in Hetzner Cloud
+2. If not found, automatically read the SSH public key from local filesystem
+3. Upload the key to Hetzner Cloud with the configured name
+4. Proceed with server provisioning
+
+**Features:**
+- ✅ Automatic SSH key detection from common locations (`~/.ssh/id_ed25519.pub`, `~/.ssh/id_rsa.pub`)
+- ✅ Support for custom SSH key paths via `ssh_key_path` config option
+- ✅ Tilde expansion for home directory paths
+- ✅ Validation of SSH public key format (RSA, ED25519, ECDSA, DSS)
+- ✅ Falls back to common locations if custom path not found
+- ✅ Comprehensive test coverage for SSH key functionality
+
+**Configuration:**
+```yaml
+infrastructure:
+  defaults:
+    ssh_key: main              # Key name in Hetzner Cloud
+    ssh_key_path: ""           # Optional: custom path to local SSH public key
+```
+
+**Benefits:**
+- Simplified setup - one less manual step
+- Better automation - fully scriptable infrastructure provisioning
+- Improved user experience - especially for new users
+- Works seamlessly with Termux and desktop environments
+
+**Documentation:**
+- Updated README.md with SSH key auto-upload information
+- Updated CONTROL_SERVER_SETUP.md with new workflow
+- Updated config.example.yaml with ssh_key_path option
+- Added comprehensive tests for SSH key functionality
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load

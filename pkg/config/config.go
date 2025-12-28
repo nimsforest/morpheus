@@ -31,7 +31,8 @@ type IntegrationConfig struct {
 type DefaultServerConfig struct {
 	ServerType string `yaml:"server_type"`
 	Image      string `yaml:"image"`
-	SSHKey     string `yaml:"ssh_key"`
+	SSHKey     string `yaml:"ssh_key"`      // Name of the SSH key in Hetzner Cloud
+	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
 }
 
 // SecretsConfig contains API tokens and credentials

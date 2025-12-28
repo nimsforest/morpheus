@@ -3,6 +3,8 @@ package hetzner
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
@@ -56,15 +58,12 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 		return nil, fmt.Errorf("location not found: %s", req.Location)
 	}
 
-	// Resolve SSH keys
+	// Resolve SSH keys (automatically upload if not found)
 	var sshKeys []*hcloud.SSHKey
 	for _, keyName := range req.SSHKeys {
-		key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+		key, err := p.ensureSSHKey(ctx, keyName)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get SSH key %s: %w", keyName, err)
-		}
-		if key == nil {
-			return nil, fmt.Errorf("SSH key not found: %s", keyName)
+			return nil, fmt.Errorf("failed to ensure SSH key %s: %w", keyName, err)
 		}
 		sshKeys = append(sshKeys, key)
 	}
@@ -169,6 +168,154 @@ func (p *Provider) ListServers(ctx context.Context, filters map[string]string) (
 	}
 
 	return result, nil
+}
+
+// ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.
+// If not found, it attempts to read from common SSH key locations and upload it.
+// Returns the SSH key from Hetzner Cloud.
+func (p *Provider) ensureSSHKey(ctx context.Context, keyName string) (*hcloud.SSHKey, error) {
+	// First, check if the key already exists in Hetzner
+	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query SSH key: %w", err)
+	}
+	if key != nil {
+		// Key already exists
+		return key, nil
+	}
+
+	// Key doesn't exist, try to upload it
+	fmt.Printf("SSH key '%s' not found in Hetzner Cloud, attempting to upload...\n", keyName)
+
+	// Try to read the public key from common locations
+	publicKeyContent, err := readSSHPublicKey(keyName, "")
+	if err != nil {
+		return nil, fmt.Errorf("SSH key '%s' not found in Hetzner Cloud and could not read local key: %w", keyName, err)
+	}
+
+	// Upload the key to Hetzner
+	opts := hcloud.SSHKeyCreateOpts{
+		Name:      keyName,
+		PublicKey: publicKeyContent,
+	}
+
+	key, _, err = p.client.SSHKey.Create(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload SSH key: %w", err)
+	}
+
+	fmt.Printf("✓ Successfully uploaded SSH key '%s' to Hetzner Cloud\n", keyName)
+	return key, nil
+}
+
+// EnsureSSHKeyWithPath ensures an SSH key exists in Hetzner Cloud, with optional custom path.
+// This is useful when you want to specify a specific SSH key file path.
+func (p *Provider) EnsureSSHKeyWithPath(ctx context.Context, keyName, keyPath string) (*hcloud.SSHKey, error) {
+	// First, check if the key already exists in Hetzner
+	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query SSH key: %w", err)
+	}
+	if key != nil {
+		// Key already exists
+		return key, nil
+	}
+
+	// Key doesn't exist, try to upload it
+	fmt.Printf("SSH key '%s' not found in Hetzner Cloud, attempting to upload...\n", keyName)
+
+	// Try to read the public key from specified path or common locations
+	publicKeyContent, err := readSSHPublicKey(keyName, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("SSH key '%s' not found in Hetzner Cloud and could not read local key: %w", keyName, err)
+	}
+
+	// Upload the key to Hetzner
+	opts := hcloud.SSHKeyCreateOpts{
+		Name:      keyName,
+		PublicKey: publicKeyContent,
+	}
+
+	key, _, err = p.client.SSHKey.Create(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload SSH key: %w", err)
+	}
+
+	fmt.Printf("✓ Successfully uploaded SSH key '%s' to Hetzner Cloud\n", keyName)
+	return key, nil
+}
+
+// readSSHPublicKey attempts to read an SSH public key from common locations.
+// If customPath is provided and non-empty, it tries that first.
+// Otherwise, it tries the following in order:
+// 1. {customPath} (if provided)
+// 2. ~/.ssh/{keyName}.pub
+// 3. ~/.ssh/{keyName} (if it's already a .pub file path)
+// 4. ~/.ssh/id_ed25519.pub
+// 5. ~/.ssh/id_rsa.pub
+func readSSHPublicKey(keyName, customPath string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	sshDir := fmt.Sprintf("%s/.ssh", homeDir)
+
+	// Build list of paths to try
+	var paths []string
+
+	// If custom path is provided, try it first
+	if customPath != "" {
+		// Expand ~ if present
+		if strings.HasPrefix(customPath, "~/") {
+			customPath = strings.Replace(customPath, "~", homeDir, 1)
+		}
+		paths = append(paths, customPath)
+	}
+
+	// Add common locations
+	paths = append(paths,
+		fmt.Sprintf("%s/%s.pub", sshDir, keyName),
+		fmt.Sprintf("%s/%s", sshDir, keyName),
+	)
+
+	// If keyName doesn't look like a default key, also try common defaults
+	if keyName != "id_ed25519" && keyName != "id_rsa" && keyName != "id_ecdsa" {
+		paths = append(paths,
+			fmt.Sprintf("%s/id_ed25519.pub", sshDir),
+			fmt.Sprintf("%s/id_rsa.pub", sshDir),
+		)
+	}
+
+	var lastErr error
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			// Successfully read the file
+			publicKey := strings.TrimSpace(string(content))
+			if publicKey != "" && isValidSSHPublicKey(publicKey) {
+				fmt.Printf("  Found SSH public key at: %s\n", path)
+				return publicKey, nil
+			}
+			lastErr = fmt.Errorf("file exists but doesn't contain valid SSH public key: %s", path)
+			continue
+		}
+		lastErr = err
+	}
+
+	return "", fmt.Errorf("could not find SSH public key in any of the expected locations: %w", lastErr)
+}
+
+// isValidSSHPublicKey performs basic validation on SSH public key format
+func isValidSSHPublicKey(key string) bool {
+	// SSH public keys typically start with ssh-rsa, ssh-ed25519, ecdsa-sha2-, etc.
+	validPrefixes := []string{"ssh-rsa", "ssh-ed25519", "ssh-dss", "ecdsa-sha2-"}
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Helper functions

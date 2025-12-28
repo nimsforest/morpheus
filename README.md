@@ -98,7 +98,7 @@ Morpheus handles **infrastructure only**:
 **For Desktop:**
 - Go 1.25+ (or whatever version you have)
 - Hetzner Cloud account with API token
-- SSH key uploaded to Hetzner Cloud
+- SSH key (Morpheus will automatically upload it to Hetzner if not already there)
 
 ### Build from Source (Desktop)
 
@@ -146,13 +146,36 @@ See: [Control Server Guide](docs/CONTROL_SERVER_SETUP.md)
 4. Set permissions to "Read & Write"
 5. Copy the token
 
-### Upload SSH Key
+### SSH Key Setup
+
+**Automatic Upload (Recommended):**
+
+Morpheus automatically uploads your SSH key to Hetzner Cloud if it doesn't exist:
+
+1. Make sure you have an SSH key at `~/.ssh/id_ed25519.pub` (or other common locations)
+2. Configure the key name in `config.yaml` (e.g., `ssh_key: main`)
+3. When you provision your first server, Morpheus will automatically upload the key if needed
+
+**Manual Upload (Optional):**
+
+If you prefer to upload manually:
 
 ```bash
 # Via CLI
 hcloud ssh-key create --name main --public-key-from-file ~/.ssh/id_ed25519.pub
 
 # Or via console: Security → SSH Keys → Add SSH Key
+```
+
+**Custom Key Path:**
+
+You can specify a custom SSH key path in your config:
+
+```yaml
+infrastructure:
+  defaults:
+    ssh_key: main
+    ssh_key_path: "~/.ssh/custom_key.pub"  # Optional
 ```
 
 ## Configuration
@@ -165,7 +188,8 @@ infrastructure:
   defaults:
     server_type: cpx31       # 4 vCPU, 8 GB RAM
     image: ubuntu-24.04
-    ssh_key: main            # Must match Hetzner SSH key name
+    ssh_key: main            # SSH key name (auto-uploaded if not found)
+    ssh_key_path: ""         # Optional: custom path to local SSH public key
   locations:
     - fsn1  # Falkenstein, Germany
     - nbg1  # Nuremberg, Germany
@@ -351,8 +375,18 @@ make clean    # Clean artifacts
 
 ### "SSH key not found: main"
 
+**This should rarely happen now** - Morpheus automatically uploads SSH keys!
+
+If you still see this error:
+
 ```bash
-# List keys in Hetzner
+# Check if local SSH key exists
+ls -la ~/.ssh/*.pub
+
+# Generate one if missing
+ssh-keygen -t ed25519 -C "your_email@example.com"
+
+# List keys in Hetzner (if you want to verify)
 hcloud ssh-key list
 
 # Update config.yaml to match exact key name
