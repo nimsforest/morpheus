@@ -108,6 +108,8 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 
 ## [Unreleased]
 
+## [1.1.2] - 2025-12-28
+
 ### Fixed
 - Fixed "text file busy" error when updating morpheus on Termux/Android
   - Replaced file copy with atomic rename operation for binary updates
