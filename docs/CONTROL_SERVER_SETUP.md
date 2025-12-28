@@ -60,15 +60,23 @@ cat ~/.ssh/id_ed25519.pub
 Open your phone browser, go to https://console.hetzner.cloud/
 
 1. Create new project: "morpheus"
-2. Go to Security → SSH Keys → Add SSH Key
+2. **SSH Key Setup (Two Options):**
+   
+   **Option A: Manual Upload (Traditional)**
+   - Go to Security → SSH Keys → Add SSH Key
    - Paste the public key from Termux
    - Name it "phone"
+   
+   **Option B: Automatic Upload (Easier - Morpheus will handle this)**
+   - Skip this step! Morpheus can automatically upload your SSH key when you first provision a server
+   - Just make sure your SSH key exists at `~/.ssh/id_ed25519.pub` (default location)
+
 3. Add Server:
    - **Name:** `morpheus`
    - **Location:** `fsn1` (or any)
    - **Image:** Ubuntu 24.04
    - **Type:** CPX11 (~€4.50/month)
-   - **SSH Key:** Select "phone"
+   - **SSH Key:** Select "phone" (if you uploaded manually in Option A)
 4. Click "Create & Buy"
 5. **Copy the server IP**
 
@@ -138,9 +146,18 @@ source ~/.bashrc
 # Create config
 cp config.example.yaml config.yaml
 nano config.yaml
-# Change ssh_key from "main" to "phone" (the name you used in Hetzner)
+# Change ssh_key from "main" to "phone"
+# (Morpheus will automatically upload the key if it doesn't exist in Hetzner)
 # Ctrl+X to save
 ```
+
+**Note:** Morpheus now automatically uploads SSH keys to Hetzner Cloud if they don't exist. When you provision your first server, Morpheus will:
+1. Check if the SSH key named "phone" exists in Hetzner Cloud
+2. If not found, it will read your local SSH public key from `~/.ssh/id_ed25519.pub` (or other common locations)
+3. Automatically upload it to Hetzner Cloud with the name "phone"
+4. Use it for server provisioning
+
+This means you can skip the manual SSH key upload step in the Hetzner console!
 
 ### Step 9: Test It
 

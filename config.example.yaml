@@ -3,7 +3,9 @@ infrastructure:
   defaults:
     server_type: cpx31
     image: ubuntu-24.04
-    ssh_key: main
+    ssh_key: main  # Name of SSH key in Hetzner Cloud (will be auto-uploaded if not found)
+    ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
+                       # If not specified, Morpheus will search common SSH key locations
   locations:
     - fsn1
     - nbg1

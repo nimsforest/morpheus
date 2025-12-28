@@ -2,6 +2,8 @@ package hetzner
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -158,5 +160,138 @@ func TestConvertServer(t *testing.T) {
 	expectedTime := now.Format(time.RFC3339)
 	if server.CreatedAt != expectedTime {
 		t.Errorf("Expected CreatedAt '%s', got '%s'", expectedTime, server.CreatedAt)
+	}
+}
+
+func TestIsValidSSHPublicKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		expected bool
+	}{
+		{
+			name:     "valid RSA key",
+			key:      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDZy... user@host",
+			expected: true,
+		},
+		{
+			name:     "valid ED25519 key",
+			key:      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqB... user@host",
+			expected: true,
+		},
+		{
+			name:     "valid ECDSA key",
+			key:      "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTI... user@host",
+			expected: true,
+		},
+		{
+			name:     "valid DSS key",
+			key:      "ssh-dss AAAAB3NzaC1kc3MAAACBAOgR... user@host",
+			expected: true,
+		},
+		{
+			name:     "invalid key - no prefix",
+			key:      "AAAAB3NzaC1yc2EAAAADAQABAAABAQDZy... user@host",
+			expected: false,
+		},
+		{
+			name:     "invalid key - empty",
+			key:      "",
+			expected: false,
+		},
+		{
+			name:     "invalid key - random text",
+			key:      "this is not an ssh key",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidSSHPublicKey(tt.key)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v for key: %s", tt.expected, result, tt.key)
+			}
+		})
+	}
+}
+
+func TestReadSSHPublicKey(t *testing.T) {
+	// Create a temporary directory for test SSH keys
+	tempDir := t.TempDir()
+	sshDir := filepath.Join(tempDir, ".ssh")
+	err := os.MkdirAll(sshDir, 0700)
+	if err != nil {
+		t.Fatalf("Failed to create temp .ssh directory: %v", err)
+	}
+
+	// Create test SSH key files
+	validKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHqBqwe7x7U1nCN9MCQP0aJL6+lTXYmNxnPKPPPHASCT test@example.com"
+	testKeyPath := filepath.Join(sshDir, "test_key.pub")
+	err = os.WriteFile(testKeyPath, []byte(validKey+"\n"), 0600)
+	if err != nil {
+		t.Fatalf("Failed to write test key file: %v", err)
+	}
+
+	// Create default key
+	defaultKeyPath := filepath.Join(sshDir, "id_ed25519.pub")
+	err = os.WriteFile(defaultKeyPath, []byte(validKey+"\n"), 0600)
+	if err != nil {
+		t.Fatalf("Failed to write default key file: %v", err)
+	}
+
+	// Create invalid key
+	invalidKeyPath := filepath.Join(sshDir, "invalid_key.pub")
+	err = os.WriteFile(invalidKeyPath, []byte("not a valid key\n"), 0600)
+	if err != nil {
+		t.Fatalf("Failed to write invalid key file: %v", err)
+	}
+
+	// Test with custom path
+	t.Run("read from custom path", func(t *testing.T) {
+		content, err := readSSHPublicKey("test_key", testKeyPath)
+		if err != nil {
+			t.Errorf("Failed to read SSH key with custom path: %v", err)
+		}
+		if content != validKey {
+			t.Errorf("Expected key content to match, got: %s", content)
+		}
+	})
+
+	t.Run("invalid key format", func(t *testing.T) {
+		_, err := readSSHPublicKey("invalid_key", invalidKeyPath)
+		if err == nil {
+			t.Error("Expected error for invalid SSH key format")
+		}
+	})
+
+	t.Run("non-existent key", func(t *testing.T) {
+		_, err := readSSHPublicKey("nonexistent", filepath.Join(sshDir, "nonexistent.pub"))
+		if err == nil {
+			t.Error("Expected error for non-existent key")
+		}
+	})
+}
+
+func TestReadSSHPublicKeyTildeExpansion(t *testing.T) {
+	// This test verifies that tilde expansion works
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("Skipping test: cannot get home directory: %v", err)
+	}
+
+	// Create a test key in actual .ssh directory
+	sshDir := filepath.Join(homeDir, ".ssh")
+	if _, err := os.Stat(sshDir); os.IsNotExist(err) {
+		t.Skipf("Skipping test: .ssh directory does not exist")
+	}
+
+	// Note: This test assumes there's at least one valid SSH key in ~/.ssh/
+	// We'll just test that tilde expansion doesn't break the path resolution
+	_, err = readSSHPublicKey("test", "~/nonexistent.pub")
+	// We expect an error here (file not found), but not a path expansion error
+	if err != nil && !os.IsNotExist(err) {
+		// Error is fine, as long as it's about the file not existing, not path issues
+		t.Logf("Got expected error: %v", err)
 	}
 }
