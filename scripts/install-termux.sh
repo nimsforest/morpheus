@@ -14,7 +14,7 @@ echo "  3. Build Morpheus binary"
 echo "  4. Set up configuration"
 echo "  5. Generate SSH key (if needed)"
 echo ""
-read -p "Continue? (y/n) " -n 1 -r
+read -p "Continue? (y/n) " -n 1 -r < /dev/tty
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Installation cancelled."
@@ -42,7 +42,7 @@ echo "📥 Step 2/5: Cloning Morpheus repository..."
 echo "----"
 if [[ -d "$HOME/morpheus" ]]; then
     echo "⚠️  Directory $HOME/morpheus already exists."
-    read -p "Remove and re-clone? (y/n) " -n 1 -r
+    read -p "Remove and re-clone? (y/n) " -n 1 -r < /dev/tty
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         rm -rf "$HOME/morpheus"
@@ -100,11 +100,11 @@ if [[ -z "$HETZNER_API_TOKEN" ]]; then
     echo "  3. Generate new token (Read & Write permissions)"
     echo "  4. Copy the token"
     echo ""
-    read -p "Do you have your Hetzner API token ready? (y/n) " -n 1 -r
+    read -p "Do you have your Hetzner API token ready? (y/n) " -n 1 -r < /dev/tty
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo ""
-        read -p "Enter your Hetzner API token: " TOKEN
+        read -p "Enter your Hetzner API token: " TOKEN < /dev/tty
         echo ""
         if [[ -n "$TOKEN" ]]; then
             echo "export HETZNER_API_TOKEN=\"$TOKEN\"" >> "$HOME/.bashrc"
@@ -148,7 +148,7 @@ echo ""
 
 # Install to PATH (optional)
 echo ""
-read -p "Install morpheus to PATH? (y/n) " -n 1 -r
+read -p "Install morpheus to PATH? (y/n) " -n 1 -r < /dev/tty
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     make install
