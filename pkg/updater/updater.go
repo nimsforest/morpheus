@@ -1,9 +1,11 @@
 package updater
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -51,9 +53,79 @@ type Updater struct {
 func NewUpdater(currentVersion string) *Updater {
 	return &Updater{
 		currentVersion: currentVersion,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		client:         createHTTPClient(),
+	}
+}
+
+// createHTTPClient creates an HTTP client with custom DNS resolver for Termux/Android
+func createHTTPClient() *http.Client {
+	// Check if we're running on Android/Termux by looking for common indicators
+	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
+	
+	// On Android/Termux, use a custom DNS resolver to bypass broken system DNS
+	if isAndroid {
+		// Create a custom dialer with Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
+		dialer := &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		
+		// Custom resolver that uses public DNS servers
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				// Use Google DNS (8.8.8.8:53) and Cloudflare DNS (1.1.1.1:53) as fallback
+				d := net.Dialer{
+					Timeout: 10 * time.Second,
+				}
+				
+				// Try Google DNS first
+				conn, err := d.DialContext(ctx, "udp", "8.8.8.8:53")
+				if err != nil {
+					// Fallback to Cloudflare DNS
+					conn, err = d.DialContext(ctx, "udp", "1.1.1.1:53")
+				}
+				return conn, err
+			},
+		}
+		
+		// Create custom transport with the custom resolver
+		transport := &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				// Resolve the hostname using our custom resolver
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				
+				ips, err := resolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, err
+				}
+				
+				if len(ips) == 0 {
+					return nil, fmt.Errorf("no IP addresses found for %s", host)
+				}
+				
+				// Use the first IP address
+				resolvedAddr := net.JoinHostPort(ips[0].String(), port)
+				return dialer.DialContext(ctx, network, resolvedAddr)
+			},
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+		
+		return &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+		}
+	}
+	
+	// For other platforms, use the default HTTP client
+	return &http.Client{
+		Timeout: timeout,
 	}
 }
 
@@ -206,10 +278,9 @@ func downloadFile(url, filepath string) error {
 	}
 	defer out.Close()
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 5 * time.Minute, // Binary downloads may take a while
-	}
+	// Create HTTP client with timeout and custom DNS resolver for Termux
+	client := createHTTPClient()
+	client.Timeout = 5 * time.Minute // Binary downloads may take a while
 
 	// Get the data
 	resp, err := client.Get(url)
