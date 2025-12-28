@@ -72,7 +72,7 @@ go version
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 
-**Note:** Termux automatically installs whatever Go version is in their repository (usually recent). Morpheus will build with any reasonably modern Go version.
+**Note:** Termux automatically installs whatever Go version is in their repository (usually recent). Morpheus requires Go 1.25 to build.
 
 ### Step 3: Clone and Build Morpheus
 

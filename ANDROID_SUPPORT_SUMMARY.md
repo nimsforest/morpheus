@@ -102,11 +102,10 @@ This implementation positions Termux as the **primary mobile approach**, with co
 ### 🔨 Technical Changes
 
 1. **`go.mod`**
-   - **Changed:** Go version from `1.25` → `1.21`
-   - **Reason:** Minimum required version for building (1.25 doesn't exist yet)
-   - **Impact:** Sets reasonable minimum; Termux users get whatever version Termux provides
-   - **Reality:** Termux typically provides Go 1.21+ (installer handles this automatically)
-   - **Verified:** Build and all tests pass with Go 1.21+
+   - **Version:** Go 1.25
+   - **Impact:** Termux users get whatever version Termux provides (installer handles automatically)
+   - **Reality:** Termux typically provides recent Go versions compatible with 1.25
+   - **Verified:** Build and all tests pass
 
 2. **No code changes needed!**
    - ✅ No CGO dependencies (verified)
@@ -128,7 +127,7 @@ go build -v -o bin/morpheus ./cmd/morpheus
 $ ./bin/morpheus version
 morpheus version 1.1.0
 ```
-✅ **PASSED**
+✅ **PASSED** (with Go 1.25)
 
 ### Test Suite
 ```bash
@@ -247,7 +246,7 @@ scripts/
 
 README.md                      [UPDATED] Termux as primary mobile approach
 CHANGELOG.md                   [UPDATED] Version 1.2.0 with philosophy
-go.mod                        [UPDATED] Go 1.21
+go.mod                        Go 1.25
 ANDROID_SUPPORT_SUMMARY.md    [THIS FILE] Implementation summary
 ```
 
@@ -274,7 +273,7 @@ ANDROID_SUPPORT_SUMMARY.md    [THIS FILE] Implementation summary
 
 ### Before Merging
 
-1. ✅ Build test with Go 1.21 → **PASSED**
+1. ✅ Build test with Go 1.25 → **PASSED**
 2. ✅ All unit tests → **PASSED**
 3. ✅ Platform compatibility check → **PASSED**
 4. ⚠️ Test on actual Termux device → **RECOMMENDED**
@@ -371,7 +370,7 @@ New users:
 
 ### Q: Why didn't any Go code change?
 **A:** Morpheus was already cross-platform by design! Pure Go, no CGO, no platform-specific code. We just needed to:
-1. Lower the Go version requirement (1.21 is what Termux provides)
+1. Set Go version to 1.25 (Termux provides compatible versions)
 2. Document the Android/Termux workflow
 3. Provide helper scripts for ease of use
 

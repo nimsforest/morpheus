@@ -67,7 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - ✅ Mobile-friendly documentation and workflows
 - ✅ No CGO dependencies (pure Go)
 - ✅ No platform-specific system calls
-- ✅ Set minimum Go version to 1.21 (Termux automatically installs current version)
+- ✅ Go version set to 1.25 (Termux automatically installs current version)
 
 **Documentation:**
 - Added `docs/ANDROID_TERMUX.md` - Complete guide for running Morpheus on Android
@@ -95,8 +95,8 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 ### Changed
 - **Mobile approach repositioned:** Termux is now the primary/recommended approach for mobile users
 - Control server repositioned as alternative for specific use cases (24/7, teams, CI/CD)
-- Go minimum version set to 1.21 (Termux installs whatever current version is available)
-- Updated README badges to reflect Go 1.21 minimum
+- Go version set to 1.25 (Termux installs whatever current version is available)
+- Updated README badges to reflect Go 1.25
 - Enhanced prerequisites section - clarified Go is auto-installed on Termux
 - Reorganized mobile documentation to emphasize Termux-first approach
 - Updated CONTROL_SERVER_SETUP.md to clarify it's for specific scenarios only

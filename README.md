@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/nimsforest/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/nimsforest/morpheus/actions)
 [![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/nimsforest/morpheus/actions)
-[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 **Infrastructure provisioning tool for Nims Forest** - Automatically provision cloud servers with the right configuration for NATS-based distributed systems.
@@ -89,7 +89,7 @@ Morpheus handles **infrastructure only**:
 - *Go is automatically installed by the installer*
 
 **For Desktop:**
-- Go 1.21+ (or whatever version you have)
+- Go 1.25+ (or whatever version you have)
 - Hetzner Cloud account with API token
 - SSH key uploaded to Hetzner Cloud
 
