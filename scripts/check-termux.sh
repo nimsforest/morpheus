@@ -174,7 +174,7 @@ if [[ $ERRORS -eq 0 ]] && [[ $WARNINGS -eq 0 ]]; then
     echo "Your Termux environment is ready for Morpheus."
     echo ""
     echo "Next steps:"
-    echo "  1. Clone Morpheus: git clone https://github.com/yourusername/morpheus.git"
+    echo "  1. Clone Morpheus: git clone https://github.com/nimsforest/morpheus.git"
     echo "  2. Build: cd morpheus && make build"
     echo "  3. Test: ./bin/morpheus version"
     exit 0

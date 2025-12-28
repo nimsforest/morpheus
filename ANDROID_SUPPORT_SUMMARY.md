@@ -136,13 +136,13 @@ Running tests...
 go test -v ./...
 [...test output...]
 PASS
-ok  	github.com/yourusername/morpheus/pkg/cloudinit	0.002s
+ok  	github.com/nimsforest/morpheus/pkg/cloudinit	0.002s
 PASS
-ok  	github.com/yourusername/morpheus/pkg/config	0.003s
+ok  	github.com/nimsforest/morpheus/pkg/config	0.003s
 PASS
-ok  	github.com/yourusername/morpheus/pkg/forest	0.006s
+ok  	github.com/nimsforest/morpheus/pkg/forest	0.006s
 PASS
-ok  	github.com/yourusername/morpheus/pkg/provider/hetzner	[...]
+ok  	github.com/nimsforest/morpheus/pkg/provider/hetzner	[...]
 ```
 ✅ **ALL TESTS PASSED**
 
@@ -212,21 +212,31 @@ $ grep -r "syscall\." --include="*.go" .
 
 ## Installation Methods
 
-### Method 1: Automated (Recommended)
+### Method 1: One-Command Install (Recommended)
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+# With wget (preferred in Termux)
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+
+# Or with curl
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 **Time:** 5-10 minutes
 
 ### Method 2: Compatibility Check First
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/check-termux.sh | bash
+# With wget
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+
+# Or with curl
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 Then proceed with installation if checks pass.
 
 ### Method 3: Manual Installation
 Follow detailed steps in `docs/ANDROID_TERMUX.md`  
 **Time:** 10-15 minutes
+
+**Note:** Since the repo is public, users can directly download scripts via wget/curl without cloning first!
 
 ## Documentation Structure
 
@@ -285,11 +295,11 @@ If you have an Android device with Termux:
 1. Install Termux from F-Droid
 2. Run compatibility checker:
    ```bash
-   curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/check-termux.sh | bash
+   curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
    ```
 3. Run automated installer:
    ```bash
-   curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+   curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
    ```
 4. Test basic commands:
    ```bash

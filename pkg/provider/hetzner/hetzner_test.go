@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"github.com/yourusername/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/provider"
 )
 
 func TestNewProvider(t *testing.T) {

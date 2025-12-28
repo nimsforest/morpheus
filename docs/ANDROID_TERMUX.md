@@ -22,22 +22,32 @@
 
 ## Installation Guide
 
-### Quick Install (Automated)
+### Quick Install (Recommended)
 
-If you want to skip the manual steps, use the automated installer:
+**One command to rule them all!** Just open Termux and run:
 
 ```bash
-# Download and run the installer
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
-This will automatically install all dependencies, build Morpheus, and guide you through configuration.
+**Or if you prefer curl:**
+```bash
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+```
 
-**Or follow the manual steps below:**
+This will automatically:
+- ✅ Install all dependencies (Go, Git, Make, OpenSSH)
+- ✅ Clone the Morpheus repository
+- ✅ Build the binary
+- ✅ Set up configuration
+- ✅ Generate SSH key if needed
+- ✅ Guide you through API token setup
+
+**Time:** 5-10 minutes
 
 ---
 
-### Manual Installation
+### Manual Installation (If you prefer to do it step-by-step)
 
 ### Step 1: Install Termux
 
@@ -61,20 +71,22 @@ go version
 # Should show: go version go1.21.x or higher
 ```
 
-**Compatibility Check:** You can verify your environment is ready by running:
+**Optional - Check compatibility first:**
 
 ```bash
 # Download and run the compatibility checker
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/check-termux.sh | bash
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+# Or with curl:
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 
-**Note:** Termux typically provides Go 1.21+. Morpheus requires Go 1.20+ to compile (the go.mod says 1.25 but that's the build environment, not the minimum).
+**Note:** Termux typically provides Go 1.21+. Morpheus requires Go 1.20+ to compile.
 
 ### Step 3: Clone and Build Morpheus
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/morpheus.git
+git clone https://github.com/nimsforest/morpheus.git
 cd morpheus
 
 # Build for Android
@@ -505,7 +517,7 @@ Now that you have Morpheus running on Android:
 - **Termux Wiki:** https://wiki.termux.com/
 - **Go on Android:** https://go.dev/
 - **Hetzner Cloud:** https://console.hetzner.cloud/
-- **Morpheus Issues:** https://github.com/yourusername/morpheus/issues
+- **Morpheus Issues:** https://github.com/nimsforest/morpheus/issues
 
 ---
 

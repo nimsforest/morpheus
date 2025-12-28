@@ -1,7 +1,7 @@
 # Morpheus 🌲
 
-[![Build Status](https://github.com/yourusername/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/yourusername/morpheus/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/yourusername/morpheus/actions)
+[![Build Status](https://github.com/nimsforest/morpheus/workflows/Build%20and%20Test/badge.svg)](https://github.com/nimsforest/morpheus/actions)
+[![Test Coverage](https://img.shields.io/badge/coverage-66.4%25-yellow)](https://github.com/nimsforest/morpheus/actions)
 [![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
@@ -23,7 +23,7 @@ Morpheus handles **infrastructure only**:
 
 ```bash
 # 1. Build
-git clone https://github.com/yourusername/morpheus.git
+git clone https://github.com/nimsforest/morpheus.git
 cd morpheus
 make build
 
@@ -46,15 +46,19 @@ cp config.example.yaml config.yaml
 ### Android/Termux (NEW!)
 
 ```bash
-# 1. Install Termux from F-Droid
-# https://f-droid.org/en/packages/com.termux/
+# 1. Install Termux from F-Droid: https://f-droid.org/en/packages/com.termux/
 
-# 2. Run automated installer
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+# 2. Open Termux and run one command:
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 
-# 3. Use Morpheus from your phone!
+# That's it! Now use Morpheus:
 morpheus plant cloud wood
 morpheus list
+```
+
+**Alternative with curl:**
+```bash
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
 See [Android/Termux Guide](docs/ANDROID_TERMUX.md) for detailed instructions.
@@ -69,7 +73,7 @@ See [Android/Termux Guide](docs/ANDROID_TERMUX.md) for detailed instructions.
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/morpheus.git
+git clone https://github.com/nimsforest/morpheus.git
 cd morpheus
 make deps     # Download dependencies
 make build    # Build binary
@@ -388,13 +392,14 @@ MIT License - see [LICENSE](LICENSE)
 
 ## Links
 
-- **GitHub**: https://github.com/yourusername/morpheus
+- **GitHub**: https://github.com/nimsforest/morpheus
 - **Documentation**: [docs/](docs/)
-  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Run Morpheus on your Android phone (primary mobile approach)
+  - [Termux Quick Start](docs/TERMUX_QUICKSTART.md) - 10-minute setup with one command
+  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Complete guide (primary mobile approach)
   - [Mobile Philosophy](docs/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
   - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
   - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
-- **Issues**: https://github.com/yourusername/morpheus/issues
+- **Issues**: https://github.com/nimsforest/morpheus/issues
 - **NimsForest**: https://github.com/yourusername/nimsforest
 
 ---

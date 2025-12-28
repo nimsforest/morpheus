@@ -86,8 +86,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **Installation:**
 ```bash
-# Quick install via curl
-curl -sSL https://raw.githubusercontent.com/yourusername/morpheus/main/scripts/install-termux.sh | bash
+# One-command install (wget - preferred in Termux)
+wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+
+# Or with curl
+curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 
 # Or manual installation - see docs/ANDROID_TERMUX.md
 ```

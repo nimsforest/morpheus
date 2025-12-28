@@ -113,7 +113,7 @@ echo 'ghp_YOUR_TOKEN_HERE' | gh auth login --with-token
 
 ```bash
 # Clone and build
-gh repo clone yourusername/morpheus
+gh repo clone nimsforest/morpheus
 cd morpheus
 make deps && make build && make install
 
@@ -252,4 +252,4 @@ Only use this control server approach if you specifically need 24/7 availability
 
 ---
 
-**Questions?** Open an issue: https://github.com/yourusername/morpheus/issues
+**Questions?** Open an issue: https://github.com/nimsforest/morpheus/issues

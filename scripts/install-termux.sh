@@ -54,7 +54,7 @@ fi
 
 if [[ ! -d "$HOME/morpheus" ]]; then
     cd "$HOME"
-    git clone https://github.com/yourusername/morpheus.git
+    git clone https://github.com/nimsforest/morpheus.git
     cd morpheus
 fi
 
