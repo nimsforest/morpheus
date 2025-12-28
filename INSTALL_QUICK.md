@@ -3,13 +3,7 @@
 ## One Command Install
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-```
-
-Or with curl:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
 ## Prerequisites

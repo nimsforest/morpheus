@@ -214,21 +214,13 @@ $ grep -r "syscall\." --include="*.go" .
 
 ### Method 1: One-Command Install (Recommended)
 ```bash
-# With wget (preferred in Termux)
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-
-# Or with curl
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
-**Time:** 5-10 minutes
+**Time:** 10 minutes
 
 ### Method 2: Compatibility Check First
 ```bash
-# With wget
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
-
-# Or with curl
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 Then proceed with installation if checks pass.
 
@@ -295,11 +287,11 @@ If you have an Android device with Termux:
 1. Install Termux from F-Droid
 2. Run compatibility checker:
    ```bash
-   curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
    ```
 3. Run automated installer:
    ```bash
-   curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
    ```
 4. Test basic commands:
    ```bash

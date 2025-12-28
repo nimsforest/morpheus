@@ -5,12 +5,7 @@
 Open Termux and paste this:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-```
-
-**Or with curl:**
-```bash
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
 ---
@@ -102,10 +97,10 @@ morpheus help                  # Show help
 
 ## Troubleshooting
 
-### "wget: command not found"
-Use curl instead, or install wget:
+### "curl: command not found"
+Install curl first:
 ```bash
-pkg install wget -y
+pkg install curl -y
 ```
 
 ### "Failed to load config"

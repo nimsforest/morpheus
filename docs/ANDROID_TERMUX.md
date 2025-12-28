@@ -24,26 +24,21 @@
 
 ### Quick Install (Recommended)
 
-**One command to rule them all!** Just open Termux and run:
+**One command install!** Just open Termux and run:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
-**Or if you prefer curl:**
-```bash
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-```
+This automatically:
+- ✅ Installs all dependencies (Go, Git, Make, OpenSSH)
+- ✅ Clones the Morpheus repository
+- ✅ Builds the binary (~5 minutes)
+- ✅ Sets up configuration
+- ✅ Generates SSH key if needed
+- ✅ Guides you through API token setup
 
-This will automatically:
-- ✅ Install all dependencies (Go, Git, Make, OpenSSH)
-- ✅ Clone the Morpheus repository
-- ✅ Build the binary
-- ✅ Set up configuration
-- ✅ Generate SSH key if needed
-- ✅ Guide you through API token setup
-
-**Time:** 5-10 minutes
+**Time:** 10 minutes total
 
 ---
 
@@ -74,10 +69,7 @@ go version
 **Optional - Check compatibility first:**
 
 ```bash
-# Download and run the compatibility checker
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
-# Or with curl:
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 ```
 
 **Note:** Termux typically provides Go 1.21+. Morpheus requires Go 1.20+ to compile.

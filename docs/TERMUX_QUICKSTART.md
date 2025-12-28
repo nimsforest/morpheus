@@ -20,12 +20,7 @@
 Open Termux and paste this command:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-```
-
-**Don't have wget?** Use curl instead:
-```bash
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
 That's it! The installer will:
@@ -105,17 +100,14 @@ morpheus help
 
 ## Troubleshooting
 
-### "wget: command not found"
+### "curl: command not found"
 
-Use curl instead:
+Install curl first:
 ```bash
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+pkg install curl -y
 ```
 
-Or install wget:
-```bash
-pkg install wget -y
-```
+Then run the installer again.
 
 ### "Permission denied"
 

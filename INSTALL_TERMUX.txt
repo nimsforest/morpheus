@@ -7,11 +7,7 @@
 
 2. Open Termux and run ONE command:
 
-   wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-
-   (Or with curl if you prefer:)
-
-   curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 
 3. That's it! Follow the prompts for API token and SSH key.
 

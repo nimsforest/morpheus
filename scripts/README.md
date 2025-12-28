@@ -11,10 +11,7 @@ Compatibility checker for Termux environments. Verifies that all required depend
 **Usage:**
 ```bash
 # Download and run directly (recommended)
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
-
-# Or with curl
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/check-termux.sh | bash
 
 # Or from local clone
 ./scripts/check-termux.sh
@@ -43,10 +40,7 @@ Automated installer for Morpheus on Termux. Handles the entire setup process int
 **Usage:**
 ```bash
 # Download and run directly (recommended)
-wget -qO- https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
-
-# Or with curl
-curl -sSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 
 # Or from local clone
 ./scripts/install-termux.sh
