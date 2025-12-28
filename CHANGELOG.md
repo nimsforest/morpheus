@@ -176,6 +176,12 @@ infrastructure:
   - Replaced file copy with atomic rename operation for binary updates
   - Removed write permission check that was opening the running executable
   - Update process now works correctly even while morpheus is running
+- Fixed DNS resolution failure on Termux/Android when checking for updates
+  - Added custom DNS resolver using Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
+  - Bypasses broken system DNS that tries to use localhost ([::1]:53)
+  - Automatically detects Termux/Android environment via runtime.GOOS or environment variables
+  - Applies custom resolver to both update checks and binary downloads
+  - Non-Termux platforms continue to use standard DNS resolution
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility
