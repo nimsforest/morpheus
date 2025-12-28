@@ -324,9 +324,8 @@ func handleUpdate() {
 	info, err := u.CheckForUpdate()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %s\n", err)
-		fmt.Fprintf(os.Stderr, "\nYou can manually update by running:\n")
-		fmt.Fprintf(os.Stderr, "  git clone https://github.com/nimsforest/morpheus.git\n")
-		fmt.Fprintf(os.Stderr, "  cd morpheus && make build && make install\n")
+		fmt.Fprintf(os.Stderr, "\nYou can manually download the latest release from:\n")
+		fmt.Fprintf(os.Stderr, "  https://github.com/nimsforest/morpheus/releases/latest\n")
 		os.Exit(1)
 	}
 
