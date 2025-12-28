@@ -47,8 +47,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Automatic rollback on failures
 - Multi-location support (fsn1, nbg1, hel1)
 
-## [Unreleased]
-
 ## [1.2.0] - 2025-12-28
 
 ### Added - Android/Termux Support (Primary Mobile Approach)
@@ -92,27 +90,38 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 # Or manual installation - see docs/ANDROID_TERMUX.md
 ```
 
-### Changed
-- **Mobile approach repositioned:** Termux is now the primary/recommended approach for mobile users
-- Control server repositioned as alternative for specific use cases (24/7, teams, CI/CD)
-- Go version set to 1.25 (Termux installs whatever current version is available)
-- Updated README badges to reflect Go 1.25
-- Enhanced prerequisites section - clarified Go is auto-installed on Termux
-- Reorganized mobile documentation to emphasize Termux-first approach
-- Updated CONTROL_SERVER_SETUP.md to clarify it's for specific scenarios only
+### Added - Automated Releases
 
-### Fixed
-- Verified no CGO dependencies blocking Android support
-- Verified no platform-specific build tags
-- Ensured pure Go implementation for cross-platform compatibility
+**NEW**: GitHub releases are now fully automated with pre-built binaries!
 
-## [Unreleased]
+When a version tag is pushed (e.g., `v1.2.0`), GitHub Actions automatically:
+- ✅ Builds binaries for multiple platforms (Linux amd64/arm64/arm, macOS amd64/arm64)
+- ✅ Creates GitHub release with binaries attached
+- ✅ Extracts release notes from CHANGELOG.md
+- ✅ Publishes to GitHub Releases (hosted on GitHub CDN)
 
-### Fixed
-- Fixed "text file busy" error when updating morpheus on Termux/Android
-  - Replaced file copy with atomic rename operation for binary updates
-  - Removed write permission check that was opening the running executable
-  - Update process now works correctly even while morpheus is running
+**Benefits:**
+- Faster installation - no need to build from source (10x faster!)
+- Easier updates - pre-built binaries for all platforms
+- Consistent releases - automated process reduces human error
+- Better user experience - especially for Termux users (no Go compilation needed)
+
+**Features:**
+- Updated Termux installer to prefer downloading pre-built binaries
+- Falls back to building from source if download fails
+- Added `MORPHEUS_BUILD_FROM_SOURCE=1` flag to force source build
+- Created RELEASE.md documentation for maintainers
+- Binaries hosted on GitHub Releases (free, fast CDN)
+
+**For Maintainers:**
+```bash
+# Release is now as simple as:
+git tag v1.2.0
+git push origin v1.2.0
+# Done! GitHub Actions handles the rest
+```
+
+See [RELEASE.md](RELEASE.md) for complete release process documentation.
 
 ### Added - Automatic SSH Key Upload
 
@@ -152,6 +161,26 @@ infrastructure:
 - Updated CONTROL_SERVER_SETUP.md with new workflow
 - Updated config.example.yaml with ssh_key_path option
 - Added comprehensive tests for SSH key functionality
+
+### Changed
+- **Mobile approach repositioned:** Termux is now the primary/recommended approach for mobile users
+- Control server repositioned as alternative for specific use cases (24/7, teams, CI/CD)
+- Go version set to 1.25 (Termux installs whatever current version is available)
+- Updated README badges to reflect Go 1.25
+- Enhanced prerequisites section - clarified Go is auto-installed on Termux
+- Reorganized mobile documentation to emphasize Termux-first approach
+- Updated CONTROL_SERVER_SETUP.md to clarify it's for specific scenarios only
+
+### Fixed
+- Fixed "text file busy" error when updating morpheus on Termux/Android
+  - Replaced file copy with atomic rename operation for binary updates
+  - Removed write permission check that was opening the running executable
+  - Update process now works correctly even while morpheus is running
+- Verified no CGO dependencies blocking Android support
+- Verified no platform-specific build tags
+- Ensured pure Go implementation for cross-platform compatibility
+
+## [Unreleased]
 
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)

@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all tags for version detection
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+    
+    - name: Get version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version_number=${VERSION#v}" >> $GITHUB_OUTPUT
+    
+    - name: Extract release notes from CHANGELOG
+      id: changelog
+      run: |
+        # Extract the section for this version from CHANGELOG.md
+        VERSION="${{ steps.get_version.outputs.version }}"
+        VERSION_NUMBER="${{ steps.get_version.outputs.version_number }}"
+        
+        # Try to extract changelog section between this version and the next
+        NOTES=$(sed -n "/## \[$VERSION_NUMBER\]/,/## \[/p" CHANGELOG.md | sed '$d' | tail -n +2)
+        
+        # If empty, try with version including 'v' prefix
+        if [ -z "$NOTES" ]; then
+          NOTES=$(sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '$d' | tail -n +2)
+        fi
+        
+        # If still empty, provide a default message
+        if [ -z "$NOTES" ]; then
+          NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$VERSION/CHANGELOG.md) for details."
+        fi
+        
+        # Save to file for multiline support
+        echo "$NOTES" > /tmp/release_notes.txt
+    
+    - name: Build binaries
+      run: |
+        VERSION=${{ steps.get_version.outputs.version }}
+        
+        # Create dist directory
+        mkdir -p dist
+        
+        # Build for multiple platforms
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-amd64 ./cmd/morpheus
+        
+        # Linux ARM64 (for ARM servers)
+        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-arm64 ./cmd/morpheus
+        
+        # Linux ARM (for Termux on 32-bit Android)
+        GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-arm ./cmd/morpheus
+        
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-darwin-amd64 ./cmd/morpheus
+        
+        # macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-darwin-arm64 ./cmd/morpheus
+        
+        # Create checksums
+        cd dist
+        sha256sum * > SHA256SUMS
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: ${{ steps.get_version.outputs.version }}
+        body_path: /tmp/release_notes.txt
+        draft: false
+        prerelease: false
+        files: |
+          dist/morpheus-linux-amd64
+          dist/morpheus-linux-arm64
+          dist/morpheus-linux-arm
+          dist/morpheus-darwin-amd64
+          dist/morpheus-darwin-arm64
+          dist/SHA256SUMS
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update installation script documentation
+      run: |
+        echo "✅ Release ${{ steps.get_version.outputs.version }} created successfully!"
+        echo ""
+        echo "📦 Binaries available for:"
+        echo "  - Linux AMD64 (standard Linux servers)"
+        echo "  - Linux ARM64 (ARM servers, 64-bit Android/Termux)"
+        echo "  - Linux ARM (32-bit Android/Termux)"
+        echo "  - macOS AMD64 (Intel Macs)"
+        echo "  - macOS ARM64 (Apple Silicon Macs)"
+        echo ""
+        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.version }}"
+        echo ""
+        echo "Users can now run: morpheus update"
