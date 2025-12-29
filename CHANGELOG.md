@@ -184,10 +184,15 @@ infrastructure:
   - Non-Termux platforms continue to use standard DNS resolution
 - Fixed TLS certificate verification failure when checking for updates
   - Added proper TLS configuration with system CA certificate loading
-  - Searches for CA certificates in platform-specific locations (Termux, Debian, Fedora, Alpine, etc.)
-  - Added support for custom certificate paths via SSL_CERT_FILE environment variable
-  - Provides helpful error messages with installation instructions when certificates are missing
-  - Added MORPHEUS_SKIP_TLS_VERIFY=1 emergency bypass option (not recommended)
+  - **NEW**: `morpheus diagnose-certs` command to troubleshoot certificate issues
+  - **NEW**: Debug mode via `MORPHEUS_TLS_DEBUG=1` shows detailed certificate loading info
+  - Searches for CA certificates in platform-specific locations using `$PREFIX` for Termux
+  - Improved Termux support: detects `$PREFIX` environment variable dynamically
+  - Added support for custom certificate paths via `SSL_CERT_FILE` environment variable
+  - Warns when no certificates can be loaded with platform-specific fix instructions
+  - Provides helpful error messages suggesting diagnostics and proper package names
+  - Termux users should install: `pkg install ca-certificates-java openssl`
+  - Added `MORPHEUS_SKIP_TLS_VERIFY=1` emergency bypass option (not recommended, shows warning)
   - Enforces TLS 1.2 as minimum version for security
   - Comprehensive test coverage for TLS configuration
   - See docs/TLS_CERTIFICATE_FIX.md for detailed documentation

@@ -42,6 +42,8 @@ func main() {
 		handleUpdate()
 	case "check-update":
 		handleCheckUpdate()
+	case "diagnose-certs":
+		handleDiagnoseCerts()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -329,13 +331,17 @@ func handleUpdate() {
 		// Check if it's a certificate error and provide helpful guidance
 		if strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509") {
 			fmt.Fprintf(os.Stderr, "\n⚠️  TLS Certificate Error Detected\n")
-			fmt.Fprintf(os.Stderr, "\nThis usually means CA certificates are not installed on your system.\n")
-			fmt.Fprintf(os.Stderr, "\nTo fix this:\n")
-			fmt.Fprintf(os.Stderr, "  • On Termux/Android: pkg install ca-certificates\n")
+			fmt.Fprintf(os.Stderr, "\nThis usually means CA certificates are not installed properly.\n")
+			fmt.Fprintf(os.Stderr, "\n🔍 First, run diagnostics:\n")
+			fmt.Fprintf(os.Stderr, "  morpheus diagnose-certs\n")
+			fmt.Fprintf(os.Stderr, "\n💡 To fix this:\n")
+			fmt.Fprintf(os.Stderr, "  • On Termux/Android: pkg install ca-certificates-java openssl\n")
 			fmt.Fprintf(os.Stderr, "  • On Debian/Ubuntu: apt-get install ca-certificates\n")
 			fmt.Fprintf(os.Stderr, "  • On Fedora/RHEL:   dnf install ca-certificates\n")
 			fmt.Fprintf(os.Stderr, "  • On Alpine:        apk add ca-certificates\n")
-			fmt.Fprintf(os.Stderr, "\nAlternatively (NOT RECOMMENDED), you can skip certificate verification:\n")
+			fmt.Fprintf(os.Stderr, "\n🐛 Debug mode:\n")
+			fmt.Fprintf(os.Stderr, "  MORPHEUS_TLS_DEBUG=1 morpheus update\n")
+			fmt.Fprintf(os.Stderr, "\n⚠️  Emergency bypass (NOT RECOMMENDED):\n")
 			fmt.Fprintf(os.Stderr, "  MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update\n")
 		}
 		
@@ -416,6 +422,7 @@ func printHelp() {
 	fmt.Println("  version               Show version information")
 	fmt.Println("  update                Check for updates and install if available")
 	fmt.Println("  check-update          Check for updates without installing")
+	fmt.Println("  diagnose-certs        Diagnose TLS certificate issues")
 	fmt.Println("  help                  Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -425,6 +432,7 @@ func printHelp() {
 	fmt.Println("  morpheus status forest-12345  # Show forest details")
 	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
 	fmt.Println("  morpheus update               # Update to latest version")
+	fmt.Println("  morpheus diagnose-certs       # Check certificate setup")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")

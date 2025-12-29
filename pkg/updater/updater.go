@@ -147,17 +147,37 @@ func createTLSConfig() *tls.Config {
 		return &tls.Config{InsecureSkipVerify: true}
 	}
 	
+	// Enable debug mode if requested
+	debugMode := os.Getenv("MORPHEUS_TLS_DEBUG") == "1"
+	
 	// Try to load system CA certificates
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
+		if debugMode {
+			fmt.Fprintf(os.Stderr, "⚠️  Failed to load system cert pool: %v\n", err)
+		}
 		// If system cert pool fails, create a new one
 		certPool = x509.NewCertPool()
+	} else if debugMode {
+		fmt.Fprintln(os.Stderr, "✓ Loaded system certificate pool")
+	}
+	
+	// Get Termux PREFIX if available
+	termuxPrefix := os.Getenv("PREFIX")
+	if termuxPrefix == "" {
+		termuxPrefix = "/data/data/com.termux/files/usr"
 	}
 	
 	// Try to load certificates from common locations (especially for Termux/Android)
 	certPaths := []string{
-		"/system/etc/security/cacerts",           // Android system certs
-		"/data/data/com.termux/files/usr/etc/tls/certs/ca-certificates.crt", // Termux
+		// Termux paths (try PREFIX-based paths first)
+		filepath.Join(termuxPrefix, "etc/tls/certs/ca-certificates.crt"),
+		filepath.Join(termuxPrefix, "etc/tls/cert.pem"),
+		filepath.Join(termuxPrefix, "etc/ssl/certs/ca-certificates.crt"),
+		filepath.Join(termuxPrefix, "etc/ssl/cert.pem"),
+		// Android system certs
+		"/system/etc/security/cacerts",
+		// Standard Linux paths
 		"/etc/ssl/certs/ca-certificates.crt",     // Debian/Ubuntu/Gentoo etc.
 		"/etc/pki/tls/certs/ca-bundle.crt",       // Fedora/RHEL
 		"/etc/ssl/ca-bundle.pem",                 // OpenSUSE
@@ -168,14 +188,34 @@ func createTLSConfig() *tls.Config {
 		os.Getenv("SSL_CERT_FILE"),               // Custom cert file from env
 	}
 	
+	certsLoaded := 0
 	for _, certPath := range certPaths {
 		if certPath == "" {
 			continue
 		}
 		
 		if certData, err := os.ReadFile(certPath); err == nil {
-			certPool.AppendCertsFromPEM(certData)
+			if certPool.AppendCertsFromPEM(certData) {
+				certsLoaded++
+				if debugMode {
+					fmt.Fprintf(os.Stderr, "✓ Loaded certificates from: %s\n", certPath)
+				}
+			}
+		} else if debugMode {
+			fmt.Fprintf(os.Stderr, "  Skipped %s: %v\n", certPath, err)
 		}
+	}
+	
+	if debugMode {
+		fmt.Fprintf(os.Stderr, "📊 Total certificate bundles loaded: %d\n", certsLoaded)
+	}
+	
+	if certsLoaded == 0 {
+		fmt.Fprintln(os.Stderr, "⚠️  WARNING: No CA certificates could be loaded!")
+		fmt.Fprintln(os.Stderr, "    This may cause certificate verification errors.")
+		fmt.Fprintln(os.Stderr, "    Install ca-certificates:")
+		fmt.Fprintln(os.Stderr, "      • Termux: pkg install ca-certificates-java ca-certificates")
+		fmt.Fprintln(os.Stderr, "      • Enable debug: MORPHEUS_TLS_DEBUG=1 morpheus update")
 	}
 	
 	return &tls.Config{

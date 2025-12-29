@@ -33,8 +33,14 @@ The fix includes several improvements to the HTTP client configuration:
 
 The updater now searches for CA certificates in these locations:
 
+**Termux/Android** (uses `$PREFIX` environment variable):
+- `$PREFIX/etc/tls/certs/ca-certificates.crt`
+- `$PREFIX/etc/tls/cert.pem`
+- `$PREFIX/etc/ssl/certs/ca-certificates.crt`
+- `$PREFIX/etc/ssl/cert.pem`
 - `/system/etc/security/cacerts` - Android system certificates
-- `/data/data/com.termux/files/usr/etc/tls/certs/ca-certificates.crt` - Termux
+
+**Standard Linux/Unix**:
 - `/etc/ssl/certs/ca-certificates.crt` - Debian/Ubuntu/Gentoo
 - `/etc/pki/tls/certs/ca-bundle.crt` - Fedora/RHEL
 - `/etc/ssl/ca-bundle.pem` - OpenSUSE
@@ -42,28 +48,91 @@ The updater now searches for CA certificates in these locations:
 - `/usr/local/share/certs/ca-root-nss.crt` - FreeBSD
 - `/etc/pki/tls/cacert.pem` - OpenELEC
 - `/etc/certs/ca-certificates.crt` - Solaris 11.2+
+
+**Custom**:
 - Custom path from `$SSL_CERT_FILE` environment variable
 
-### 3. Better Error Messages
+### 3. Certificate Diagnostics Command
+
+A new `diagnose-certs` command helps users troubleshoot certificate issues:
+
+```bash
+morpheus diagnose-certs
+```
+
+This command:
+- Shows system information (OS, architecture, environment variables)
+- Checks if the system certificate pool can be loaded
+- Scans for certificate files in all known locations
+- Tests TLS connectivity to GitHub API
+- Provides specific recommendations for your system
+
+Example output:
+```
+🔍 Morpheus TLS Certificate Diagnostics
+========================================
+
+OS: android
+Arch: arm64
+PREFIX: /data/data/com.termux/files/usr
+
+System Certificate Pool:
+  ❌ Failed to load: crypto/x509: system root pool is not available on Android
+
+Certificate File Locations:
+  ✓ /data/data/com.termux/files/usr/etc/tls/certs/ca-certificates.crt (214256 bytes)
+  ✗ /system/etc/security/cacerts (not found)
+  ...
+
+Testing TLS Connection to GitHub:
+  1. With system certificates...
+     ✓ Success (status: 200 OK)
+
+📋 Recommendations:
+  ✓ Certificates appear to be installed
+```
+
+### 4. Debug Mode
+
+Enable debug output to see exactly what's happening with certificate loading:
+
+```bash
+MORPHEUS_TLS_DEBUG=1 morpheus update
+```
+
+Debug output shows:
+- Whether the system certificate pool loaded successfully
+- Which certificate files were found and loaded
+- Which certificate paths were skipped (and why)
+- Total number of certificate bundles loaded
+- Warnings if no certificates could be loaded
+
+### 5. Better Error Messages
 
 When a certificate error occurs, the user now receives helpful guidance:
 
 ```
 ⚠️  TLS Certificate Error Detected
 
-This usually means CA certificates are not installed on your system.
+This usually means CA certificates are not installed properly.
 
-To fix this:
-  • On Termux/Android: pkg install ca-certificates
+🔍 First, run diagnostics:
+  morpheus diagnose-certs
+
+💡 To fix this:
+  • On Termux/Android: pkg install ca-certificates-java openssl
   • On Debian/Ubuntu: apt-get install ca-certificates
   • On Fedora/RHEL:   dnf install ca-certificates
   • On Alpine:        apk add ca-certificates
 
-Alternatively (NOT RECOMMENDED), you can skip certificate verification:
+🐛 Debug mode:
+  MORPHEUS_TLS_DEBUG=1 morpheus update
+
+⚠️  Emergency bypass (NOT RECOMMENDED):
   MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update
 ```
 
-### 4. Emergency Bypass Option
+### 6. Emergency Bypass Option
 
 For systems where installing CA certificates is not possible, users can bypass TLS verification (not recommended for security reasons):
 
@@ -71,16 +140,33 @@ For systems where installing CA certificates is not possible, users can bypass T
 MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update
 ```
 
-**Warning**: This disables certificate verification and should only be used as a last resort.
+**Warning**: This disables certificate verification and should only be used as a last resort. A warning message is displayed when this option is used.
 
 ## How to Fix Certificate Errors
 
-### Recommended Solution: Install CA Certificates
+### Step 1: Diagnose the Issue
+
+First, run the built-in diagnostics tool:
+
+```bash
+morpheus diagnose-certs
+```
+
+This will check:
+- System certificate pool status
+- Available certificate file locations
+- TLS connectivity to GitHub
+- Provide specific recommendations for your system
+
+### Step 2: Install CA Certificates
 
 #### Termux/Android
 ```bash
-pkg install ca-certificates
+pkg update
+pkg install ca-certificates-java openssl
 ```
+
+**Note**: On Termux, you may need both `ca-certificates-java` and `openssl` packages for proper TLS support.
 
 #### Debian/Ubuntu
 ```bash
@@ -102,6 +188,19 @@ apk add ca-certificates
 ```bash
 sudo pacman -S ca-certificates
 ```
+
+### Step 3: Debug Mode (if issues persist)
+
+If you're still having issues after installing certificates, enable debug mode to see what's happening:
+
+```bash
+MORPHEUS_TLS_DEBUG=1 morpheus update
+```
+
+This will show:
+- Which certificate bundles are being loaded
+- Where the certificates are being found
+- Any errors encountered while loading certificates
 
 ### Alternative: Use Environment Variable for Custom Certificates
 
@@ -141,19 +240,41 @@ go test ./pkg/updater/... -v
 
 1. **pkg/updater/updater.go**:
    - Added `crypto/tls` and `crypto/x509` imports
-   - Created `createTLSConfig()` function
+   - Created `createTLSConfig()` function with:
+     - System certificate pool loading
+     - Multi-platform certificate path search using `$PREFIX` for Termux
+     - Debug mode support via `MORPHEUS_TLS_DEBUG` environment variable
+     - Warning when no certificates are found
+     - Support for `MORPHEUS_SKIP_TLS_VERIFY` environment variable
    - Updated `createHTTPClient()` to use the new TLS configuration
-   - Added support for `MORPHEUS_SKIP_TLS_VERIFY` environment variable
+   - Both Android/Termux and standard platforms now use proper TLS
 
 2. **cmd/morpheus/main.go**:
    - Added `strings` import
    - Enhanced error handling in `handleUpdate()` to detect certificate errors
-   - Added helpful guidance messages for certificate issues
+   - Updated error messages to suggest `diagnose-certs` command
+   - Improved Termux-specific installation instructions (ca-certificates-java, openssl)
+   - Added mention of debug mode
+   - Added `diagnose-certs` command handler
+   - Updated help text
 
-3. **pkg/updater/updater_test.go** (new file):
+3. **cmd/morpheus/diagnose-certs.go** (new file):
+   - Comprehensive certificate diagnostics tool
+   - Shows system information and environment variables
+   - Checks system certificate pool status
+   - Scans all known certificate locations
+   - Tests TLS connectivity to GitHub API
+   - Provides platform-specific recommendations
+
+4. **pkg/updater/updater_test.go** (new file):
    - Added tests for TLS configuration
    - Added tests for HTTP client creation
    - Added tests for the skip verification flag
+
+5. **docs/TLS_CERTIFICATE_FIX.md** (new file):
+   - Comprehensive technical documentation
+   - Troubleshooting guide
+   - Platform-specific installation instructions
 
 ### Security Considerations
 
