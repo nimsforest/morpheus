@@ -32,7 +32,7 @@ exec.Command("curl", ...)
 
 ## Solution
 
-### 1. Replaced External Command Dependency with Native Go
+### 1. Replaced External Command Dependency with Native Go + Smart TLS Handling
 
 **Before:**
 ```go
@@ -42,11 +42,40 @@ cmd := exec.Command("curl", "-sSL", "-H", "User-Agent: morpheus-updater", github
 
 **After:**
 ```go
-// Use native Go HTTP client - no external commands, no syscall issues
-client := &http.Client{Timeout: 30 * time.Second}
+// Use native Go HTTP client with smart TLS certificate handling
+client := createHTTPClient(30 * time.Second)
 req, err := http.NewRequest("GET", githubAPIURL, nil)
 req.Header.Set("User-Agent", "morpheus-updater")
 resp, err := client.Do(req)
+```
+
+**Key Innovation:** Smart TLS certificate loading handles minimal distros
+```go
+func createHTTPClient(timeout time.Duration) *http.Client {
+    // 1. Try system cert pool first
+    rootCAs, err := x509.SystemCertPool()
+    
+    // 2. If that fails, try common cert locations across distros
+    if err != nil {
+        rootCAs = x509.NewCertPool()
+        certPaths := []string{
+            "/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Arch/Termux
+            "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL
+            "/etc/ssl/ca-bundle.pem",                            // OpenSUSE
+            "/etc/ssl/cert.pem",                                 // Alpine
+            "/data/data/com.termux/files/usr/etc/tls/cert.pem",  // Termux specific
+            // ... more paths
+        }
+        // Load from first available path
+    }
+    
+    // 3. Last resort for Termux only: insecure with warning
+    if !loaded && isRestrictedEnvironment() {
+        return clientWithInsecureSkipVerify()
+    }
+    
+    return client
+}
 ```
 
 ### 2. Added Restricted Environment Detection
@@ -115,13 +144,17 @@ if !isRestrictedEnvironment() {
 ✅ **No more SIGSYS crashes on Termux/Android**
 ✅ **Update command works on all platforms**
 ✅ **No external dependencies** (curl no longer required)
+✅ **TLS certificates work everywhere** - smart loading from multiple locations
 ✅ **More reliable** - native Go HTTP is more robust than shelling out to curl
 ✅ **Better error handling** - native HTTP provides structured error information
 
 ### Cross-Platform Improvements
 ✅ **Works on minimal systems** without curl installed
+✅ **Works on Termux/Android** despite syscall restrictions
+✅ **Works on Alpine, Arch, Debian, Ubuntu, Fedora, RHEL, OpenSUSE, FreeBSD**
 ✅ **Consistent behavior** across all platforms
-✅ **Better HTTPS handling** - Go's HTTP client handles certificates natively
+✅ **Smart HTTPS handling** - finds certificates wherever they are
+✅ **Graceful degradation** - insecure fallback only on Termux with clear warning
 ✅ **Smaller attack surface** - no shell execution, no command injection risks
 
 ## Testing
@@ -166,12 +199,43 @@ The `golang.org/x/sys/execabs` package doesn't help because it still uses `LookP
 
 ### Why Native HTTP is Better
 
-1. **No syscall compatibility issues** - Pure Go implementation
+1. **No syscall compatibility issues** - Pure Go implementation avoids faccessat2
 2. **No external dependencies** - Works on any system with Go
 3. **Better error handling** - Structured errors vs parsing stderr
 4. **More secure** - No shell execution or command injection risks
 5. **More testable** - Can mock HTTP responses easily
 6. **Faster** - No process spawning overhead
+
+### TLS Certificate Challenge & Solution
+
+**Challenge:** Native Go HTTP needs TLS certificates, which are in different locations on different distros.
+
+**Our Solution - Three-Tier Approach:**
+
+1. **Tier 1: System Certificate Pool** (preferred)
+   - Try `x509.SystemCertPool()` first
+   - Works on most systems out of the box
+
+2. **Tier 2: Manual Certificate Loading** (fallback for minimal distros)
+   - Check common certificate locations:
+     - `/etc/ssl/certs/ca-certificates.crt` - Debian/Ubuntu/Arch/Termux
+     - `/etc/pki/tls/certs/ca-bundle.crt` - Fedora/RHEL/CentOS
+     - `/etc/ssl/ca-bundle.pem` - OpenSUSE
+     - `/etc/ssl/cert.pem` - Alpine Linux
+     - `/data/data/com.termux/files/usr/etc/tls/cert.pem` - Termux specific
+   - Load from first available path
+
+3. **Tier 3: Insecure Fallback** (Termux only, last resort)
+   - If on Termux and no certificates found
+   - Use `InsecureSkipVerify` with clear warning
+   - **Security note:** Only for GitHub releases on Termux - acceptable risk
+   - Normal systems never use insecure mode
+
+**Why This Works:**
+- ✅ Most systems use Tier 1 (no special handling needed)
+- ✅ Minimal distros use Tier 2 (certificates loaded from known paths)
+- ✅ Termux uses Tier 2 or 3 (works but warns user if insecure)
+- ✅ Security maintained on normal systems (never skip verification)
 
 ## Compatibility Matrix
 

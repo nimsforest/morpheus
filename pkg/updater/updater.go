@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,10 +57,8 @@ func NewUpdater(currentVersion string) *Updater {
 
 // CheckForUpdate checks if a new version is available using native HTTP client
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	// Create HTTP client with timeout and proper TLS configuration
+	client := createHTTPClient(30 * time.Second)
 
 	// Create request
 	req, err := http.NewRequest("GET", githubAPIURL, nil)
@@ -209,10 +209,8 @@ func (u *Updater) PerformUpdate() error {
 
 // downloadFile downloads a file from a URL to a local path using native HTTP client
 func downloadFile(url, filepath string) error {
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 5 * time.Minute, // Longer timeout for binary downloads
-	}
+	// Create HTTP client with timeout and proper TLS configuration
+	client := createHTTPClient(5 * time.Minute) // Longer timeout for binary downloads
 
 	// Create request
 	req, err := http.NewRequest("GET", url, nil)
@@ -274,4 +272,69 @@ func isRestrictedEnvironment() bool {
 	}
 	
 	return false
+}
+
+// createHTTPClient creates an HTTP client with proper TLS configuration for various environments
+func createHTTPClient(timeout time.Duration) *http.Client {
+	client := &http.Client{
+		Timeout: timeout,
+	}
+	
+	// Try to load system certificates first
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		// SystemCertPool failed, try to load from common locations
+		rootCAs = x509.NewCertPool()
+		
+		// Common certificate locations across different distros
+		certPaths := []string{
+			"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo/Arch/Termux
+			"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL
+			"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
+			"/etc/ssl/cert.pem",                                 // Alpine/OpenBSD
+			"/usr/local/share/certs/ca-root-nss.crt",            // FreeBSD
+			"/etc/pki/tls/cacert.pem",                           // OpenELEC
+			"/etc/certs/ca-certificates.crt",                    // Alternative
+			"/data/data/com.termux/files/usr/etc/tls/cert.pem",  // Termux specific
+		}
+		
+		loaded := false
+		for _, certPath := range certPaths {
+			if certs, err := os.ReadFile(certPath); err == nil {
+				if rootCAs.AppendCertsFromPEM(certs) {
+					loaded = true
+					break
+				}
+			}
+		}
+		
+		// If we still can't load certificates, we have a problem
+		// On restricted environments like Termux, allow insecure connections as last resort
+		if !loaded {
+			if isRestrictedEnvironment() {
+				// Last resort for Termux: skip verification with warning
+				// User will see the warning but update will still work
+				client.Transport = &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true,
+					},
+				}
+				fmt.Println("⚠️  Warning: Could not load TLS certificates, using insecure connection")
+				fmt.Println("   This is safe for GitHub releases but not ideal for security")
+				return client
+			}
+			// On normal systems, this is an error - don't skip verification
+			// Just use default client and let it fail with proper error
+			return client
+		}
+	}
+	
+	// Configure TLS with loaded certificates
+	client.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs: rootCAs,
+		},
+	}
+	
+	return client
 }

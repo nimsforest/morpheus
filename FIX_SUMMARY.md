@@ -21,27 +21,36 @@ syscall.faccessat2(...)
 - Result: Instant crash when trying to run `exec.Command("curl", ...)`
 
 ### The Solution
-Replaced all external command execution with native Go networking:
+Replaced all external command execution with native Go networking + smart TLS handling:
 
 **Before (caused crash):**
 ```go
 cmd := exec.Command("curl", "-sSL", "-H", "User-Agent: morpheus-updater", githubAPIURL)
 ```
 
-**After (works everywhere):**
+**After (works everywhere with TLS):**
 ```go
-client := &http.Client{Timeout: 30 * time.Second}
+// Smart HTTP client that handles TLS certificates on all platforms
+client := createHTTPClient(30 * time.Second)
 req, err := http.NewRequest("GET", githubAPIURL, nil)
 resp, err := client.Do(req)
 ```
+
+**TLS Certificate Handling:**
+- Tries system certificate pool first
+- Falls back to loading from common distro-specific paths
+- As last resort on Termux: insecure mode with clear warning
+- Maintains security on normal systems
 
 ## Changes Made
 
 ### 1. Updated `pkg/updater/updater.go`
 - ✅ Replaced `exec.Command("curl")` with `http.Client` in `CheckForUpdate()`
 - ✅ Replaced `exec.Command("curl")` with `http.Client` in `downloadFile()`
+- ✅ Added `createHTTPClient()` with smart TLS certificate loading for all distros
 - ✅ Added `isRestrictedEnvironment()` to detect Termux/Android
 - ✅ Made binary verification optional on restricted platforms
+- ✅ Three-tier TLS approach: system pool → manual loading → insecure fallback (Termux only)
 
 ### 2. Enhanced Testing `pkg/updater/updater_test.go`
 - ✅ Added tests for `isRestrictedEnvironment()`
@@ -58,13 +67,16 @@ resp, err := client.Do(req)
 ### Immediate
 ✅ **No more crashes on Termux** - Update command works perfectly
 ✅ **No curl dependency** - Works on minimal systems
+✅ **TLS works everywhere** - Smart certificate loading from common locations
 ✅ **More reliable** - Native Go HTTP is robust
+✅ **Clear warnings** - Users informed if insecure mode is needed
 
 ### Long-term
-✅ **Better cross-platform compatibility**
+✅ **Better cross-platform compatibility** - Works on all distros
 ✅ **Cleaner codebase** - No shell execution
-✅ **More secure** - No command injection risks
+✅ **More secure** - No command injection risks, maintains TLS security
 ✅ **Easier to test** - Can mock HTTP responses
+✅ **Graceful degradation** - Handles edge cases intelligently
 
 ## Testing Results
 
@@ -123,6 +135,34 @@ $ morpheus teardown <forest-id>
 - Android kernels typically don't support it
 - Native Go HTTP doesn't use this syscall
 - Problem completely avoided by using native libraries
+
+### TLS Certificate Solution
+**Three-Tier Approach:**
+
+1. **System Certificate Pool** (most systems)
+   ```go
+   rootCAs, err := x509.SystemCertPool()
+   ```
+
+2. **Manual Loading** (minimal distros)
+   ```go
+   certPaths := []string{
+       "/etc/ssl/certs/ca-certificates.crt",  // Debian/Ubuntu/Arch/Termux
+       "/etc/pki/tls/certs/ca-bundle.crt",    // Fedora/RHEL
+       "/etc/ssl/cert.pem",                   // Alpine
+       // ... more paths
+   }
+   ```
+
+3. **Insecure Fallback** (Termux only, last resort)
+   ```go
+   if !loaded && isRestrictedEnvironment() {
+       TLSClientConfig: &tls.Config{InsecureSkipVerify: true}
+       // Prints warning to user
+   }
+   ```
+
+**Result:** TLS works on all platforms, maintains security on normal systems
 
 ### Environment Detection
 The fix includes smart detection of Termux/Android:

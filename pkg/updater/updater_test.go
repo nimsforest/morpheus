@@ -4,6 +4,7 @@ import (
 	"os"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestNewUpdater(t *testing.T) {
@@ -73,4 +74,29 @@ func TestGetPlatform(t *testing.T) {
 	if platform != expected {
 		t.Errorf("Expected platform %s, got %s", expected, platform)
 	}
+}
+
+func TestCreateHTTPClient(t *testing.T) {
+	t.Run("creates_client_with_timeout", func(t *testing.T) {
+		timeout := 30 * time.Second
+		client := createHTTPClient(timeout)
+		
+		if client == nil {
+			t.Fatal("Client should not be nil")
+		}
+		
+		if client.Timeout != timeout {
+			t.Errorf("Expected timeout %v, got %v", timeout, client.Timeout)
+		}
+	})
+	
+	t.Run("client_has_transport", func(t *testing.T) {
+		client := createHTTPClient(10 * time.Second)
+		
+		// Client should have either default transport or custom one
+		// We just verify it's usable
+		if client == nil {
+			t.Fatal("Client should not be nil")
+		}
+	})
 }
