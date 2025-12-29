@@ -1,27 +1,20 @@
 package updater
 
 import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/nimsforest/morpheus/pkg/updater/version"
 )
 
 const (
 	githubAPIURL = "https://api.github.com/repos/nimsforest/morpheus/releases/latest"
-	timeout      = 10 * time.Second
 )
 
 // GitHubRelease represents the GitHub API response for a release
@@ -48,166 +41,31 @@ type UpdateInfo struct {
 // Updater handles version checking and updates
 type Updater struct {
 	currentVersion string
-	client         *http.Client
 }
 
 // NewUpdater creates a new Updater instance
 func NewUpdater(currentVersion string) *Updater {
 	return &Updater{
 		currentVersion: currentVersion,
-		client:         createHTTPClient(),
 	}
 }
 
-// createHTTPClient creates an HTTP client with custom DNS resolver for Termux/Android
-// and proper TLS configuration
-func createHTTPClient() *http.Client {
-	// Check if we're running on Android/Termux by looking for common indicators
-	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
-	
-	// Create TLS configuration with system CA certificates
-	tlsConfig := createTLSConfig()
-	
-	// On Android/Termux, use a custom DNS resolver to bypass broken system DNS
-	if isAndroid {
-		// Create a custom dialer with Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
-		dialer := &net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}
-		
-		// Custom resolver that uses public DNS servers
-		resolver := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				// Use Google DNS (8.8.8.8:53) and Cloudflare DNS (1.1.1.1:53) as fallback
-				d := net.Dialer{
-					Timeout: 10 * time.Second,
-				}
-				
-				// Try Google DNS first
-				conn, err := d.DialContext(ctx, "udp", "8.8.8.8:53")
-				if err != nil {
-					// Fallback to Cloudflare DNS
-					conn, err = d.DialContext(ctx, "udp", "1.1.1.1:53")
-				}
-				return conn, err
-			},
-		}
-		
-		// Create custom transport with the custom resolver and TLS config
-		transport := &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				// Resolve the hostname using our custom resolver
-				host, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
-				
-				ips, err := resolver.LookupIPAddr(ctx, host)
-				if err != nil {
-					return nil, err
-				}
-				
-				if len(ips) == 0 {
-					return nil, fmt.Errorf("no IP addresses found for %s", host)
-				}
-				
-				// Use the first IP address
-				resolvedAddr := net.JoinHostPort(ips[0].String(), port)
-				return dialer.DialContext(ctx, network, resolvedAddr)
-			},
-			TLSClientConfig:       tlsConfig,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
-		
-		return &http.Client{
-			Timeout:   timeout,
-			Transport: transport,
-		}
-	}
-	
-	// For other platforms, use the default HTTP client with TLS config
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}
-}
 
-// createTLSConfig creates a TLS configuration with system CA certificates
-func createTLSConfig() *tls.Config {
-	// Check if user wants to skip TLS verification (not recommended, but useful for debugging)
-	if os.Getenv("MORPHEUS_SKIP_TLS_VERIFY") == "1" {
-		fmt.Fprintln(os.Stderr, "⚠️  WARNING: TLS certificate verification is disabled (MORPHEUS_SKIP_TLS_VERIFY=1)")
-		return &tls.Config{InsecureSkipVerify: true}
-	}
-	
-	// Try to load system CA certificates
-	certPool, err := x509.SystemCertPool()
-	if err != nil {
-		// If system cert pool fails, create a new one
-		certPool = x509.NewCertPool()
-	}
-	
-	// Try to load certificates from common locations (especially for Termux/Android)
-	certPaths := []string{
-		"/system/etc/security/cacerts",           // Android system certs
-		"/data/data/com.termux/files/usr/etc/tls/certs/ca-certificates.crt", // Termux
-		"/etc/ssl/certs/ca-certificates.crt",     // Debian/Ubuntu/Gentoo etc.
-		"/etc/pki/tls/certs/ca-bundle.crt",       // Fedora/RHEL
-		"/etc/ssl/ca-bundle.pem",                 // OpenSUSE
-		"/etc/ssl/cert.pem",                      // OpenBSD
-		"/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
-		"/etc/pki/tls/cacert.pem",                // OpenELEC
-		"/etc/certs/ca-certificates.crt",         // Solaris 11.2+
-		os.Getenv("SSL_CERT_FILE"),               // Custom cert file from env
-	}
-	
-	for _, certPath := range certPaths {
-		if certPath == "" {
-			continue
-		}
-		
-		if certData, err := os.ReadFile(certPath); err == nil {
-			certPool.AppendCertsFromPEM(certData)
-		}
-	}
-	
-	return &tls.Config{
-		RootCAs:    certPool,
-		MinVersion: tls.VersionTLS12,
-	}
-}
-
-// CheckForUpdate checks if a new version is available
+// CheckForUpdate checks if a new version is available using curl
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
-	req, err := http.NewRequest("GET", githubAPIURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
+	// Use curl to fetch the GitHub API (works out of the box on minimal distros)
+	cmd := exec.Command("curl", "-sSL", "-H", "User-Agent: morpheus-updater", githubAPIURL)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	// Set user agent to avoid rate limiting
-	req.Header.Set("User-Agent", "morpheus-updater")
-
-	resp, err := u.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for updates: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitHub API returned status %d: %s", resp.StatusCode, string(body))
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to check for updates (curl error): %w\nStderr: %s", err, stderr.String())
 	}
 
 	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(stdout.Bytes(), &release); err != nil {
+		return nil, fmt.Errorf("failed to parse GitHub API response: %w", err)
 	}
 
 	// Remove 'v' prefix if present
@@ -324,35 +182,15 @@ func (u *Updater) PerformUpdate() error {
 	return nil
 }
 
-// downloadFile downloads a file from a URL to a local path
+// downloadFile downloads a file from a URL to a local path using curl
 func downloadFile(url, filepath string) error {
-	// Create the file
-	out, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
+	// Use curl to download the file (works out of the box on minimal distros)
+	cmd := exec.Command("curl", "-sSL", "-o", filepath, url)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
-	// Create HTTP client with timeout and custom DNS resolver for Termux
-	client := createHTTPClient()
-	client.Timeout = 5 * time.Minute // Binary downloads may take a while
-
-	// Get the data
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	// Writer the body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to download file (curl error): %w\nStderr: %s", err, stderr.String())
 	}
 
 	return nil
