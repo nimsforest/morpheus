@@ -176,21 +176,12 @@ infrastructure:
   - Replaced file copy with atomic rename operation for binary updates
   - Removed write permission check that was opening the running executable
   - Update process now works correctly even while morpheus is running
-- Fixed DNS resolution failure on Termux/Android when checking for updates
-  - Added custom DNS resolver using Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
-  - Bypasses broken system DNS that tries to use localhost ([::1]:53)
-  - Automatically detects Termux/Android environment via runtime.GOOS or environment variables
-  - Applies custom resolver to both update checks and binary downloads
-  - Non-Termux platforms continue to use standard DNS resolution
-- Fixed TLS certificate verification failure when checking for updates
-  - Added proper TLS configuration with system CA certificate loading
-  - Searches for CA certificates in platform-specific locations (Termux, Debian, Fedora, Alpine, etc.)
-  - Added support for custom certificate paths via SSL_CERT_FILE environment variable
-  - Provides helpful error messages with installation instructions when certificates are missing
-  - Added MORPHEUS_SKIP_TLS_VERIFY=1 emergency bypass option (not recommended)
-  - Enforces TLS 1.2 as minimum version for security
-  - Comprehensive test coverage for TLS configuration
-  - See docs/TLS_CERTIFICATE_FIX.md for detailed documentation
+- Simplified GitHub API access by using curl instead of Go HTTP client
+  - Replaced complex TLS certificate handling with curl (works out of the box)
+  - Removed custom DNS resolver code (no longer needed with curl)
+  - Eliminated certificate verification issues on minimal distros (Arch, Termux, Alpine)
+  - Reduced code complexity and dependencies
+  - curl is available by default on virtually all Unix-like systems
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility
