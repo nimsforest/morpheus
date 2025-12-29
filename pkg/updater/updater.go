@@ -1,11 +1,13 @@
 package updater
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -274,11 +276,80 @@ func isRestrictedEnvironment() bool {
 	return false
 }
 
-// createHTTPClient creates an HTTP client with proper TLS configuration for various environments
+// createCustomDialer creates a custom dialer with DNS resolver fallback for Termux/minimal distros
+func createCustomDialer() func(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Check if we need custom DNS (Termux/Android/minimal distros)
+	needsCustomDNS := isRestrictedEnvironment()
+	
+	// Base dialer
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	
+	if !needsCustomDNS {
+		// Use standard dialer for normal environments
+		return dialer.DialContext
+	}
+	
+	// Custom resolver using public DNS servers (Google 8.8.8.8, Cloudflare 1.1.1.1)
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 10 * time.Second}
+			// Try Google DNS first
+			conn, err := d.DialContext(ctx, "udp", "8.8.8.8:53")
+			if err != nil {
+				// Fallback to Cloudflare DNS
+				conn, err = d.DialContext(ctx, "udp", "1.1.1.1:53")
+			}
+			if err != nil {
+				// Last fallback to Quad9
+				conn, err = d.DialContext(ctx, "udp", "9.9.9.9:53")
+			}
+			return conn, err
+		},
+	}
+	
+	// Return custom dial function that uses the custom resolver
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Resolve hostname using custom resolver
+		ips, err := resolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("DNS lookup failed for %s: %w", host, err)
+		}
+		
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no IP addresses found for %s", host)
+		}
+		
+		// Try each resolved IP
+		var lastErr error
+		for _, ip := range ips {
+			resolvedAddr := net.JoinHostPort(ip.String(), port)
+			conn, err := dialer.DialContext(ctx, network, resolvedAddr)
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
+}
+
+// createHTTPClient creates an HTTP client with proper TLS configuration and DNS resolver for various environments
 func createHTTPClient(timeout time.Duration) *http.Client {
 	client := &http.Client{
 		Timeout: timeout,
 	}
+	
+	// Create custom dialer (handles DNS for Termux/minimal distros)
+	customDial := createCustomDialer()
 	
 	// Try to load system certificates first
 	rootCAs, err := x509.SystemCertPool()
@@ -315,6 +386,7 @@ func createHTTPClient(timeout time.Duration) *http.Client {
 				// Last resort for Termux: skip verification with warning
 				// User will see the warning but update will still work
 				client.Transport = &http.Transport{
+					DialContext: customDial,
 					TLSClientConfig: &tls.Config{
 						InsecureSkipVerify: true,
 					},
@@ -323,14 +395,17 @@ func createHTTPClient(timeout time.Duration) *http.Client {
 				fmt.Println("   This is safe for GitHub releases but not ideal for security")
 				return client
 			}
-			// On normal systems, this is an error - don't skip verification
-			// Just use default client and let it fail with proper error
+			// On normal systems, use custom dial but default TLS
+			client.Transport = &http.Transport{
+				DialContext: customDial,
+			}
 			return client
 		}
 	}
 	
-	// Configure TLS with loaded certificates
+	// Configure TLS with loaded certificates and custom dialer
 	client.Transport = &http.Transport{
+		DialContext: customDial,
 		TLSClientConfig: &tls.Config{
 			RootCAs: rootCAs,
 		},
