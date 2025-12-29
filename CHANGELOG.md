@@ -182,6 +182,15 @@ infrastructure:
   - Automatically detects Termux/Android environment via runtime.GOOS or environment variables
   - Applies custom resolver to both update checks and binary downloads
   - Non-Termux platforms continue to use standard DNS resolution
+- Fixed TLS certificate verification failure when checking for updates
+  - Added proper TLS configuration with system CA certificate loading
+  - Searches for CA certificates in platform-specific locations (Termux, Debian, Fedora, Alpine, etc.)
+  - Added support for custom certificate paths via SSL_CERT_FILE environment variable
+  - Provides helpful error messages with installation instructions when certificates are missing
+  - Added MORPHEUS_SKIP_TLS_VERIFY=1 emergency bypass option (not recommended)
+  - Enforces TLS 1.2 as minimum version for security
+  - Comprehensive test coverage for TLS configuration
+  - See docs/TLS_CERTIFICATE_FIX.md for detailed documentation
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility
