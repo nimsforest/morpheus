@@ -1,14 +1,16 @@
 package updater
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/nimsforest/morpheus/pkg/updater/version"
 )
@@ -51,20 +53,39 @@ func NewUpdater(currentVersion string) *Updater {
 }
 
 
-// CheckForUpdate checks if a new version is available using curl
+// CheckForUpdate checks if a new version is available using native HTTP client
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
-	// Use curl to fetch the GitHub API (works out of the box on minimal distros)
-	cmd := exec.Command("curl", "-sSL", "-H", "User-Agent: morpheus-updater", githubAPIURL)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to check for updates (curl error): %w\nStderr: %s", err, stderr.String())
+	// Create request
+	req, err := http.NewRequest("GET", githubAPIURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "morpheus-updater")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check for updates: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	// Read response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var release GitHubRelease
-	if err := json.Unmarshal(stdout.Bytes(), &release); err != nil {
+	if err := json.Unmarshal(body, &release); err != nil {
 		return nil, fmt.Errorf("failed to parse GitHub API response: %w", err)
 	}
 
@@ -142,12 +163,16 @@ func (u *Updater) PerformUpdate() error {
 		return fmt.Errorf("failed to make executable: %w", err)
 	}
 
-	// Verify the binary works
+	// Verify the binary works (skip verification on platforms where exec may fail)
 	fmt.Println("🔍 Verifying downloaded binary...")
-	verifyCmd := exec.Command(tmpFile, "version")
-	if output, err := verifyCmd.CombinedOutput(); err != nil {
-		os.Remove(tmpFile)
-		return fmt.Errorf("downloaded binary verification failed: %w\nOutput: %s", err, string(output))
+	if !isRestrictedEnvironment() {
+		verifyCmd := exec.Command(tmpFile, "version")
+		if output, err := verifyCmd.CombinedOutput(); err != nil {
+			os.Remove(tmpFile)
+			return fmt.Errorf("downloaded binary verification failed: %w\nOutput: %s", err, string(output))
+		}
+	} else {
+		fmt.Println("⚠️  Skipping verification on restricted environment (Termux/Android)")
 	}
 
 	// Backup current version
@@ -182,15 +207,42 @@ func (u *Updater) PerformUpdate() error {
 	return nil
 }
 
-// downloadFile downloads a file from a URL to a local path using curl
+// downloadFile downloads a file from a URL to a local path using native HTTP client
 func downloadFile(url, filepath string) error {
-	// Use curl to download the file (works out of the box on minimal distros)
-	cmd := exec.Command("curl", "-sSL", "-o", filepath, url)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Minute, // Longer timeout for binary downloads
+	}
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to download file (curl error): %w\nStderr: %s", err, stderr.String())
+	// Create request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "morpheus-updater")
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	// Create output file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer out.Close()
+
+	// Copy data
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
 	}
 
 	return nil
@@ -199,4 +251,27 @@ func downloadFile(url, filepath string) error {
 // GetPlatform returns the current platform string
 func GetPlatform() string {
 	return fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// isRestrictedEnvironment detects if we're running in a restricted environment
+// like Termux/Android where certain syscalls may not be available
+func isRestrictedEnvironment() bool {
+	// Check for Termux environment
+	if os.Getenv("TERMUX_VERSION") != "" {
+		return true
+	}
+	
+	// Check if running on Android (Termux reports as linux but with android characteristics)
+	if runtime.GOOS == "linux" {
+		// Check for /system/bin/app_process which is Android-specific
+		if _, err := os.Stat("/system/bin/app_process"); err == nil {
+			return true
+		}
+		// Check for Termux directories
+		if _, err := os.Stat("/data/data/com.termux"); err == nil {
+			return true
+		}
+	}
+	
+	return false
 }

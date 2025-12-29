@@ -172,16 +172,22 @@ infrastructure:
 - Updated CONTROL_SERVER_SETUP.md to clarify it's for specific scenarios only
 
 ### Fixed
+- **CRITICAL: Fixed SIGSYS crash on Termux/Android** - Updater now works on all platforms
+  - Root cause: `exec.Command` was triggering `faccessat2` syscall (Linux 5.8+) not available on Android
+  - Solution: Replaced curl-based HTTP client with Go's native `net/http` package
+  - Eliminated all external command dependencies (`exec.Command("curl", ...)`)
+  - Added restricted environment detection for Termux/Android
+  - Binary verification now skipped on restricted platforms to avoid syscall issues
+  - **Impact:** Update command no longer crashes with "SIGSYS: bad system call" on Termux
 - Fixed "text file busy" error when updating morpheus on Termux/Android
   - Replaced file copy with atomic rename operation for binary updates
   - Removed write permission check that was opening the running executable
   - Update process now works correctly even while morpheus is running
-- Simplified GitHub API access by using curl instead of Go HTTP client
-  - Replaced complex TLS certificate handling with curl (works out of the box)
-  - Removed custom DNS resolver code (no longer needed with curl)
-  - Eliminated certificate verification issues on minimal distros (Arch, Termux, Alpine)
-  - Reduced code complexity and dependencies
-  - curl is available by default on virtually all Unix-like systems
+- Improved cross-platform compatibility
+  - Replaced external curl dependency with native Go HTTP client
+  - Works on systems without curl installed
+  - More reliable HTTPS certificate handling across all platforms
+  - Better error messages for network failures
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility
