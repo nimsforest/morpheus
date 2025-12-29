@@ -18,9 +18,29 @@ The update checker was making HTTPS requests to GitHub's API without properly co
 
 ## Solution
 
-The fix includes several improvements to the HTTP client configuration:
+The fix includes several improvements to the HTTP client configuration, plus an automatic curl fallback for maximum reliability:
 
-### 1. Proper TLS Configuration
+### 1. Curl Fallback (New!)
+
+**The most important improvement**: If the Go HTTP client fails with a certificate error, morpheus will automatically try using `curl` as a fallback. This is especially useful on Termux/Android where curl typically has better TLS support.
+
+**How it works**:
+- HTTP client attempts the request first
+- If it fails with a certificate error, curl is tried automatically
+- If curl succeeds, the operation completes normally
+- No user intervention required!
+
+**Benefits**:
+- Works even when Go TLS configuration fails
+- Curl on Termux is usually well-configured out of the box
+- Seamless fallback - user doesn't need to do anything
+- Both update checking and binary downloads use curl fallback
+
+**Requirements**:
+- `curl` must be installed on the system
+- On Termux: `pkg install curl` (usually already installed)
+
+### 2. Proper TLS Configuration
 
 - Added `crypto/tls` and `crypto/x509` imports
 - Created `createTLSConfig()` function that:
@@ -29,7 +49,7 @@ The fix includes several improvements to the HTTP client configuration:
   - Supports custom certificate paths via `SSL_CERT_FILE` environment variable
   - Sets minimum TLS version to 1.2 for security
 
-### 2. Multi-Platform Certificate Support
+### 3. Multi-Platform Certificate Support
 
 The updater now searches for CA certificates in these locations:
 
@@ -52,7 +72,7 @@ The updater now searches for CA certificates in these locations:
 **Custom**:
 - Custom path from `$SSL_CERT_FILE` environment variable
 
-### 3. Certificate Diagnostics Command
+### 4. Certificate Diagnostics Command
 
 A new `diagnose-certs` command helps users troubleshoot certificate issues:
 
@@ -92,7 +112,7 @@ Testing TLS Connection to GitHub:
   ✓ Certificates appear to be installed
 ```
 
-### 4. Debug Mode
+### 5. Debug Mode
 
 Enable debug output to see exactly what's happening with certificate loading:
 
@@ -107,7 +127,7 @@ Debug output shows:
 - Total number of certificate bundles loaded
 - Warnings if no certificates could be loaded
 
-### 5. Better Error Messages
+### 6. Better Error Messages
 
 When a certificate error occurs, the user now receives helpful guidance:
 
@@ -132,7 +152,7 @@ This usually means CA certificates are not installed properly.
   MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update
 ```
 
-### 6. Emergency Bypass Option
+### 7. Emergency Bypass Option
 
 For systems where installing CA certificates is not possible, users can bypass TLS verification (not recommended for security reasons):
 
@@ -239,6 +259,10 @@ go test ./pkg/updater/... -v
 ### Code Changes
 
 1. **pkg/updater/updater.go**:
+   - **NEW**: Added `checkForUpdateCurl()` - automatic curl fallback for update checking
+   - **NEW**: Added `downloadFileCurl()` - automatic curl fallback for binary downloads
+   - **NEW**: Modified `CheckForUpdate()` to try HTTP first, then curl on certificate errors
+   - **NEW**: Modified `downloadFile()` to try HTTP first, then curl on certificate errors
    - Added `crypto/tls` and `crypto/x509` imports
    - Created `createTLSConfig()` function with:
      - System certificate pool loading
@@ -248,6 +272,7 @@ go test ./pkg/updater/... -v
      - Support for `MORPHEUS_SKIP_TLS_VERIFY` environment variable
    - Updated `createHTTPClient()` to use the new TLS configuration
    - Both Android/Termux and standard platforms now use proper TLS
+   - Refactored into `checkForUpdateHTTP()` and `parseReleaseInfo()` helper functions
 
 2. **cmd/morpheus/main.go**:
    - Added `strings` import

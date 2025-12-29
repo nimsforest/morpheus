@@ -226,6 +226,32 @@ func createTLSConfig() *tls.Config {
 
 // CheckForUpdate checks if a new version is available
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
+	// Try using HTTP client first
+	info, err := u.checkForUpdateHTTP()
+	
+	// If HTTP fails with a certificate error, try curl as fallback
+	if err != nil && (strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509")) {
+		if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+			fmt.Fprintln(os.Stderr, "⚠️  HTTP client failed with certificate error, trying curl fallback...")
+		}
+		
+		curlInfo, curlErr := u.checkForUpdateCurl()
+		if curlErr == nil {
+			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+				fmt.Fprintln(os.Stderr, "✓ Successfully fetched update info via curl")
+			}
+			return curlInfo, nil
+		}
+		
+		// If curl also fails, return the original HTTP error with additional context
+		return nil, fmt.Errorf("%w (curl fallback also failed: %v)", err, curlErr)
+	}
+	
+	return info, err
+}
+
+// checkForUpdateHTTP checks for updates using the HTTP client
+func (u *Updater) checkForUpdateHTTP() (*UpdateInfo, error) {
 	req, err := http.NewRequest("GET", githubAPIURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -250,19 +276,52 @@ func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
+	return u.parseReleaseInfo(&release), nil
+}
+
+// checkForUpdateCurl checks for updates using curl as a fallback
+func (u *Updater) checkForUpdateCurl() (*UpdateInfo, error) {
+	// Check if curl is available
+	curlPath, err := exec.LookPath("curl")
+	if err != nil {
+		return nil, fmt.Errorf("curl not found: %w", err)
+	}
+
+	// Execute curl command
+	cmd := exec.Command(curlPath,
+		"-s",                              // Silent mode
+		"-L",                              // Follow redirects
+		"-H", "User-Agent: morpheus-updater", // Set user agent
+		githubAPIURL,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("curl command failed: %w", err)
+	}
+
+	// Parse JSON response
+	var release GitHubRelease
+	if err := json.Unmarshal(output, &release); err != nil {
+		return nil, fmt.Errorf("failed to parse curl response: %w", err)
+	}
+
+	return u.parseReleaseInfo(&release), nil
+}
+
+// parseReleaseInfo converts a GitHubRelease to UpdateInfo
+func (u *Updater) parseReleaseInfo(release *GitHubRelease) *UpdateInfo {
 	// Remove 'v' prefix if present
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 	currentVersion := strings.TrimPrefix(u.currentVersion, "v")
 
-	info := &UpdateInfo{
+	return &UpdateInfo{
 		CurrentVersion: currentVersion,
 		LatestVersion:  latestVersion,
 		UpdateURL:      release.HTMLURL,
 		ReleaseNotes:   release.Body,
 		Available:      version.Compare(latestVersion, currentVersion) > 0,
 	}
-
-	return info, nil
 }
 
 // PerformUpdate downloads and installs the latest version
@@ -366,6 +425,32 @@ func (u *Updater) PerformUpdate() error {
 
 // downloadFile downloads a file from a URL to a local path
 func downloadFile(url, filepath string) error {
+	// Try HTTP client first
+	err := downloadFileHTTP(url, filepath)
+	
+	// If HTTP fails with a certificate error, try curl as fallback
+	if err != nil && (strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509")) {
+		if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+			fmt.Fprintf(os.Stderr, "⚠️  HTTP download failed with certificate error, trying curl fallback...\n")
+		}
+		
+		curlErr := downloadFileCurl(url, filepath)
+		if curlErr == nil {
+			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+				fmt.Fprintf(os.Stderr, "✓ Successfully downloaded binary via curl\n")
+			}
+			return nil
+		}
+		
+		// If curl also fails, return the original HTTP error
+		return fmt.Errorf("%w (curl fallback also failed: %v)", err, curlErr)
+	}
+	
+	return err
+}
+
+// downloadFileHTTP downloads a file using the HTTP client
+func downloadFileHTTP(url, filepath string) error {
 	// Create the file
 	out, err := os.Create(filepath)
 	if err != nil {
@@ -389,10 +474,43 @@ func downloadFile(url, filepath string) error {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Writer the body to file
+	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// downloadFileCurl downloads a file using curl as a fallback
+func downloadFileCurl(url, filepath string) error {
+	// Check if curl is available
+	curlPath, err := exec.LookPath("curl")
+	if err != nil {
+		return fmt.Errorf("curl not found: %w", err)
+	}
+
+	// Execute curl command to download file
+	cmd := exec.Command(curlPath,
+		"-s",           // Silent mode
+		"-L",           // Follow redirects
+		"-o", filepath, // Output to file
+		url,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("curl download failed: %w", err)
+	}
+
+	// Verify file was created and is not empty
+	info, err := os.Stat(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to verify downloaded file: %w", err)
+	}
+	if info.Size() == 0 {
+		os.Remove(filepath)
+		return fmt.Errorf("downloaded file is empty")
 	}
 
 	return nil

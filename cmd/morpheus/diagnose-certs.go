@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // This file provides certificate diagnostics for debugging TLS issues
@@ -119,24 +121,57 @@ func handleDiagnoseCerts() {
 		fmt.Printf("     ✓ Success (status: %s)\n", resp.Status)
 	}
 	
+	// Test with curl (if available)
+	fmt.Println("  3. Using curl command (fallback)...")
+	curlPath, curlErr := exec.LookPath("curl")
+	if curlErr != nil {
+		fmt.Printf("     ⚠️  curl not found: %v\n", curlErr)
+	} else {
+		cmd := exec.Command(curlPath, "-s", "-I", "-L", testURL)
+		output, curlErr := cmd.CombinedOutput()
+		if curlErr != nil {
+			fmt.Printf("     ❌ Failed: %v\n", curlErr)
+		} else {
+			// Check if we got a 200 OK response
+			if strings.Contains(string(output), "200 OK") || strings.Contains(string(output), "HTTP/2 200") {
+				fmt.Printf("     ✓ Success (curl is available and working)\n")
+			} else {
+				fmt.Printf("     ⚠️  Unexpected response\n")
+			}
+		}
+	}
+	
 	fmt.Println("\n📋 Recommendations:")
+	
+	// Check if curl is available for fallback
+	_, curlAvailable := exec.LookPath("curl")
 	
 	if foundCerts == 0 {
 		fmt.Println("  ⚠️  No CA certificates found!")
 		fmt.Println("  Install certificates:")
 		if runtime.GOOS == "android" || os.Getenv("TERMUX_VERSION") != "" {
 			fmt.Println("    pkg update")
-			fmt.Println("    pkg install ca-certificates-java")
-			fmt.Println("    pkg install openssl")
+			fmt.Println("    pkg install ca-certificates-java openssl")
+			if curlAvailable != nil {
+				fmt.Println("    pkg install curl")
+			}
 		} else {
 			fmt.Println("    • Debian/Ubuntu: apt-get install ca-certificates")
 			fmt.Println("    • Fedora/RHEL: dnf install ca-certificates")
 			fmt.Println("    • Alpine: apk add ca-certificates")
+			if curlAvailable != nil {
+				fmt.Println("    • Install curl for fallback support")
+			}
 		}
 	} else {
 		fmt.Println("  ✓ Certificates appear to be installed")
 		if err != nil {
 			fmt.Println("  ⚠️  But TLS connection still failed")
+			if curlAvailable == nil {
+				fmt.Println("  ✓ curl is available and will be used as fallback")
+			} else {
+				fmt.Println("  ⚠️  curl is not installed (install for fallback support)")
+			}
 			fmt.Println("  Try:")
 			fmt.Println("    MORPHEUS_TLS_DEBUG=1 morpheus update")
 		}
