@@ -2,8 +2,6 @@ package updater
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,14 +57,10 @@ func NewUpdater(currentVersion string) *Updater {
 	}
 }
 
-// createHTTPClient creates an HTTP client with custom DNS resolver for Termux/Android
-// and proper TLS configuration
+// createHTTPClient creates an HTTP client with custom DNS resolver for Android/Termux
 func createHTTPClient() *http.Client {
 	// Check if we're running on Android/Termux by looking for common indicators
 	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
-	
-	// Create TLS configuration with system CA certificates
-	tlsConfig := createTLSConfig()
 	
 	// On Android/Termux, use a custom DNS resolver to bypass broken system DNS
 	if isAndroid {
@@ -95,7 +89,7 @@ func createHTTPClient() *http.Client {
 			},
 		}
 		
-		// Create custom transport with the custom resolver and TLS config
+		// Create custom transport with the custom resolver
 		transport := &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				// Resolve the hostname using our custom resolver
@@ -117,7 +111,6 @@ func createHTTPClient() *http.Client {
 				resolvedAddr := net.JoinHostPort(ips[0].String(), port)
 				return dialer.DialContext(ctx, network, resolvedAddr)
 			},
-			TLSClientConfig:       tlsConfig,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
@@ -130,127 +123,28 @@ func createHTTPClient() *http.Client {
 		}
 	}
 	
-	// For other platforms, use the default HTTP client with TLS config
+	// For other platforms, use the default HTTP client
 	return &http.Client{
 		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}
-}
-
-// createTLSConfig creates a TLS configuration with system CA certificates
-func createTLSConfig() *tls.Config {
-	// Check if user wants to skip TLS verification (not recommended, but useful for debugging)
-	if os.Getenv("MORPHEUS_SKIP_TLS_VERIFY") == "1" {
-		fmt.Fprintln(os.Stderr, "⚠️  WARNING: TLS certificate verification is disabled (MORPHEUS_SKIP_TLS_VERIFY=1)")
-		return &tls.Config{InsecureSkipVerify: true}
-	}
-	
-	// Enable debug mode if requested
-	debugMode := os.Getenv("MORPHEUS_TLS_DEBUG") == "1"
-	
-	// Try to load system CA certificates
-	certPool, err := x509.SystemCertPool()
-	if err != nil {
-		if debugMode {
-			fmt.Fprintf(os.Stderr, "⚠️  Failed to load system cert pool: %v\n", err)
-		}
-		// If system cert pool fails, create a new one
-		certPool = x509.NewCertPool()
-	} else if debugMode {
-		fmt.Fprintln(os.Stderr, "✓ Loaded system certificate pool")
-	}
-	
-	// Get Termux PREFIX if available
-	termuxPrefix := os.Getenv("PREFIX")
-	if termuxPrefix == "" {
-		termuxPrefix = "/data/data/com.termux/files/usr"
-	}
-	
-	// Try to load certificates from common locations (especially for Termux/Android)
-	certPaths := []string{
-		// Termux paths (try PREFIX-based paths first)
-		filepath.Join(termuxPrefix, "etc/tls/certs/ca-certificates.crt"),
-		filepath.Join(termuxPrefix, "etc/tls/cert.pem"),
-		filepath.Join(termuxPrefix, "etc/ssl/certs/ca-certificates.crt"),
-		filepath.Join(termuxPrefix, "etc/ssl/cert.pem"),
-		// Android system certs
-		"/system/etc/security/cacerts",
-		// Standard Linux paths
-		"/etc/ssl/certs/ca-certificates.crt",     // Debian/Ubuntu/Gentoo etc.
-		"/etc/pki/tls/certs/ca-bundle.crt",       // Fedora/RHEL
-		"/etc/ssl/ca-bundle.pem",                 // OpenSUSE
-		"/etc/ssl/cert.pem",                      // OpenBSD
-		"/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
-		"/etc/pki/tls/cacert.pem",                // OpenELEC
-		"/etc/certs/ca-certificates.crt",         // Solaris 11.2+
-		os.Getenv("SSL_CERT_FILE"),               // Custom cert file from env
-	}
-	
-	certsLoaded := 0
-	for _, certPath := range certPaths {
-		if certPath == "" {
-			continue
-		}
-		
-		if certData, err := os.ReadFile(certPath); err == nil {
-			if certPool.AppendCertsFromPEM(certData) {
-				certsLoaded++
-				if debugMode {
-					fmt.Fprintf(os.Stderr, "✓ Loaded certificates from: %s\n", certPath)
-				}
-			}
-		} else if debugMode {
-			fmt.Fprintf(os.Stderr, "  Skipped %s: %v\n", certPath, err)
-		}
-	}
-	
-	if debugMode {
-		fmt.Fprintf(os.Stderr, "📊 Total certificate bundles loaded: %d\n", certsLoaded)
-	}
-	
-	if certsLoaded == 0 {
-		fmt.Fprintln(os.Stderr, "⚠️  WARNING: No CA certificates could be loaded!")
-		fmt.Fprintln(os.Stderr, "    This may cause certificate verification errors.")
-		fmt.Fprintln(os.Stderr, "    Install ca-certificates:")
-		fmt.Fprintln(os.Stderr, "      • Termux: pkg install ca-certificates-java ca-certificates")
-		fmt.Fprintln(os.Stderr, "      • Enable debug: MORPHEUS_TLS_DEBUG=1 morpheus update")
-	}
-	
-	return &tls.Config{
-		RootCAs:    certPool,
-		MinVersion: tls.VersionTLS12,
 	}
 }
 
 // CheckForUpdate checks if a new version is available
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
-	// On Android/Termux, use curl directly as it handles certificates better
+	// On Android/Termux, use curl
 	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
 	
 	if isAndroid {
 		// Check if curl is available
 		if _, err := exec.LookPath("curl"); err == nil {
-			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintln(os.Stderr, "🔧 Using curl for update check (Termux/Android)")
-			}
-			
-			info, err := u.checkForUpdateCurl()
-			if err == nil {
-				return info, nil
-			}
-			
-			// If curl fails, fall back to HTTP client
-			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "⚠️  curl failed: %v, trying HTTP client...\n", err)
-			}
-		} else if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-			fmt.Fprintln(os.Stderr, "⚠️  curl not found, using HTTP client")
+			return u.checkForUpdateCurl()
 		}
+		
+		// curl is required on Termux/Android
+		return nil, fmt.Errorf("curl is not installed. Install it with: pkg install curl")
 	}
 	
-	// Use HTTP client (for non-Android or if curl failed/not available)
+	// Use HTTP client on non-Android systems
 	return u.checkForUpdateHTTP()
 }
 
@@ -429,31 +323,20 @@ func (u *Updater) PerformUpdate() error {
 
 // downloadFile downloads a file from a URL to a local path
 func downloadFile(url, filepath string) error {
-	// On Android/Termux, use curl directly as it handles certificates better
+	// On Android/Termux, use curl
 	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
 	
 	if isAndroid {
 		// Check if curl is available
 		if _, err := exec.LookPath("curl"); err == nil {
-			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintln(os.Stderr, "🔧 Using curl for binary download (Termux/Android)")
-			}
-			
-			err := downloadFileCurl(url, filepath)
-			if err == nil {
-				return nil
-			}
-			
-			// If curl fails, fall back to HTTP client
-			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "⚠️  curl failed: %v, trying HTTP client...\n", err)
-			}
-		} else if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-			fmt.Fprintln(os.Stderr, "⚠️  curl not found, using HTTP client")
+			return downloadFileCurl(url, filepath)
 		}
+		
+		// curl is required on Termux/Android
+		return fmt.Errorf("curl is not installed. Install it with: pkg install curl")
 	}
 	
-	// Use HTTP client (for non-Android or if curl failed/not available)
+	// Use HTTP client on non-Android systems
 	return downloadFileHTTP(url, filepath)
 }
 

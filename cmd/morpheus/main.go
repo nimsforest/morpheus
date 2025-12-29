@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
@@ -327,26 +326,6 @@ func handleUpdate() {
 	info, err := u.CheckForUpdate()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %s\n", err)
-		
-		// Check if it's a certificate error and provide helpful guidance
-		if strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509") {
-			fmt.Fprintf(os.Stderr, "\n⚠️  TLS Certificate Error Detected\n")
-			fmt.Fprintf(os.Stderr, "\n🔍 First, run diagnostics:\n")
-			fmt.Fprintf(os.Stderr, "  morpheus diagnose-certs\n")
-			fmt.Fprintf(os.Stderr, "\n💡 Quick fix for Termux/Android:\n")
-			fmt.Fprintf(os.Stderr, "  pkg install curl\n")
-			fmt.Fprintf(os.Stderr, "  (Morpheus will use curl for HTTPS requests on Termux)\n")
-			fmt.Fprintf(os.Stderr, "\n📦 Or install CA certificates:\n")
-			fmt.Fprintf(os.Stderr, "  • On Termux/Android: pkg install ca-certificates-java openssl\n")
-			fmt.Fprintf(os.Stderr, "  • On Debian/Ubuntu: apt-get install ca-certificates\n")
-			fmt.Fprintf(os.Stderr, "  • On Fedora/RHEL:   dnf install ca-certificates\n")
-			fmt.Fprintf(os.Stderr, "  • On Alpine:        apk add ca-certificates\n")
-			fmt.Fprintf(os.Stderr, "\n🐛 Debug mode:\n")
-			fmt.Fprintf(os.Stderr, "  MORPHEUS_TLS_DEBUG=1 morpheus update\n")
-			fmt.Fprintf(os.Stderr, "\n⚠️  Emergency bypass (NOT RECOMMENDED):\n")
-			fmt.Fprintf(os.Stderr, "  MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update\n")
-		}
-		
 		fmt.Fprintf(os.Stderr, "\nYou can manually download the latest release from:\n")
 		fmt.Fprintf(os.Stderr, "  https://github.com/nimsforest/morpheus/releases/latest\n")
 		os.Exit(1)

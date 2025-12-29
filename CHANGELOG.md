@@ -182,20 +182,13 @@ infrastructure:
   - Automatically detects Termux/Android environment via runtime.GOOS or environment variables
   - Applies custom resolver to both update checks and binary downloads
   - Non-Termux platforms continue to use standard DNS resolution
-- Fixed TLS certificate verification failure when checking for updates
-  - Added proper TLS configuration with system CA certificate loading
-  - **NEW**: `morpheus diagnose-certs` command to troubleshoot certificate issues
-  - **NEW**: Debug mode via `MORPHEUS_TLS_DEBUG=1` shows detailed certificate loading info
-  - Searches for CA certificates in platform-specific locations using `$PREFIX` for Termux
-  - Improved Termux support: detects `$PREFIX` environment variable dynamically
-  - Added support for custom certificate paths via `SSL_CERT_FILE` environment variable
-  - Warns when no certificates can be loaded with platform-specific fix instructions
-  - Provides helpful error messages suggesting diagnostics and proper package names
-  - Termux users should install: `pkg install ca-certificates-java openssl`
-  - Added `MORPHEUS_SKIP_TLS_VERIFY=1` emergency bypass option (not recommended, shows warning)
-  - Enforces TLS 1.2 as minimum version for security
-  - Comprehensive test coverage for TLS configuration
-  - See docs/TLS_CERTIFICATE_FIX.md for detailed documentation
+- Fixed update failures on Termux/Android
+  - Morpheus now uses `curl` for all HTTPS requests on Termux/Android
+  - **Termux users**: Simply run `pkg install curl` to enable updates
+  - Automatically detects Termux/Android environment
+  - Falls back to standard HTTP client on non-Android systems
+  - Clear error message if curl is not installed on Termux
+  - See TERMUX_UPDATE_FIX.md for details
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility
