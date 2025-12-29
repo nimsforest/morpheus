@@ -351,65 +351,114 @@ func createHTTPClient(timeout time.Duration) *http.Client {
 	// Create custom dialer (handles DNS for Termux/minimal distros)
 	customDial := createCustomDialer()
 	
-	// Try to load system certificates first
+	// For restricted environments (Termux/Android), be more aggressive with fallback
+	// because SystemCertPool often returns empty/broken pools without errors
+	if isRestrictedEnvironment() {
+		return createHTTPClientForRestrictedEnv(client, customDial)
+	}
+	
+	// For normal systems, try the standard approach
 	rootCAs, err := x509.SystemCertPool()
-	if err != nil {
-		// SystemCertPool failed, try to load from common locations
-		rootCAs = x509.NewCertPool()
-		
-		// Common certificate locations across different distros
-		certPaths := []string{
-			"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo/Arch/Termux
-			"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL
-			"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
-			"/etc/ssl/cert.pem",                                 // Alpine/OpenBSD
-			"/usr/local/share/certs/ca-root-nss.crt",            // FreeBSD
-			"/etc/pki/tls/cacert.pem",                           // OpenELEC
-			"/etc/certs/ca-certificates.crt",                    // Alternative
-			"/data/data/com.termux/files/usr/etc/tls/cert.pem",  // Termux specific
+	if err == nil && rootCAs != nil {
+		// System cert pool loaded successfully
+		client.Transport = &http.Transport{
+			DialContext: customDial,
+			TLSClientConfig: &tls.Config{
+				RootCAs: rootCAs,
+			},
 		}
-		
-		loaded := false
-		for _, certPath := range certPaths {
-			if certs, err := os.ReadFile(certPath); err == nil {
-				if rootCAs.AppendCertsFromPEM(certs) {
-					loaded = true
-					break
-				}
-			}
-		}
-		
-		// If we still can't load certificates, we have a problem
-		// On restricted environments like Termux, allow insecure connections as last resort
-		if !loaded {
-			if isRestrictedEnvironment() {
-				// Last resort for Termux: skip verification with warning
-				// User will see the warning but update will still work
-				client.Transport = &http.Transport{
-					DialContext: customDial,
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: true,
-					},
-				}
-				fmt.Println("⚠️  Warning: Could not load TLS certificates, using insecure connection")
-				fmt.Println("   This is safe for GitHub releases but not ideal for security")
-				return client
-			}
-			// On normal systems, use custom dial but default TLS
-			client.Transport = &http.Transport{
-				DialContext: customDial,
-			}
-			return client
+		return client
+	}
+	
+	// SystemCertPool failed, try manual loading from known paths
+	rootCAs = x509.NewCertPool()
+	certPaths := getCertPaths()
+	
+	for _, certPath := range certPaths {
+		if certs, err := os.ReadFile(certPath); err == nil {
+			rootCAs.AppendCertsFromPEM(certs)
 		}
 	}
 	
-	// Configure TLS with loaded certificates and custom dialer
 	client.Transport = &http.Transport{
 		DialContext: customDial,
 		TLSClientConfig: &tls.Config{
 			RootCAs: rootCAs,
 		},
 	}
-	
 	return client
+}
+
+// createHTTPClientForRestrictedEnv creates an HTTP client optimized for Termux/Android
+// where certificate handling is often problematic
+func createHTTPClientForRestrictedEnv(client *http.Client, customDial func(ctx context.Context, network, addr string) (net.Conn, error)) *http.Client {
+	// Try to load certificates from known Termux/Linux paths
+	rootCAs := x509.NewCertPool()
+	certPaths := getCertPaths()
+	
+	loaded := false
+	for _, certPath := range certPaths {
+		if certs, err := os.ReadFile(certPath); err == nil {
+			if rootCAs.AppendCertsFromPEM(certs) {
+				loaded = true
+			}
+		}
+	}
+	
+	// Also try system cert pool and merge
+	if sysCAs, err := x509.SystemCertPool(); err == nil && sysCAs != nil {
+		// We can't merge pools directly, but if system pool works, use it as base
+		// and our manually loaded certs as supplement
+		rootCAs = sysCAs
+		// Re-add manual certs to system pool
+		for _, certPath := range certPaths {
+			if certs, err := os.ReadFile(certPath); err == nil {
+				rootCAs.AppendCertsFromPEM(certs)
+				loaded = true
+			}
+		}
+	}
+	
+	if loaded {
+		// We loaded some certificates, try using them
+		client.Transport = &http.Transport{
+			DialContext: customDial,
+			TLSClientConfig: &tls.Config{
+				RootCAs: rootCAs,
+			},
+		}
+		return client
+	}
+	
+	// No certificates loaded - use insecure fallback with warning
+	// This is the last resort for Termux without ca-certificates installed
+	client.Transport = &http.Transport{
+		DialContext: customDial,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+	fmt.Println("⚠️  Warning: Could not load TLS certificates, using insecure connection")
+	fmt.Println("   To fix on Termux: pkg install ca-certificates")
+	return client
+}
+
+// getCertPaths returns common certificate file locations across different distros
+func getCertPaths() []string {
+	return []string{
+		// Termux-specific paths (check first for Termux)
+		"/data/data/com.termux/files/usr/etc/tls/cert.pem",
+		"/data/data/com.termux/files/usr/etc/ssl/certs/ca-certificates.crt",
+		// Standard Linux paths
+		"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo/Arch
+		"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL
+		"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
+		"/etc/ssl/cert.pem",                                 // Alpine/OpenBSD
+		"/usr/local/share/certs/ca-root-nss.crt",            // FreeBSD
+		"/etc/pki/tls/cacert.pem",                           // OpenELEC
+		"/etc/certs/ca-certificates.crt",                    // Alternative
+		// Additional paths
+		"/usr/share/ca-certificates/cacert.org/cacert.org_root.crt",
+		"/etc/ca-certificates/extracted/tls-ca-bundle.pem",  // Arch alternative
+	}
 }
