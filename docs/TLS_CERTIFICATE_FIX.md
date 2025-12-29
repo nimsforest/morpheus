@@ -20,25 +20,27 @@ The update checker was making HTTPS requests to GitHub's API without properly co
 
 The fix includes several improvements to the HTTP client configuration, plus an automatic curl fallback for maximum reliability:
 
-### 1. Curl Fallback (New!)
+### 1. Curl on Termux/Android (Primary Method)
 
-**The most important improvement**: If the Go HTTP client fails with a certificate error, morpheus will automatically try using `curl` as a fallback. This is especially useful on Termux/Android where curl typically has better TLS support.
+**The most important improvement**: On Termux/Android, morpheus now uses `curl` as the **primary method** for HTTPS requests instead of the Go HTTP client. This is because curl handles TLS certificates much more reliably on Android systems.
 
 **How it works**:
-- HTTP client attempts the request first
-- If it fails with a certificate error, curl is tried automatically
-- If curl succeeds, the operation completes normally
-- No user intervention required!
+- Detects Termux/Android environment (via `$ANDROID_ROOT`, `$TERMUX_VERSION`, or `runtime.GOOS`)
+- If curl is installed, uses it directly for all HTTPS requests
+- Falls back to HTTP client only if curl is not available or fails
+- On non-Android systems, continues to use the HTTP client as normal
 
 **Benefits**:
-- Works even when Go TLS configuration fails
-- Curl on Termux is usually well-configured out of the box
-- Seamless fallback - user doesn't need to do anything
-- Both update checking and binary downloads use curl fallback
+- ✅ Works out of the box on Termux without certificate configuration
+- ✅ Curl on Termux is properly configured for TLS by default
+- ✅ No need to mess with CA certificates on Android
+- ✅ Both update checking and binary downloads use curl
+- ✅ Seamless - no user intervention required
 
 **Requirements**:
-- `curl` must be installed on the system
-- On Termux: `pkg install curl` (usually already installed)
+- `curl` must be installed on Termux/Android
+- Install with: `pkg install curl`
+- Curl is usually already installed on most Termux setups
 
 ### 2. Proper TLS Configuration
 
@@ -164,6 +166,16 @@ MORPHEUS_SKIP_TLS_VERIFY=1 morpheus update
 
 ## How to Fix Certificate Errors
 
+### Quick Fix for Termux/Android (Recommended)
+
+The simplest solution on Termux/Android is to install curl:
+
+```bash
+pkg install curl
+```
+
+Morpheus will automatically use curl for all HTTPS requests on Android, which avoids certificate issues entirely.
+
 ### Step 1: Diagnose the Issue
 
 First, run the built-in diagnostics tool:
@@ -173,20 +185,28 @@ morpheus diagnose-certs
 ```
 
 This will check:
+- Whether curl is available (recommended for Termux)
 - System certificate pool status
 - Available certificate file locations
 - TLS connectivity to GitHub
 - Provide specific recommendations for your system
 
-### Step 2: Install CA Certificates
+### Step 2: Choose Your Fix
 
-#### Termux/Android
+#### Option A: Install curl (Easiest - Termux/Android only)
+```bash
+pkg install curl
+```
+
+Morpheus will automatically detect and use curl. No certificate configuration needed!
+
+#### Option B: Install CA Certificates (Alternative)
 ```bash
 pkg update
 pkg install ca-certificates-java openssl
 ```
 
-**Note**: On Termux, you may need both `ca-certificates-java` and `openssl` packages for proper TLS support.
+**Note**: This is more complex and may not work as reliably as curl on Termux.
 
 #### Debian/Ubuntu
 ```bash

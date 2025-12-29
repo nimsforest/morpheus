@@ -114,23 +114,36 @@ This usually means CA certificates are not installed properly.
 
 ## How Users Can Fix Certificate Errors
 
+### Quick Fix for Termux/Android (Recommended)
+
+Simply install curl:
+
+```bash
+pkg install curl
+```
+
+Morpheus will automatically use curl for HTTPS requests on Termux/Android!
+
 ### Step 1: Run Diagnostics
 
 ```bash
 morpheus diagnose-certs
 ```
 
-This will identify exactly what's wrong and provide specific recommendations.
+This will check if curl is available and provide specific recommendations.
 
-### Step 2: Install CA Certificates
+### Step 2: Choose Your Fix
 
-**Termux/Android:**
+**Option A - Install curl (Easiest for Termux/Android):**
+```bash
+pkg install curl
+```
+
+**Option B - Install CA Certificates (Alternative):**
 ```bash
 pkg update
 pkg install ca-certificates-java openssl
 ```
-
-**Important**: On Termux, you need both `ca-certificates-java` and `openssl` packages.
 
 **Debian/Ubuntu:**
 ```bash

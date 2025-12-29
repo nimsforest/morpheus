@@ -331,10 +331,12 @@ func handleUpdate() {
 		// Check if it's a certificate error and provide helpful guidance
 		if strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509") {
 			fmt.Fprintf(os.Stderr, "\n⚠️  TLS Certificate Error Detected\n")
-			fmt.Fprintf(os.Stderr, "\nThis usually means CA certificates are not installed properly.\n")
 			fmt.Fprintf(os.Stderr, "\n🔍 First, run diagnostics:\n")
 			fmt.Fprintf(os.Stderr, "  morpheus diagnose-certs\n")
-			fmt.Fprintf(os.Stderr, "\n💡 To fix this:\n")
+			fmt.Fprintf(os.Stderr, "\n💡 Quick fix for Termux/Android:\n")
+			fmt.Fprintf(os.Stderr, "  pkg install curl\n")
+			fmt.Fprintf(os.Stderr, "  (Morpheus will use curl for HTTPS requests on Termux)\n")
+			fmt.Fprintf(os.Stderr, "\n📦 Or install CA certificates:\n")
 			fmt.Fprintf(os.Stderr, "  • On Termux/Android: pkg install ca-certificates-java openssl\n")
 			fmt.Fprintf(os.Stderr, "  • On Debian/Ubuntu: apt-get install ca-certificates\n")
 			fmt.Fprintf(os.Stderr, "  • On Fedora/RHEL:   dnf install ca-certificates\n")

@@ -226,28 +226,32 @@ func createTLSConfig() *tls.Config {
 
 // CheckForUpdate checks if a new version is available
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
-	// Try using HTTP client first
-	info, err := u.checkForUpdateHTTP()
+	// On Android/Termux, use curl directly as it handles certificates better
+	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
 	
-	// If HTTP fails with a certificate error, try curl as fallback
-	if err != nil && (strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509")) {
-		if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-			fmt.Fprintln(os.Stderr, "⚠️  HTTP client failed with certificate error, trying curl fallback...")
-		}
-		
-		curlInfo, curlErr := u.checkForUpdateCurl()
-		if curlErr == nil {
+	if isAndroid {
+		// Check if curl is available
+		if _, err := exec.LookPath("curl"); err == nil {
 			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintln(os.Stderr, "✓ Successfully fetched update info via curl")
+				fmt.Fprintln(os.Stderr, "🔧 Using curl for update check (Termux/Android)")
 			}
-			return curlInfo, nil
+			
+			info, err := u.checkForUpdateCurl()
+			if err == nil {
+				return info, nil
+			}
+			
+			// If curl fails, fall back to HTTP client
+			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+				fmt.Fprintf(os.Stderr, "⚠️  curl failed: %v, trying HTTP client...\n", err)
+			}
+		} else if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+			fmt.Fprintln(os.Stderr, "⚠️  curl not found, using HTTP client")
 		}
-		
-		// If curl also fails, return the original HTTP error with additional context
-		return nil, fmt.Errorf("%w (curl fallback also failed: %v)", err, curlErr)
 	}
 	
-	return info, err
+	// Use HTTP client (for non-Android or if curl failed/not available)
+	return u.checkForUpdateHTTP()
 }
 
 // checkForUpdateHTTP checks for updates using the HTTP client
@@ -425,28 +429,32 @@ func (u *Updater) PerformUpdate() error {
 
 // downloadFile downloads a file from a URL to a local path
 func downloadFile(url, filepath string) error {
-	// Try HTTP client first
-	err := downloadFileHTTP(url, filepath)
+	// On Android/Termux, use curl directly as it handles certificates better
+	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
 	
-	// If HTTP fails with a certificate error, try curl as fallback
-	if err != nil && (strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509")) {
-		if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "⚠️  HTTP download failed with certificate error, trying curl fallback...\n")
-		}
-		
-		curlErr := downloadFileCurl(url, filepath)
-		if curlErr == nil {
+	if isAndroid {
+		// Check if curl is available
+		if _, err := exec.LookPath("curl"); err == nil {
 			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "✓ Successfully downloaded binary via curl\n")
+				fmt.Fprintln(os.Stderr, "🔧 Using curl for binary download (Termux/Android)")
 			}
-			return nil
+			
+			err := downloadFileCurl(url, filepath)
+			if err == nil {
+				return nil
+			}
+			
+			// If curl fails, fall back to HTTP client
+			if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+				fmt.Fprintf(os.Stderr, "⚠️  curl failed: %v, trying HTTP client...\n", err)
+			}
+		} else if os.Getenv("MORPHEUS_TLS_DEBUG") == "1" {
+			fmt.Fprintln(os.Stderr, "⚠️  curl not found, using HTTP client")
 		}
-		
-		// If curl also fails, return the original HTTP error
-		return fmt.Errorf("%w (curl fallback also failed: %v)", err, curlErr)
 	}
 	
-	return err
+	// Use HTTP client (for non-Android or if curl failed/not available)
+	return downloadFileHTTP(url, filepath)
 }
 
 // downloadFileHTTP downloads a file using the HTTP client

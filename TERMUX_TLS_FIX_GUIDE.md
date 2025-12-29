@@ -1,14 +1,13 @@
 # Termux TLS Certificate Fix Guide
 
-If you installed `ca-certificates` on Termux but `morpheus update` still fails with a certificate error, follow this guide.
+If `morpheus update` fails with a certificate error on Termux, this guide will help you fix it.
 
-## Quick Fix
+## Quick Fix (Recommended)
 
-The issue is that Termux requires **both** certificate packages:
+The **easiest and most reliable** solution is to install curl:
 
 ```bash
-pkg update
-pkg install ca-certificates-java openssl
+pkg install curl
 ```
 
 Then try updating again:
@@ -17,12 +16,26 @@ Then try updating again:
 morpheus update
 ```
 
-## Why Two Packages?
+**That's it!** Morpheus will automatically detect Termux and use curl for all HTTPS requests, completely bypassing certificate configuration issues.
 
-- **ca-certificates-java**: Provides Java-compatible CA certificates (needed for proper TLS)
-- **openssl**: Provides OpenSSL libraries and certificate utilities
+## Why curl?
 
-On Termux, both are required for full TLS certificate support.
+On Termux/Android, curl is better at handling TLS certificates than Go's built-in HTTP client because:
+- ✅ Curl comes pre-configured with proper certificate handling on Termux
+- ✅ No need to manually configure CA certificates
+- ✅ Works out of the box after installation
+- ✅ More reliable for HTTPS requests on Android
+
+## Alternative: Install CA Certificates
+
+If you prefer not to use curl, you can install CA certificates (but this is more complex):
+
+```bash
+pkg update
+pkg install ca-certificates-java openssl
+```
+
+**Note**: This may not work as reliably as curl on Termux.
 
 ## Troubleshooting Steps
 
