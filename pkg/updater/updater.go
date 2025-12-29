@@ -2,6 +2,8 @@ package updater
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -58,9 +60,13 @@ func NewUpdater(currentVersion string) *Updater {
 }
 
 // createHTTPClient creates an HTTP client with custom DNS resolver for Termux/Android
+// and proper TLS configuration
 func createHTTPClient() *http.Client {
 	// Check if we're running on Android/Termux by looking for common indicators
 	isAndroid := runtime.GOOS == "android" || os.Getenv("ANDROID_ROOT") != "" || os.Getenv("TERMUX_VERSION") != ""
+	
+	// Create TLS configuration with system CA certificates
+	tlsConfig := createTLSConfig()
 	
 	// On Android/Termux, use a custom DNS resolver to bypass broken system DNS
 	if isAndroid {
@@ -89,7 +95,7 @@ func createHTTPClient() *http.Client {
 			},
 		}
 		
-		// Create custom transport with the custom resolver
+		// Create custom transport with the custom resolver and TLS config
 		transport := &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				// Resolve the hostname using our custom resolver
@@ -111,6 +117,7 @@ func createHTTPClient() *http.Client {
 				resolvedAddr := net.JoinHostPort(ips[0].String(), port)
 				return dialer.DialContext(ctx, network, resolvedAddr)
 			},
+			TLSClientConfig:       tlsConfig,
 			MaxIdleConns:          100,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
@@ -123,9 +130,57 @@ func createHTTPClient() *http.Client {
 		}
 	}
 	
-	// For other platforms, use the default HTTP client
+	// For other platforms, use the default HTTP client with TLS config
 	return &http.Client{
 		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+}
+
+// createTLSConfig creates a TLS configuration with system CA certificates
+func createTLSConfig() *tls.Config {
+	// Check if user wants to skip TLS verification (not recommended, but useful for debugging)
+	if os.Getenv("MORPHEUS_SKIP_TLS_VERIFY") == "1" {
+		fmt.Fprintln(os.Stderr, "⚠️  WARNING: TLS certificate verification is disabled (MORPHEUS_SKIP_TLS_VERIFY=1)")
+		return &tls.Config{InsecureSkipVerify: true}
+	}
+	
+	// Try to load system CA certificates
+	certPool, err := x509.SystemCertPool()
+	if err != nil {
+		// If system cert pool fails, create a new one
+		certPool = x509.NewCertPool()
+	}
+	
+	// Try to load certificates from common locations (especially for Termux/Android)
+	certPaths := []string{
+		"/system/etc/security/cacerts",           // Android system certs
+		"/data/data/com.termux/files/usr/etc/tls/certs/ca-certificates.crt", // Termux
+		"/etc/ssl/certs/ca-certificates.crt",     // Debian/Ubuntu/Gentoo etc.
+		"/etc/pki/tls/certs/ca-bundle.crt",       // Fedora/RHEL
+		"/etc/ssl/ca-bundle.pem",                 // OpenSUSE
+		"/etc/ssl/cert.pem",                      // OpenBSD
+		"/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
+		"/etc/pki/tls/cacert.pem",                // OpenELEC
+		"/etc/certs/ca-certificates.crt",         // Solaris 11.2+
+		os.Getenv("SSL_CERT_FILE"),               // Custom cert file from env
+	}
+	
+	for _, certPath := range certPaths {
+		if certPath == "" {
+			continue
+		}
+		
+		if certData, err := os.ReadFile(certPath); err == nil {
+			certPool.AppendCertsFromPEM(certData)
+		}
+	}
+	
+	return &tls.Config{
+		RootCAs:    certPool,
+		MinVersion: tls.VersionTLS12,
 	}
 }
 
