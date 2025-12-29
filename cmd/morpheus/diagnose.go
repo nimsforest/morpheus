@@ -9,7 +9,7 @@ import (
 
 // This file provides diagnostics for update issues
 
-func handleDiagnoseCerts() {
+func handleDiagnose() {
 	fmt.Println("🔍 Morpheus Update Diagnostics")
 	fmt.Println("==============================")
 	fmt.Println()

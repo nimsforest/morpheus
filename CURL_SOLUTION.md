@@ -40,7 +40,7 @@ morpheus update
 Check if everything is set up correctly:
 
 ```bash
-morpheus diagnose-certs
+morpheus diagnose
 ```
 
 This will tell you:
@@ -59,7 +59,7 @@ This will tell you:
 
 - `pkg/updater/updater.go`: Added `checkForUpdateCurl()` and `downloadFileCurl()` functions
 - `CheckForUpdate()` and `downloadFile()` detect Android and use curl
-- `cmd/morpheus/diagnose-certs.go`: Simplified to check curl on Termux
+- `cmd/morpheus/diagnose.go`: Simplified to check curl on Termux
 - Removed all TLS certificate configuration code for Android
 
 ## That's It!

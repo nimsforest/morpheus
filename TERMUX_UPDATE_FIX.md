@@ -16,7 +16,15 @@ On Termux/Android, morpheus uses `curl` for downloading updates because it works
 
 ## Verification
 
-After installing curl, verify it works:
+Check if everything is set up correctly:
+
+```bash
+morpheus diagnose
+```
+
+This will tell you if curl is installed and if everything is ready.
+
+After installing curl, run:
 
 ```bash
 morpheus update
@@ -26,12 +34,10 @@ You should see the update check succeed.
 
 ## Still Having Issues?
 
-If curl is installed and you're still having problems, open an issue at:
-https://github.com/nimsforest/morpheus/issues
+If curl is installed and you're still having problems, run:
 
-Include the output of:
 ```bash
-which curl
-curl --version
-morpheus version
+morpheus diagnose
 ```
+
+And open an issue at https://github.com/nimsforest/morpheus/issues with the output.

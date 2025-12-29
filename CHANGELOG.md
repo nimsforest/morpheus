@@ -185,10 +185,11 @@ infrastructure:
 - Fixed update failures on Termux/Android
   - Morpheus now uses `curl` for all HTTPS requests on Termux/Android
   - **Termux users**: Simply run `pkg install curl` to enable updates
+  - **NEW**: `morpheus diagnose` command checks if curl is installed on Termux
   - Automatically detects Termux/Android environment
   - Falls back to standard HTTP client on non-Android systems
   - Clear error message if curl is not installed on Termux
-  - See TERMUX_UPDATE_FIX.md for details
+  - See TERMUX_UPDATE_FIX.md and CURL_SOLUTION.md for details
 - Verified no CGO dependencies blocking Android support
 - Verified no platform-specific build tags
 - Ensured pure Go implementation for cross-platform compatibility

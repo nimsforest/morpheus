@@ -41,8 +41,8 @@ func main() {
 		handleUpdate()
 	case "check-update":
 		handleCheckUpdate()
-	case "diagnose-certs":
-		handleDiagnoseCerts()
+	case "diagnose":
+		handleDiagnose()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -403,7 +403,7 @@ func printHelp() {
 	fmt.Println("  version               Show version information")
 	fmt.Println("  update                Check for updates and install if available")
 	fmt.Println("  check-update          Check for updates without installing")
-	fmt.Println("  diagnose-certs        Diagnose TLS certificate issues")
+	fmt.Println("  diagnose              Diagnose update issues")
 	fmt.Println("  help                  Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -413,7 +413,7 @@ func printHelp() {
 	fmt.Println("  morpheus status forest-12345  # Show forest details")
 	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
 	fmt.Println("  morpheus update               # Update to latest version")
-	fmt.Println("  morpheus diagnose-certs       # Check certificate setup")
+	fmt.Println("  morpheus diagnose             # Diagnose update issues")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")
