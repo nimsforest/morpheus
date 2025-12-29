@@ -100,6 +100,75 @@ secrets:
 	}
 }
 
+func TestLoadConfigTrimsWhitespace(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Test token with surrounding whitespace in config file
+	configContent := `
+infrastructure:
+  provider: hetzner
+  defaults:
+    server_type: cpx31
+    image: ubuntu-24.04
+    ssh_key: main
+  locations:
+    - fsn1
+
+secrets:
+  hetzner_api_token: "  token-with-spaces  "
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Secrets.HetznerAPIToken != "token-with-spaces" {
+		t.Errorf("Expected trimmed token 'token-with-spaces', got '%s'", cfg.Secrets.HetznerAPIToken)
+	}
+}
+
+func TestLoadConfigTrimsWhitespaceFromEnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+infrastructure:
+  provider: hetzner
+  defaults:
+    server_type: cpx31
+    image: ubuntu-24.04
+    ssh_key: main
+  locations:
+    - fsn1
+
+secrets:
+  hetzner_api_token: ""
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set environment variable with whitespace and newline
+	os.Setenv("HETZNER_API_TOKEN", "  env-token-with-whitespace\n")
+	defer os.Unsetenv("HETZNER_API_TOKEN")
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Secrets.HetznerAPIToken != "env-token-with-whitespace" {
+		t.Errorf("Expected trimmed token 'env-token-with-whitespace', got '%s'", cfg.Secrets.HetznerAPIToken)
+	}
+}
+
 func TestLoadConfigFileNotFound(t *testing.T) {
 	_, err := LoadConfig("/nonexistent/config.yaml")
 	if err == nil {

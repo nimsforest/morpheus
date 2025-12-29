@@ -18,6 +18,9 @@ type Provider struct {
 
 // NewProvider creates a new Hetzner Cloud provider
 func NewProvider(apiToken string) (*Provider, error) {
+	// Trim any whitespace/newlines that may be present in the token
+	apiToken = strings.TrimSpace(apiToken)
+
 	if apiToken == "" {
 		return nil, fmt.Errorf("API token is required")
 	}

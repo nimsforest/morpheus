@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,8 +53,12 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Trim whitespace/newlines from tokens that may be present in the config
+	config.Secrets.HetznerAPIToken = strings.TrimSpace(config.Secrets.HetznerAPIToken)
+
 	// Override with environment variables if set
-	if token := os.Getenv("HETZNER_API_TOKEN"); token != "" {
+	// Trim whitespace/newlines that may be present in the token
+	if token := strings.TrimSpace(os.Getenv("HETZNER_API_TOKEN")); token != "" {
 		config.Secrets.HetznerAPIToken = token
 	}
 
