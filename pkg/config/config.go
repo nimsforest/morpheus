@@ -28,13 +28,16 @@ type IntegrationConfig struct {
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
 }
 
-// DefaultServerConfig defines default server settings
-type DefaultServerConfig struct {
+// DefaultsConfig defines default server settings
+type DefaultsConfig struct {
 	ServerType string `yaml:"server_type"`
 	Image      string `yaml:"image"`
 	SSHKey     string `yaml:"ssh_key"`      // Name of the SSH key in Hetzner Cloud
 	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
 }
+
+// DefaultServerConfig is an alias for backward compatibility
+type DefaultServerConfig = DefaultsConfig
 
 // SecretsConfig contains API tokens and credentials
 type SecretsConfig struct {
@@ -71,7 +74,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("infrastructure.provider is required")
 	}
 
-	if c.Infrastructure.Provider == "hetzner" {
+	switch c.Infrastructure.Provider {
+	case "hetzner":
 		if c.Secrets.HetznerAPIToken == "" {
 			return fmt.Errorf("hetzner_api_token is required (set via config or HETZNER_API_TOKEN env var)")
 		}
@@ -81,6 +85,11 @@ func (c *Config) Validate() error {
 		if c.Infrastructure.Defaults.Image == "" {
 			return fmt.Errorf("infrastructure.defaults.image is required")
 		}
+	case "local":
+		// Local provider has minimal requirements - Docker is checked at runtime
+		// No API token or specific server type required
+	default:
+		return fmt.Errorf("unsupported provider: %s (supported: hetzner, local)", c.Infrastructure.Provider)
 	}
 
 	return nil
