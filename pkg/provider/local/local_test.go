@@ -215,11 +215,11 @@ func TestIntegrationCreateAndDeleteServer(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a test container
+	// Create a test container - use alpine for faster CI tests
 	req := provider.CreateServerRequest{
 		Name:       "morpheus-test-container",
 		ServerType: "local",
-		Image:      "ubuntu:24.04",
+		Image:      "alpine:latest",
 		Location:   "local",
 		Labels: map[string]string{
 			"forest_id": "test-forest",

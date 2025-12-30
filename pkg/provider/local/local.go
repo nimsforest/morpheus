@@ -119,15 +119,15 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 	// Select image - use Ubuntu by default for compatibility with cloud-init scripts
 	// For local mode, we use a simplified approach without full cloud-init
 	image := "ubuntu:24.04"
-	if req.Image != "" && !strings.Contains(req.Image, "ubuntu") {
-		// If a specific non-ubuntu image is requested, try to use it
+	if req.Image != "" {
 		image = req.Image
 	}
 
 	// For local development, we run a simple init process that keeps the container alive
 	// and allows SSH-like access via docker exec
 	args = append(args, image)
-	args = append(args, "tail", "-f", "/dev/null") // Keep container running
+	// Use sleep infinity which works on both alpine and ubuntu
+	args = append(args, "sleep", "infinity")
 
 	fmt.Printf("Creating local container: %s\n", req.Name)
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -137,9 +137,18 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 	}
 
 	containerID := strings.TrimSpace(string(output))
+	if containerID == "" {
+		return nil, fmt.Errorf("docker returned empty container ID")
+	}
+
+	// Use short ID (12 chars) if the full ID is returned
+	shortID := containerID
+	if len(containerID) > 12 {
+		shortID = containerID[:12]
+	}
 
 	// Get container info
-	return p.GetServer(ctx, containerID[:12]) // Use short ID
+	return p.GetServer(ctx, shortID)
 }
 
 // GetServer retrieves container information by ID
