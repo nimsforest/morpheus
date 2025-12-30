@@ -3,6 +3,7 @@ package forest
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
@@ -141,11 +142,79 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		return nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
-	// Give cloud-init some time to run
-	fmt.Printf("Server running, waiting for cloud-init to complete...\n")
-	time.Sleep(30 * time.Second)
+	// Fetch updated server info to get IP address
+	server, err = p.provider.GetServer(ctx, server.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get server info: %w", err)
+	}
+
+	// Wait for infrastructure to be ready (SSH accessible, cloud-init complete)
+	fmt.Printf("Server running, verifying infrastructure readiness...\n")
+	if err := p.waitForInfrastructureReady(ctx, server); err != nil {
+		return nil, fmt.Errorf("infrastructure readiness check failed: %w", err)
+	}
 
 	return server, nil
+}
+
+// waitForInfrastructureReady waits until the server's infrastructure is ready
+// This checks SSH connectivity as an indicator that cloud-init has progressed
+// far enough for the server to be usable
+func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
+	if server.PublicIPv4 == "" {
+		return fmt.Errorf("server has no public IPv4 address")
+	}
+
+	timeout := p.config.Provisioning.GetReadinessTimeout()
+	interval := p.config.Provisioning.GetReadinessInterval()
+	sshPort := p.config.Provisioning.SSHPort
+
+	addr := fmt.Sprintf("%s:%d", server.PublicIPv4, sshPort)
+	fmt.Printf("Waiting for infrastructure readiness (SSH on %s, timeout: %s)...\n", addr, timeout)
+
+	deadline := time.Now().Add(timeout)
+	attempts := 0
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		attempts++
+
+		// Check SSH port connectivity
+		if err := p.checkSSHConnectivity(addr); err == nil {
+			fmt.Printf("✓ Infrastructure ready after %d attempts (SSH accessible)\n", attempts)
+			return nil
+		}
+
+		// Log progress every few attempts
+		if attempts%3 == 0 {
+			remaining := time.Until(deadline).Round(time.Second)
+			fmt.Printf("  Still waiting for SSH... (%s remaining)\n", remaining)
+		}
+
+		// Wait before next attempt
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+
+	return fmt.Errorf("timeout waiting for infrastructure readiness after %d attempts (SSH not accessible on %s)", attempts, addr)
+}
+
+// checkSSHConnectivity attempts a TCP connection to verify SSH is accepting connections
+func (p *Provisioner) checkSSHConnectivity(addr string) error {
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	conn.Close()
+	return nil
 }
 
 // Teardown removes a forest and all its resources

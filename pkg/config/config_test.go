@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -286,6 +287,149 @@ func TestValidate(t *testing.T) {
 			}
 			if !tt.expectErr && err != nil {
 				t.Errorf("Expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestProvisioningConfigDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Config without provisioning section - should get defaults
+	configContent := `
+infrastructure:
+  provider: hetzner
+  defaults:
+    server_type: cpx31
+    image: ubuntu-24.04
+    ssh_key: main
+  locations:
+    - fsn1
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Check defaults are applied
+	if cfg.Provisioning.ReadinessTimeout != "5m" {
+		t.Errorf("Expected default readiness_timeout '5m', got '%s'", cfg.Provisioning.ReadinessTimeout)
+	}
+
+	if cfg.Provisioning.ReadinessInterval != "10s" {
+		t.Errorf("Expected default readiness_interval '10s', got '%s'", cfg.Provisioning.ReadinessInterval)
+	}
+
+	if cfg.Provisioning.SSHPort != 22 {
+		t.Errorf("Expected default ssh_port 22, got %d", cfg.Provisioning.SSHPort)
+	}
+}
+
+func TestProvisioningConfigCustomValues(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+infrastructure:
+  provider: hetzner
+  defaults:
+    server_type: cpx31
+    image: ubuntu-24.04
+    ssh_key: main
+  locations:
+    - fsn1
+
+provisioning:
+  readiness_timeout: "10m"
+  readiness_interval: "30s"
+  ssh_port: 2222
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Provisioning.ReadinessTimeout != "10m" {
+		t.Errorf("Expected readiness_timeout '10m', got '%s'", cfg.Provisioning.ReadinessTimeout)
+	}
+
+	if cfg.Provisioning.ReadinessInterval != "30s" {
+		t.Errorf("Expected readiness_interval '30s', got '%s'", cfg.Provisioning.ReadinessInterval)
+	}
+
+	if cfg.Provisioning.SSHPort != 2222 {
+		t.Errorf("Expected ssh_port 2222, got %d", cfg.Provisioning.SSHPort)
+	}
+}
+
+func TestProvisioningConfigGetDurations(t *testing.T) {
+	tests := []struct {
+		name             string
+		timeout          string
+		interval         string
+		expectedTimeout  time.Duration
+		expectedInterval time.Duration
+	}{
+		{
+			name:             "valid durations",
+			timeout:          "5m",
+			interval:         "10s",
+			expectedTimeout:  5 * time.Minute,
+			expectedInterval: 10 * time.Second,
+		},
+		{
+			name:             "different valid durations",
+			timeout:          "15m30s",
+			interval:         "1m",
+			expectedTimeout:  15*time.Minute + 30*time.Second,
+			expectedInterval: 1 * time.Minute,
+		},
+		{
+			name:             "invalid timeout falls back to default",
+			timeout:          "invalid",
+			interval:         "10s",
+			expectedTimeout:  5 * time.Minute, // default
+			expectedInterval: 10 * time.Second,
+		},
+		{
+			name:             "invalid interval falls back to default",
+			timeout:          "5m",
+			interval:         "not-a-duration",
+			expectedTimeout:  5 * time.Minute,
+			expectedInterval: 10 * time.Second, // default
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := ProvisioningConfig{
+				ReadinessTimeout:  tt.timeout,
+				ReadinessInterval: tt.interval,
+			}
+
+			if got := pc.GetReadinessTimeout(); got != tt.expectedTimeout {
+				t.Errorf("GetReadinessTimeout() = %v, want %v", got, tt.expectedTimeout)
+			}
+
+			if got := pc.GetReadinessInterval(); got != tt.expectedInterval {
+				t.Errorf("GetReadinessInterval() = %v, want %v", got, tt.expectedInterval)
 			}
 		})
 	}
