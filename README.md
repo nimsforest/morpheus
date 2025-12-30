@@ -33,14 +33,14 @@ Get your token from [Hetzner Cloud Console](https://console.hetzner.cloud/). See
 
 **Step 4: Install Morpheus (One Command!)**
 
-Open Termux and paste this (optionally with your token):
+Open Termux and paste this:
 
 ```bash
-# Option 1: With token (recommended)
-export HETZNER_API_TOKEN="your_token_here"
-curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
+# Universal installer (recommended - works on all platforms)
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
 
-# Option 2: Set token later
+# Or use the Termux-specific installer (builds from source)
+export HETZNER_API_TOKEN="your_token_here"  # Optional
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
 
@@ -58,6 +58,21 @@ morpheus teardown forest-123 # Clean up
 ---
 
 ### 💻 Desktop/Laptop
+
+**Quick Install (Recommended - One Command!):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+```
+
+This universal installer:
+- ✅ Auto-detects your OS (Linux/macOS) and architecture
+- ✅ Downloads the latest pre-built binary from GitHub releases
+- ✅ Verifies the binary works before installing
+- ✅ Installs to the right location automatically
+- ✅ Works on all platforms (including Termux)
+
+**Build from Source (Alternative):**
 
 ```bash
 # Clone and build
@@ -88,19 +103,36 @@ Morpheus handles **infrastructure only**:
 
 ## Installation
 
+### Universal Installer (All Platforms)
+
+**One-line install for Linux, macOS, and Termux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+```
+
+This works everywhere:
+- ✅ Linux (x86_64, ARM64, ARM)
+- ✅ macOS (Intel, Apple Silicon)
+- ✅ Termux/Android (ARM64, ARM)
+- ✅ Auto-detects OS and architecture
+- ✅ Downloads pre-built binary from GitHub releases
+- ✅ Verifies binary works before installing
+- ✅ Installs to appropriate location (no sudo needed for Termux)
+
 ### Prerequisites
 
 **For Termux:**
 - Android phone with [Termux from F-Droid](https://f-droid.org/en/packages/com.termux/)
 - Hetzner Cloud account (free to create)
-- *Go is automatically installed by the installer*
+- *curl or wget (usually pre-installed)*
 
 **For Desktop:**
-- Go 1.25+ (or whatever version you have)
+- curl or wget (for installer)
 - Hetzner Cloud account with API token
 - SSH key (Morpheus will automatically upload it to Hetzner if not already there)
 
-### Build from Source (Desktop)
+### Build from Source (Optional)
 
 ```bash
 git clone https://github.com/nimsforest/morpheus.git
@@ -109,7 +141,7 @@ make build    # Build binary
 make install  # Install to /usr/local/bin (optional)
 ```
 
-**Note:** Termux users should use the automated installer instead.
+**Note:** Building from source requires Go 1.25+. The universal installer is recommended.
 
 ### Mobile Usage
 
@@ -118,7 +150,10 @@ make install  # Install to /usr/local/bin (optional)
 Morpheus is a CLI tool. Termux is a terminal. Running it directly is the natural way:
 
 ```bash
-# Quick install (non-interactive)
+# Universal installer (recommended - fastest)
+curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install.sh | bash
+
+# Or build from source (if you prefer)
 export HETZNER_API_TOKEN="your_token"
 curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/install-termux.sh | bash
 ```
@@ -128,6 +163,7 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 - ✅ Full functionality from your pocket
 - ✅ Works offline for local commands
 - ✅ Fully automated installation
+- ✅ Pre-built binaries for instant setup
 
 **Alternative: Control Server** (only for specific needs)
 
