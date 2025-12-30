@@ -18,11 +18,16 @@ type Provider struct {
 
 // NewProvider creates a new Hetzner Cloud provider
 func NewProvider(apiToken string) (*Provider, error) {
-	// Trim any whitespace/newlines that may be present in the token
-	apiToken = strings.TrimSpace(apiToken)
+	// Sanitize the token by removing any invalid characters
+	apiToken = sanitizeAPIToken(apiToken)
 
 	if apiToken == "" {
 		return nil, fmt.Errorf("API token is required")
+	}
+
+	// Validate the token contains only valid characters
+	if err := validateAPIToken(apiToken); err != nil {
+		return nil, err
 	}
 
 	client := hcloud.NewClient(hcloud.WithToken(apiToken))
@@ -30,6 +35,76 @@ func NewProvider(apiToken string) (*Provider, error) {
 	return &Provider{
 		client: client,
 	}, nil
+}
+
+// sanitizeAPIToken removes invalid characters from the API token.
+// This handles common issues like:
+// - Leading/trailing whitespace and newlines
+// - Carriage returns (\r) from Windows-style line endings
+// - BOM (Byte Order Mark) characters
+// - Other non-printable control characters
+func sanitizeAPIToken(token string) string {
+	// First, trim any whitespace (including newlines) from the edges
+	token = strings.TrimSpace(token)
+
+	// Remove any remaining control characters and non-ASCII characters
+	// that shouldn't be in an API token
+	var sanitized strings.Builder
+	sanitized.Grow(len(token))
+
+	for _, r := range token {
+		// Only keep printable ASCII characters (0x21-0x7E)
+		// This excludes space (0x20) and DEL (0x7F) as well as control characters
+		if r >= 0x21 && r <= 0x7E {
+			sanitized.WriteRune(r)
+		}
+	}
+
+	return sanitized.String()
+}
+
+// validateAPIToken checks if the token contains only valid characters
+// for HTTP Authorization headers. Returns an error with details if invalid.
+func validateAPIToken(token string) error {
+	if token == "" {
+		return fmt.Errorf("API token is empty")
+	}
+
+	var invalidChars []string
+	for i, r := range token {
+		// Valid token characters are printable ASCII (0x21-0x7E)
+		if r < 0x21 || r > 0x7E {
+			// Format the character for display
+			var charDesc string
+			switch r {
+			case '\n':
+				charDesc = "newline (\\n)"
+			case '\r':
+				charDesc = "carriage return (\\r)"
+			case '\t':
+				charDesc = "tab (\\t)"
+			case ' ':
+				charDesc = "space"
+			case 0xFEFF:
+				charDesc = "BOM (byte order mark)"
+			default:
+				if r < 0x20 {
+					charDesc = fmt.Sprintf("control character (0x%02X)", r)
+				} else {
+					charDesc = fmt.Sprintf("non-ASCII character (U+%04X)", r)
+				}
+			}
+			invalidChars = append(invalidChars, fmt.Sprintf("%s at position %d", charDesc, i))
+		}
+	}
+
+	if len(invalidChars) > 0 {
+		return fmt.Errorf("API token contains invalid characters: %s. "+
+			"Please check that the token was copied correctly without extra whitespace or special characters",
+			strings.Join(invalidChars, ", "))
+	}
+
+	return nil
 }
 
 // CreateServer provisions a new Hetzner Cloud server

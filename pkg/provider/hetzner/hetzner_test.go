@@ -29,6 +29,192 @@ func TestNewProviderEmptyToken(t *testing.T) {
 	}
 }
 
+func TestNewProviderWithWhitespace(t *testing.T) {
+	tests := []struct {
+		name          string
+		token         string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:        "token with leading/trailing spaces",
+			token:       "  valid-token-123  ",
+			expectError: false,
+		},
+		{
+			name:        "token with newline",
+			token:       "valid-token-123\n",
+			expectError: false,
+		},
+		{
+			name:        "token with carriage return and newline",
+			token:       "valid-token-123\r\n",
+			expectError: false,
+		},
+		{
+			name:        "only whitespace",
+			token:       "   \n\r\t  ",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewProvider(tt.token)
+			if tt.expectError && err == nil {
+				t.Error("Expected error, got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Expected no error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestSanitizeAPIToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "clean token",
+			input:    "valid-token-123",
+			expected: "valid-token-123",
+		},
+		{
+			name:     "token with leading spaces",
+			input:    "   token123",
+			expected: "token123",
+		},
+		{
+			name:     "token with trailing newline",
+			input:    "token123\n",
+			expected: "token123",
+		},
+		{
+			name:     "token with CRLF",
+			input:    "token123\r\n",
+			expected: "token123",
+		},
+		{
+			name:     "token with embedded carriage return",
+			input:    "token\r123",
+			expected: "token123",
+		},
+		{
+			name:     "token with BOM",
+			input:    "\uFEFFtoken123",
+			expected: "token123",
+		},
+		{
+			name:     "token with tab",
+			input:    "token\t123",
+			expected: "token123",
+		},
+		{
+			name:     "token with null byte",
+			input:    "token\x00123",
+			expected: "token123",
+		},
+		{
+			name:     "token with non-ASCII characters",
+			input:    "token™123",
+			expected: "token123",
+		},
+		{
+			name:     "token with space in middle",
+			input:    "token 123",
+			expected: "token123",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "only whitespace",
+			input:    "  \n\r\t  ",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeAPIToken(tt.input)
+			if result != tt.expected {
+				t.Errorf("sanitizeAPIToken(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestValidateAPIToken(t *testing.T) {
+	tests := []struct {
+		name        string
+		token       string
+		expectError bool
+	}{
+		{
+			name:        "valid alphanumeric token",
+			token:       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+			expectError: false,
+		},
+		{
+			name:        "valid token with special chars",
+			token:       "token-with_special.chars~plus+slash/equals=",
+			expectError: false,
+		},
+		{
+			name:        "token with newline",
+			token:       "token\n123",
+			expectError: true,
+		},
+		{
+			name:        "token with carriage return",
+			token:       "token\r123",
+			expectError: true,
+		},
+		{
+			name:        "token with space",
+			token:       "token 123",
+			expectError: true,
+		},
+		{
+			name:        "token with tab",
+			token:       "token\t123",
+			expectError: true,
+		},
+		{
+			name:        "token with null byte",
+			token:       "token\x00123",
+			expectError: true,
+		},
+		{
+			name:        "token with BOM",
+			token:       "\uFEFFtoken123",
+			expectError: true,
+		},
+		{
+			name:        "empty token",
+			token:       "",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAPIToken(tt.token)
+			if tt.expectError && err == nil {
+				t.Errorf("validateAPIToken(%q) expected error, got nil", tt.token)
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("validateAPIToken(%q) expected no error, got: %v", tt.token, err)
+			}
+		})
+	}
+}
+
 func TestConvertServerState(t *testing.T) {
 	tests := []struct {
 		hcloudStatus hcloud.ServerStatus
