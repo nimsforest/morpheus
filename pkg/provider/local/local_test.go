@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"testing"
 
@@ -14,6 +15,15 @@ func skipIfNoDocker(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Skip("Docker is not available, skipping test")
 	}
+}
+
+// skipIntegrationTest skips integration tests unless MORPHEUS_INTEGRATION_TESTS=1 is set
+// Integration tests require a fully working Docker environment with network access
+func skipIntegrationTest(t *testing.T) {
+	if os.Getenv("MORPHEUS_INTEGRATION_TESTS") != "1" {
+		t.Skip("Skipping integration test (set MORPHEUS_INTEGRATION_TESTS=1 to run)")
+	}
+	skipIfNoDocker(t)
 }
 
 func TestNewProvider(t *testing.T) {
@@ -206,7 +216,7 @@ func TestConvertContainerNilLabels(t *testing.T) {
 // Integration tests - these require Docker to be running
 
 func TestIntegrationCreateAndDeleteServer(t *testing.T) {
-	skipIfNoDocker(t)
+	skipIntegrationTest(t)
 
 	p, err := NewProvider()
 	if err != nil {
@@ -286,7 +296,7 @@ func TestIntegrationCreateAndDeleteServer(t *testing.T) {
 }
 
 func TestIntegrationListServersEmpty(t *testing.T) {
-	skipIfNoDocker(t)
+	skipIntegrationTest(t)
 
 	p, err := NewProvider()
 	if err != nil {
