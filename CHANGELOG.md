@@ -121,7 +121,7 @@ git push origin v1.2.0
 # Done! GitHub Actions handles the rest
 ```
 
-See [RELEASE.md](RELEASE.md) for complete release process documentation.
+See [docs/development/RELEASE.md](docs/development/RELEASE.md) for complete release process documentation.
 
 ### Added - Automatic SSH Key Upload
 

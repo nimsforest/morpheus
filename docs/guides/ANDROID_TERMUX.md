@@ -28,7 +28,7 @@
 
 **Step 1: Get your Hetzner API token (optional but recommended)**
 
-Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../README.md#get-hetzner-api-token) for step-by-step instructions.
+Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../../README.md#get-hetzner-api-token) for step-by-step instructions.
 
 **Step 2: Run the installer**
 
@@ -135,7 +135,7 @@ Using your phone browser:
 
 ### Step 6: Get Hetzner API Token
 
-Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../README.md#get-hetzner-api-token) for detailed instructions.
+Get your token from the [Hetzner Cloud Console](https://console.hetzner.cloud/). See the [main README](../../README.md#get-hetzner-api-token) for detailed instructions.
 
 ### Step 7: Configure Morpheus
 

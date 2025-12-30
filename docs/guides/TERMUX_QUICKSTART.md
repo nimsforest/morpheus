@@ -17,7 +17,7 @@
 
 ### Step 2: Get Hetzner API Token (Recommended)
 
-Get your Hetzner API token first for a smoother experience. See the [main README](../README.md#get-hetzner-api-token) for detailed instructions.
+Get your Hetzner API token first for a smoother experience. See the [main README](../../README.md#get-hetzner-api-token) for detailed instructions.
 
 ### Step 3: Run Installer
 

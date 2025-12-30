@@ -100,5 +100,5 @@ bash ./scripts/install-termux.sh
 
 ## See Also
 
-- [Android/Termux Guide](../docs/guides/ANDROID_TERMUX.md)
-- [Control Server Setup](../docs/guides/CONTROL_SERVER_SETUP.md)
+- [Android/Termux Guide](../guides/ANDROID_TERMUX.md)
+- [Control Server Setup](../guides/CONTROL_SERVER_SETUP.md)
