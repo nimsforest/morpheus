@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/nimsforest/morpheus/pkg/httputil"
 )
 
 func TestNewUpdater(t *testing.T) {
@@ -30,14 +32,14 @@ func TestIsRestrictedEnvironment(t *testing.T) {
 				os.Unsetenv("TERMUX_VERSION")
 			}
 		}()
-		
+
 		// Clear Termux env var
 		os.Unsetenv("TERMUX_VERSION")
-		
+
 		// On non-Android systems without TERMUX_VERSION, should return false
 		// (unless we're actually running on Android/Termux)
-		result := isRestrictedEnvironment()
-		
+		result := httputil.IsRestrictedEnvironment()
+
 		// If we're on Linux, it might still detect Android, so we check the logic
 		if runtime.GOOS != "linux" {
 			if result {
@@ -45,7 +47,7 @@ func TestIsRestrictedEnvironment(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("termux_environment_via_env", func(t *testing.T) {
 		// Save original env
 		origTermux := os.Getenv("TERMUX_VERSION")
@@ -56,11 +58,11 @@ func TestIsRestrictedEnvironment(t *testing.T) {
 				os.Unsetenv("TERMUX_VERSION")
 			}
 		}()
-		
+
 		// Set Termux env var
 		os.Setenv("TERMUX_VERSION", "0.118")
-		
-		result := isRestrictedEnvironment()
+
+		result := httputil.IsRestrictedEnvironment()
 		if !result {
 			t.Error("Expected true when TERMUX_VERSION is set")
 		}
@@ -70,7 +72,7 @@ func TestIsRestrictedEnvironment(t *testing.T) {
 func TestGetPlatform(t *testing.T) {
 	platform := GetPlatform()
 	expected := runtime.GOOS + "/" + runtime.GOARCH
-	
+
 	if platform != expected {
 		t.Errorf("Expected platform %s, got %s", expected, platform)
 	}
@@ -79,20 +81,20 @@ func TestGetPlatform(t *testing.T) {
 func TestCreateHTTPClient(t *testing.T) {
 	t.Run("creates_client_with_timeout", func(t *testing.T) {
 		timeout := 30 * time.Second
-		client := createHTTPClient(timeout)
-		
+		client := httputil.CreateHTTPClient(timeout)
+
 		if client == nil {
 			t.Fatal("Client should not be nil")
 		}
-		
+
 		if client.Timeout != timeout {
 			t.Errorf("Expected timeout %v, got %v", timeout, client.Timeout)
 		}
 	})
-	
+
 	t.Run("client_has_transport", func(t *testing.T) {
-		client := createHTTPClient(10 * time.Second)
-		
+		client := httputil.CreateHTTPClient(10 * time.Second)
+
 		// Client should have either default transport or custom one
 		// We just verify it's usable
 		if client == nil {

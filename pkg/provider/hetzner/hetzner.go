@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
+	"github.com/nimsforest/morpheus/pkg/httputil"
 	"github.com/nimsforest/morpheus/pkg/provider"
 )
 
@@ -30,7 +31,14 @@ func NewProvider(apiToken string) (*Provider, error) {
 		return nil, err
 	}
 
-	client := hcloud.NewClient(hcloud.WithToken(apiToken))
+	// Create HTTP client with proper TLS configuration and DNS resolver
+	// This is essential for environments like Termux where default DNS may not work
+	httpClient := httputil.CreateHTTPClient(30 * time.Second)
+
+	client := hcloud.NewClient(
+		hcloud.WithToken(apiToken),
+		hcloud.WithHTTPClient(httpClient),
+	)
 
 	return &Provider{
 		client: client,
