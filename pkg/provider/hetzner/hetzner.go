@@ -115,12 +115,36 @@ func validateAPIToken(token string) error {
 	return nil
 }
 
+// wrapAuthError checks if the error is an authentication error and wraps it with helpful information
+func wrapAuthError(err error, operation string) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check if this is an unauthorized error from the Hetzner API
+	if hcloud.IsError(err, hcloud.ErrorCodeUnauthorized) {
+		return fmt.Errorf("%s: %w\n\n"+
+			"This usually means:\n"+
+			"  1. The API token is invalid, revoked, or expired\n"+
+			"  2. The token was copied incorrectly (missing characters)\n"+
+			"  3. The token doesn't have the required permissions\n\n"+
+			"To fix this:\n"+
+			"  - Go to Hetzner Cloud Console: https://console.hetzner.cloud/\n"+
+			"  - Navigate to your project → Security → API Tokens\n"+
+			"  - Generate a new token with 'Read & Write' permissions\n"+
+			"  - Update your token: export HETZNER_API_TOKEN=\"your_new_token\"",
+			operation, err)
+	}
+
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
 // CreateServer provisions a new Hetzner Cloud server
 func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRequest) (*provider.Server, error) {
 	// Resolve server type
 	serverType, _, err := p.client.ServerType.GetByName(ctx, req.ServerType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get server type: %w", err)
+		return nil, wrapAuthError(err, "failed to get server type")
 	}
 	if serverType == nil {
 		return nil, fmt.Errorf("server type not found: %s", req.ServerType)
@@ -129,7 +153,7 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 	// Resolve image
 	image, _, err := p.client.Image.GetByName(ctx, req.Image)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get image: %w", err)
+		return nil, wrapAuthError(err, "failed to get image")
 	}
 	if image == nil {
 		return nil, fmt.Errorf("image not found: %s", req.Image)
@@ -138,7 +162,7 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 	// Resolve location
 	location, _, err := p.client.Location.GetByName(ctx, req.Location)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get location: %w", err)
+		return nil, wrapAuthError(err, "failed to get location")
 	}
 	if location == nil {
 		return nil, fmt.Errorf("location not found: %s", req.Location)
@@ -168,7 +192,7 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 
 	result, _, err := p.client.Server.Create(ctx, createOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create server: %w", err)
+		return nil, wrapAuthError(err, "failed to create server")
 	}
 
 	return convertServer(result.Server), nil
@@ -178,7 +202,7 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 func (p *Provider) GetServer(ctx context.Context, serverID string) (*provider.Server, error) {
 	server, _, err := p.client.Server.GetByID(ctx, parseServerID(serverID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get server: %w", err)
+		return nil, wrapAuthError(err, "failed to get server")
 	}
 	if server == nil {
 		return nil, fmt.Errorf("server not found: %s", serverID)
@@ -191,7 +215,7 @@ func (p *Provider) GetServer(ctx context.Context, serverID string) (*provider.Se
 func (p *Provider) DeleteServer(ctx context.Context, serverID string) error {
 	server, _, err := p.client.Server.GetByID(ctx, parseServerID(serverID))
 	if err != nil {
-		return fmt.Errorf("failed to get server: %w", err)
+		return wrapAuthError(err, "failed to get server")
 	}
 	if server == nil {
 		return fmt.Errorf("server not found: %s", serverID)
@@ -199,7 +223,7 @@ func (p *Provider) DeleteServer(ctx context.Context, serverID string) error {
 
 	_, _, err = p.client.Server.DeleteWithResult(ctx, server)
 	if err != nil {
-		return fmt.Errorf("failed to delete server: %w", err)
+		return wrapAuthError(err, "failed to delete server")
 	}
 
 	return nil
@@ -245,7 +269,7 @@ func (p *Provider) ListServers(ctx context.Context, filters map[string]string) (
 
 	servers, err := p.client.Server.AllWithOpts(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list servers: %w", err)
+		return nil, wrapAuthError(err, "failed to list servers")
 	}
 
 	result := make([]*provider.Server, len(servers))
@@ -263,7 +287,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context, keyName string) (*hcloud.SS
 	// First, check if the key already exists in Hetzner
 	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query SSH key: %w", err)
+		return nil, wrapAuthError(err, "failed to query SSH key")
 	}
 	if key != nil {
 		// Key already exists
@@ -287,7 +311,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context, keyName string) (*hcloud.SS
 
 	key, _, err = p.client.SSHKey.Create(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload SSH key: %w", err)
+		return nil, wrapAuthError(err, "failed to upload SSH key")
 	}
 
 	fmt.Printf("✓ Successfully uploaded SSH key '%s' to Hetzner Cloud\n", keyName)
@@ -300,7 +324,7 @@ func (p *Provider) EnsureSSHKeyWithPath(ctx context.Context, keyName, keyPath st
 	// First, check if the key already exists in Hetzner
 	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query SSH key: %w", err)
+		return nil, wrapAuthError(err, "failed to query SSH key")
 	}
 	if key != nil {
 		// Key already exists
@@ -324,7 +348,7 @@ func (p *Provider) EnsureSSHKeyWithPath(ctx context.Context, keyName, keyPath st
 
 	key, _, err = p.client.SSHKey.Create(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload SSH key: %w", err)
+		return nil, wrapAuthError(err, "failed to upload SSH key")
 	}
 
 	fmt.Printf("✓ Successfully uploaded SSH key '%s' to Hetzner Cloud\n", keyName)
