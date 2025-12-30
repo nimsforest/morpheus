@@ -19,6 +19,17 @@ integration:
   # Optional: Morpheus registry URL for infrastructure state tracking
   registry_url: ""  # e.g., "https://registry.example.com"
 
+provisioning:
+  # How long to wait for infrastructure to be ready after server starts
+  # Morpheus verifies SSH connectivity before marking nodes as ready
+  readiness_timeout: "5m"
+  
+  # How often to check infrastructure readiness
+  readiness_interval: "10s"
+  
+  # SSH port to check for connectivity (default: 22)
+  ssh_port: 22
+
 secrets:
   # Hetzner API token - can also be set via HETZNER_API_TOKEN environment variable
   hetzner_api_token: ""

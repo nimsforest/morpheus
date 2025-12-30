@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,7 +13,18 @@ import (
 type Config struct {
 	Infrastructure InfrastructureConfig `yaml:"infrastructure"`
 	Integration    IntegrationConfig    `yaml:"integration"`
+	Provisioning   ProvisioningConfig   `yaml:"provisioning"`
 	Secrets        SecretsConfig        `yaml:"secrets"`
+}
+
+// ProvisioningConfig defines settings for the provisioning process
+type ProvisioningConfig struct {
+	// ReadinessTimeout is how long to wait for infrastructure to be ready (default: 5m)
+	ReadinessTimeout string `yaml:"readiness_timeout"`
+	// ReadinessInterval is how often to check readiness (default: 10s)
+	ReadinessInterval string `yaml:"readiness_interval"`
+	// SSHPort is the port to check for SSH connectivity (default: 22)
+	SSHPort int `yaml:"ssh_port"`
 }
 
 // InfrastructureConfig defines infrastructure provider settings
@@ -62,7 +74,41 @@ func LoadConfig(path string) (*Config, error) {
 		config.Secrets.HetznerAPIToken = token
 	}
 
+	// Apply provisioning defaults
+	config.applyProvisioningDefaults()
+
 	return &config, nil
+}
+
+// applyProvisioningDefaults sets default values for provisioning config
+func (c *Config) applyProvisioningDefaults() {
+	if c.Provisioning.ReadinessTimeout == "" {
+		c.Provisioning.ReadinessTimeout = "5m"
+	}
+	if c.Provisioning.ReadinessInterval == "" {
+		c.Provisioning.ReadinessInterval = "10s"
+	}
+	if c.Provisioning.SSHPort == 0 {
+		c.Provisioning.SSHPort = 22
+	}
+}
+
+// GetReadinessTimeout returns the readiness timeout as a duration
+func (p *ProvisioningConfig) GetReadinessTimeout() time.Duration {
+	d, err := time.ParseDuration(p.ReadinessTimeout)
+	if err != nil {
+		return 5 * time.Minute // default
+	}
+	return d
+}
+
+// GetReadinessInterval returns the readiness check interval as a duration
+func (p *ProvisioningConfig) GetReadinessInterval() time.Duration {
+	d, err := time.ParseDuration(p.ReadinessInterval)
+	if err != nil {
+		return 10 * time.Second // default
+	}
+	return d
 }
 
 // Validate checks if the configuration is valid
