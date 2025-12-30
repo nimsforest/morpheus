@@ -53,7 +53,7 @@ morpheus status forest-123   # Check status
 morpheus teardown forest-123 # Clean up
 ```
 
-📖 **Full guide:** [Termux Quick Start](docs/TERMUX_QUICKSTART.md)
+📖 **Full guide:** [Termux Quick Start](docs/guides/TERMUX_QUICKSTART.md)
 
 ---
 
@@ -136,7 +136,7 @@ Use a control server only if you need:
 - Team collaboration (shared instance)
 - Long-running operations (phone can't stay on)
 
-See: [Control Server Guide](docs/CONTROL_SERVER_SETUP.md)
+See: [Control Server Guide](docs/guides/CONTROL_SERVER_SETUP.md)
 
 ### Get Hetzner API Token
 
@@ -378,7 +378,7 @@ morpheus help     # Show help
 **Morpheus** = Infrastructure as Code  
 **NimsForest** = Application Orchestration
 
-See [docs/SEPARATION_OF_CONCERNS.md](docs/SEPARATION_OF_CONCERNS.md) for details.
+See [docs/architecture/SEPARATION_OF_CONCERNS.md](docs/architecture/SEPARATION_OF_CONCERNS.md) for details.
 
 ### Integration Flow
 
@@ -513,7 +513,7 @@ A: Use environment variables (`HETZNER_API_TOKEN`) and never commit config files
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [docs/development/CONTRIBUTING.md](docs/development/CONTRIBUTING.md) for guidelines.
 
 Quick tips:
 - Follow Go best practices
@@ -537,12 +537,17 @@ MIT License - see [LICENSE](LICENSE)
 ## Links
 
 - **GitHub**: https://github.com/nimsforest/morpheus
-- **Documentation**: [docs/](docs/)
-  - [Termux Quick Start](docs/TERMUX_QUICKSTART.md) - 10-minute setup with one command
-  - [Android/Termux Guide](docs/ANDROID_TERMUX.md) - Complete guide (primary mobile approach)
-  - [Mobile Philosophy](docs/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
-  - [Control Server Setup](docs/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
-  - [Separation of Concerns](docs/SEPARATION_OF_CONCERNS.md) - Architecture details
+- **Documentation**: [docs/](docs/README.md)
+  - **Guides:**
+    - [Termux Quick Start](docs/guides/TERMUX_QUICKSTART.md) - 10-minute setup with one command
+    - [Android/Termux Guide](docs/guides/ANDROID_TERMUX.md) - Complete guide (primary mobile approach)
+    - [Mobile Philosophy](docs/guides/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
+    - [Control Server Setup](docs/guides/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
+  - **Architecture:**
+    - [Separation of Concerns](docs/architecture/SEPARATION_OF_CONCERNS.md) - Architecture details
+  - **Development:**
+    - [Contributing](docs/development/CONTRIBUTING.md) - How to contribute
+    - [Release Process](docs/development/RELEASE.md) - For maintainers
 - **Issues**: https://github.com/nimsforest/morpheus/issues
 - **NimsForest**: https://github.com/yourusername/nimsforest
 

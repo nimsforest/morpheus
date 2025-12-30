@@ -58,7 +58,7 @@ make build
 
 **Mobile/Private Repo Setup:**
 
-If you're working from mobile or need to access a private repository, see the [Control Server Setup Guide](docs/CONTROL_SERVER_SETUP.md) for:
+If you're working from mobile or need to access a private repository, see the [Control Server Setup Guide](../guides/CONTROL_SERVER_SETUP.md) for:
 - GitHub token authentication
 - Setting up a development server
 - Mobile-friendly workflows
