@@ -234,6 +234,8 @@ morpheus plant cloud <size>
 - `forest` - 3 nodes (cluster)
 - `jungle` - 5 nodes (large cluster)
 
+> ⚠️ **Termux users:** Only `cloud` mode is supported. Local mode requires Docker which does not work on Android.
+
 **Examples:**
 
 ```bash

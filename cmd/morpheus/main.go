@@ -104,6 +104,14 @@ func handlePlant() {
 			fmt.Fprintf(os.Stderr, "Failed to create local provider: %s\n", err)
 			fmt.Fprintln(os.Stderr, "\nMake sure Docker is installed and running:")
 			fmt.Fprintln(os.Stderr, "  docker info")
+			// Check if we're on Termux and provide helpful message
+			if isTermux() {
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "⚠️  You appear to be running on Termux (Android).")
+				fmt.Fprintln(os.Stderr, "   Docker does NOT work on Termux due to Android kernel limitations.")
+				fmt.Fprintln(os.Stderr, "   Please use cloud mode instead:")
+				fmt.Fprintln(os.Stderr, "     morpheus plant cloud wood")
+			}
 			os.Exit(1)
 		}
 		providerName = "local (Docker)"
@@ -455,6 +463,25 @@ func handleCheckUpdate() {
 	}
 }
 
+// isTermux checks if we're running on Termux (Android)
+func isTermux() bool {
+	// Check for Termux-specific environment variable
+	if os.Getenv("TERMUX_VERSION") != "" {
+		return true
+	}
+	// Check for Termux prefix path
+	if os.Getenv("PREFIX") == "/data/data/com.termux/files/usr" {
+		return true
+	}
+	// Check if home directory is in Termux path
+	home := os.Getenv("HOME")
+	if home != "" && (home == "/data/data/com.termux/files/home" ||
+		filepath.HasPrefix(home, "/data/data/com.termux")) {
+		return true
+	}
+	return false
+}
+
 func printHelp() {
 	fmt.Println("Morpheus - Nims Forest Infrastructure Provisioning Tool")
 	fmt.Println()
@@ -489,6 +516,10 @@ func printHelp() {
 	fmt.Println("  Local mode uses Docker to create forest containers on your machine.")
 	fmt.Println("  No cloud account or API token required - great for development!")
 	fmt.Println("  Requirements: Docker must be installed and running.")
+	fmt.Println()
+	fmt.Println("  ⚠️  Termux users: Local mode does NOT work on Android/Termux!")
+	fmt.Println("      Docker cannot run on Termux due to Android kernel limitations.")
+	fmt.Println("      Use 'morpheus plant cloud <size>' instead.")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")

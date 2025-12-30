@@ -98,7 +98,7 @@ morpheus teardown forest-<id>
 ## Daily Usage
 
 ```bash
-# Create infrastructure
+# Create infrastructure (cloud mode)
 morpheus plant cloud wood      # 1 server
 morpheus plant cloud forest    # 3 servers
 morpheus plant cloud jungle    # 5 servers
@@ -111,6 +111,11 @@ morpheus teardown forest-123   # Delete
 # Help
 morpheus help
 ```
+
+> ⚠️ **Note: Local Mode Not Available**
+>
+> `morpheus plant local` does **not** work on Termux because Docker cannot run on Android.
+> Always use `morpheus plant cloud` on Termux.
 
 ## Troubleshooting
 
