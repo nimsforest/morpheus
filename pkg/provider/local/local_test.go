@@ -225,11 +225,11 @@ func TestIntegrationCreateAndDeleteServer(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a test container - use alpine for faster CI tests
+	// Create a test container - use busybox for fast, reliable CI tests
 	req := provider.CreateServerRequest{
 		Name:       "morpheus-test-container",
 		ServerType: "local",
-		Image:      "alpine:latest",
+		Image:      "busybox:latest",
 		Location:   "local",
 		Labels: map[string]string{
 			"forest_id": "test-forest",
