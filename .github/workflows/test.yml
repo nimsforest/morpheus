@@ -21,11 +21,18 @@ jobs:
     - name: Download dependencies
       run: go mod download
     
+    - name: Pre-pull Docker images for integration tests
+      run: docker pull busybox:latest
+    
     - name: Run tests
       run: go test -v ./...
+      env:
+        MORPHEUS_INTEGRATION_TESTS: "1"
     
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out ./...
+      env:
+        MORPHEUS_INTEGRATION_TESTS: "1"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4

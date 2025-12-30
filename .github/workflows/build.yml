@@ -22,11 +22,16 @@ jobs:
     - name: Download dependencies
       run: go mod download
     
+    - name: Pre-pull Docker images for integration tests
+      run: docker pull busybox:latest
+    
     - name: Build
       run: make build
     
     - name: Run tests
       run: make test
+      env:
+        MORPHEUS_INTEGRATION_TESTS: "1"
     
     - name: Run linters
       run: |

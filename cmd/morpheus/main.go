@@ -12,6 +12,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/forest"
 	"github.com/nimsforest/morpheus/pkg/provider"
 	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
+	"github.com/nimsforest/morpheus/pkg/provider/local"
 	"github.com/nimsforest/morpheus/pkg/updater"
 )
 
@@ -52,16 +53,20 @@ func main() {
 
 func handlePlant() {
 	if len(os.Args) < 4 {
-		fmt.Fprintln(os.Stderr, "Usage: morpheus plant cloud <size>")
+		fmt.Fprintln(os.Stderr, "Usage: morpheus plant <cloud|local> <size>")
 		fmt.Fprintln(os.Stderr, "Sizes: wood (1 node), forest (3 nodes), jungle (5 nodes)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Examples:")
+		fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Create 1-node forest on Hetzner")
+		fmt.Fprintln(os.Stderr, "  morpheus plant local wood   # Create 1-node forest locally (Docker)")
 		os.Exit(1)
 	}
 
 	deploymentType := os.Args[2]
 	size := os.Args[3]
 
-	if deploymentType != "cloud" {
-		fmt.Fprintf(os.Stderr, "Invalid deployment type: %s (only 'cloud' is supported)\n", deploymentType)
+	if deploymentType != "cloud" && deploymentType != "local" {
+		fmt.Fprintf(os.Stderr, "Invalid deployment type: %s (must be: cloud or local)\n", deploymentType)
 		os.Exit(1)
 	}
 
@@ -70,29 +75,51 @@ func handlePlant() {
 		os.Exit(1)
 	}
 
-	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
-		os.Exit(1)
-	}
+	// For local deployments, we don't need a full config file
+	var cfg *config.Config
+	var err error
 
-	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid config: %s\n", err)
-		os.Exit(1)
-	}
-
-	// Create provider
-	var prov provider.Provider
-	switch cfg.Infrastructure.Provider {
-	case "hetzner":
-		prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+	if deploymentType == "local" {
+		cfg = getLocalConfig()
+	} else {
+		cfg, err = loadConfig()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
 			os.Exit(1)
 		}
-	default:
-		fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
-		os.Exit(1)
+
+		if err := cfg.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid config: %s\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Create provider based on deployment type
+	var prov provider.Provider
+	var providerName string
+
+	if deploymentType == "local" {
+		prov, err = local.NewProvider()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create local provider: %s\n", err)
+			fmt.Fprintln(os.Stderr, "\nMake sure Docker is installed and running:")
+			fmt.Fprintln(os.Stderr, "  docker info")
+			os.Exit(1)
+		}
+		providerName = "local (Docker)"
+	} else {
+		switch cfg.Infrastructure.Provider {
+		case "hetzner":
+			prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
+				os.Exit(1)
+			}
+			providerName = "hetzner"
+		default:
+			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
+			os.Exit(1)
+		}
 	}
 
 	// Create registry
@@ -109,11 +136,16 @@ func handlePlant() {
 	// Generate forest ID
 	forestID := fmt.Sprintf("forest-%d", time.Now().Unix())
 
-	// Default to first location if available
-	location := cfg.Infrastructure.Locations[0]
-	if len(cfg.Infrastructure.Locations) == 0 {
-		fmt.Fprintln(os.Stderr, "No locations configured in config")
-		os.Exit(1)
+	// Determine location
+	var location string
+	if deploymentType == "local" {
+		location = "local"
+	} else {
+		if len(cfg.Infrastructure.Locations) == 0 {
+			fmt.Fprintln(os.Stderr, "No locations configured in config")
+			os.Exit(1)
+		}
+		location = cfg.Infrastructure.Locations[0]
 	}
 
 	// Create provision request
@@ -130,7 +162,7 @@ func handlePlant() {
 	fmt.Printf("Forest ID: %s\n", forestID)
 	fmt.Printf("Size: %s\n", size)
 	fmt.Printf("Location: %s\n", location)
-	fmt.Printf("Provider: %s\n\n", cfg.Infrastructure.Provider)
+	fmt.Printf("Provider: %s\n\n", providerName)
 
 	ctx := context.Background()
 	if err := provisioner.Provision(ctx, req); err != nil {
@@ -143,6 +175,25 @@ func handlePlant() {
 	fmt.Printf("  - Check status: morpheus status %s\n", forestID)
 	fmt.Printf("  - List all: morpheus list\n")
 	fmt.Printf("  - Teardown: morpheus teardown %s\n", forestID)
+	if deploymentType == "local" {
+		fmt.Printf("\nLocal mode tips:\n")
+		fmt.Printf("  - Access container: docker exec -it <container-name> bash\n")
+		fmt.Printf("  - View logs: docker logs <container-name>\n")
+	}
+}
+
+// getLocalConfig returns a minimal config for local deployments
+func getLocalConfig() *config.Config {
+	return &config.Config{
+		Infrastructure: config.InfrastructureConfig{
+			Provider: "local",
+			Defaults: config.DefaultsConfig{
+				ServerType: "local",
+				Image:      "ubuntu:24.04",
+			},
+			Locations: []string{"local"},
+		},
+	}
 }
 
 func handleList() {
@@ -235,32 +286,50 @@ func handleTeardown() {
 
 	forestID := os.Args[2]
 
-	cfg, err := loadConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
-		os.Exit(1)
-	}
-
-	// Create provider
-	var prov provider.Provider
-	switch cfg.Infrastructure.Provider {
-	case "hetzner":
-		prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
-			os.Exit(1)
-		}
-	default:
-		fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
-		os.Exit(1)
-	}
-
-	// Create registry
+	// First, get the forest info to determine the provider
 	registryPath := getRegistryPath()
 	registry, err := forest.NewRegistry(registryPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create registry: %s\n", err)
 		os.Exit(1)
+	}
+
+	// Get forest info to determine provider type
+	forestInfo, err := registry.GetForest(forestID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get forest info: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Create provider based on forest's provider
+	var prov provider.Provider
+	var cfg *config.Config
+
+	if forestInfo.Provider == "local" {
+		prov, err = local.NewProvider()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create local provider: %s\n", err)
+			os.Exit(1)
+		}
+		cfg = getLocalConfig()
+	} else {
+		cfg, err = loadConfig()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
+			os.Exit(1)
+		}
+
+		switch cfg.Infrastructure.Provider {
+		case "hetzner":
+			prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
+				os.Exit(1)
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
+			os.Exit(1)
+		}
 	}
 
 	// Create provisioner
@@ -393,29 +462,40 @@ func printHelp() {
 	fmt.Println("  morpheus <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  plant cloud <size>    Provision a new forest")
-	fmt.Println("                        Sizes: wood (1 node), forest (3 nodes), jungle (5 nodes)")
-	fmt.Println("  list                  List all forests")
-	fmt.Println("  status <forest-id>    Show detailed forest status")
-	fmt.Println("  teardown <forest-id>  Delete a forest and all its resources")
-	fmt.Println("  version               Show version information")
-	fmt.Println("  update                Check for updates and install if available")
-	fmt.Println("  check-update          Check for updates without installing")
-	fmt.Println("  help                  Show this help message")
+	fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
+	fmt.Println("                              Deployment types:")
+	fmt.Println("                                cloud - Provision on Hetzner Cloud")
+	fmt.Println("                                local - Provision locally using Docker")
+	fmt.Println("                              Sizes: wood (1 node), forest (3 nodes), jungle (5 nodes)")
+	fmt.Println("  list                        List all forests")
+	fmt.Println("  status <forest-id>          Show detailed forest status")
+	fmt.Println("  teardown <forest-id>        Delete a forest and all its resources")
+	fmt.Println("  version                     Show version information")
+	fmt.Println("  update                      Check for updates and install if available")
+	fmt.Println("  check-update                Check for updates without installing")
+	fmt.Println("  help                        Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  morpheus plant cloud wood     # Create 1-node forest")
-	fmt.Println("  morpheus plant cloud forest   # Create 3-node forest")
+	fmt.Println("  morpheus plant cloud wood     # Create 1-node forest on Hetzner")
+	fmt.Println("  morpheus plant local wood     # Create 1-node forest locally (Docker)")
+	fmt.Println("  morpheus plant cloud forest   # Create 3-node forest on Hetzner")
+	fmt.Println("  morpheus plant local forest   # Create 3-node forest locally (Docker)")
 	fmt.Println("  morpheus list                 # List all forests")
 	fmt.Println("  morpheus status forest-12345  # Show forest details")
 	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
 	fmt.Println("  morpheus update               # Update to latest version")
+	fmt.Println()
+	fmt.Println("Local Mode:")
+	fmt.Println("  Local mode uses Docker to create forest containers on your machine.")
+	fmt.Println("  No cloud account or API token required - great for development!")
+	fmt.Println("  Requirements: Docker must be installed and running.")
 	fmt.Println()
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")
 	fmt.Println("    - ./config.yaml")
 	fmt.Println("    - ~/.morpheus/config.yaml")
 	fmt.Println("    - /etc/morpheus/config.yaml")
+	fmt.Println("  Note: Local mode doesn't require a config file.")
 	fmt.Println()
 	fmt.Println("For more information, see: https://github.com/nimsforest/morpheus")
 }
