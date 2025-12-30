@@ -336,16 +336,27 @@ Both are fully supported by Go and Morpheus.
 ### Limitations
 
 **What works:**
-- ✅ All Morpheus commands (`plant`, `list`, `status`, `teardown`)
+- ✅ Cloud mode (`morpheus plant cloud <size>`) - full functionality
+- ✅ All management commands (`list`, `status`, `teardown`)
 - ✅ API calls to Hetzner
 - ✅ SSH key management
 - ✅ Config file management
 - ✅ Local registry (JSON storage)
 
-**What might not work:**
+**What does NOT work:**
+- ❌ **Local mode (`morpheus plant local`) - Docker is NOT available on Termux**
 - ❌ Some terminal formatting might look different
 - ❌ Interactive prompts (use `yes | morpheus teardown` if needed)
 - ❌ Large-scale operations (100+ nodes) might be slow
+
+> ⚠️ **Important: Local Mode Not Available on Termux**
+>
+> Docker cannot run on Android/Termux because:
+> - Android's Linux kernel lacks required features (cgroups, namespaces)
+> - Docker needs kernel modules that Android doesn't provide
+> - Even rooted devices typically can't run Docker
+>
+> **Solution:** Use cloud mode (`morpheus plant cloud wood`) which provisions real servers on Hetzner. This is the recommended approach for Termux users anyway!
 
 ### Storage
 
