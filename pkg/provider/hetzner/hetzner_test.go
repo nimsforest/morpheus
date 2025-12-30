@@ -459,6 +459,83 @@ func TestReadSSHPublicKey(t *testing.T) {
 	})
 }
 
+func TestWrapAuthError(t *testing.T) {
+	tests := []struct {
+		name           string
+		err            error
+		operation      string
+		expectNil      bool
+		expectContains []string
+	}{
+		{
+			name:      "nil error returns nil",
+			err:       nil,
+			operation: "test operation",
+			expectNil: true,
+		},
+		{
+			name:      "unauthorized error wraps with helpful message",
+			err:       hcloud.Error{Code: hcloud.ErrorCodeUnauthorized, Message: "token invalid"},
+			operation: "failed to get server type",
+			expectContains: []string{
+				"failed to get server type",
+				"token invalid",
+				"API token is invalid",
+				"Hetzner Cloud Console",
+				"HETZNER_API_TOKEN",
+			},
+		},
+		{
+			name:      "non-auth error passes through",
+			err:       hcloud.Error{Code: hcloud.ErrorCodeNotFound, Message: "not found"},
+			operation: "failed to get server",
+			expectContains: []string{
+				"failed to get server",
+				"not found",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := wrapAuthError(tt.err, tt.operation)
+
+			if tt.expectNil {
+				if result != nil {
+					t.Errorf("Expected nil error, got: %v", result)
+				}
+				return
+			}
+
+			if result == nil {
+				t.Fatal("Expected non-nil error")
+			}
+
+			errMsg := result.Error()
+			for _, expected := range tt.expectContains {
+				if !contains(errMsg, expected) {
+					t.Errorf("Expected error to contain '%s', got: %s", expected, errMsg)
+				}
+			}
+		})
+	}
+}
+
+// contains checks if s contains substr (case-insensitive for flexibility)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestReadSSHPublicKeyTildeExpansion(t *testing.T) {
 	// This test verifies that tilde expansion works
 	homeDir, err := os.UserHomeDir()
