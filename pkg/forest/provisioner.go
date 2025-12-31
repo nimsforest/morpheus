@@ -73,6 +73,9 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 
 		provisionedServers = append(provisionedServers, server)
 
+		// Update the actual location used (may differ from requested if fallback occurred)
+		forest.Location = server.Location
+
 		// Register node in registry
 		node := &Node{
 			ID:       server.ID,
@@ -91,7 +94,10 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		fmt.Printf("✓ Node %s provisioned successfully (IP: %s)\n", nodeName, server.PublicIPv4)
 	}
 
-	// Update forest status
+	// Update forest status and location
+	if err := p.registry.UpdateForest(forest); err != nil {
+		fmt.Printf("Warning: failed to update forest: %s\n", err)
+	}
 	if err := p.registry.UpdateForestStatus(req.ForestID, "active"); err != nil {
 		fmt.Printf("Warning: failed to update forest status: %s\n", err)
 	}

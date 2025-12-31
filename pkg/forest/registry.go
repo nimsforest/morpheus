@@ -114,6 +114,24 @@ func (r *Registry) GetNodes(forestID string) ([]*Node, error) {
 	return nodes, nil
 }
 
+// UpdateForest updates a forest's fields
+func (r *Registry) UpdateForest(updated *Forest) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	forest, exists := r.forests[updated.ID]
+	if !exists {
+		return fmt.Errorf("forest not found: %s", updated.ID)
+	}
+
+	// Update fields (preserve CreatedAt)
+	createdAt := forest.CreatedAt
+	*forest = *updated
+	forest.CreatedAt = createdAt
+
+	return r.save()
+}
+
 // UpdateForestStatus updates the status of a forest
 func (r *Registry) UpdateForestStatus(forestID, status string) error {
 	r.mu.Lock()
