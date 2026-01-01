@@ -208,10 +208,8 @@ func TestValidate(t *testing.T) {
 			config: Config{
 				Infrastructure: InfrastructureConfig{
 					Provider: "hetzner",
-					Defaults: DefaultServerConfig{
-						ServerType: "cpx31",
-						Image:      "ubuntu-24.04",
-						SSHKey:     "main",
+					SSH: SSHConfig{
+						KeyName: "main",
 					},
 				},
 				Secrets: SecretsConfig{
@@ -234,9 +232,8 @@ func TestValidate(t *testing.T) {
 			config: Config{
 				Infrastructure: InfrastructureConfig{
 					Provider: "hetzner",
-					Defaults: DefaultServerConfig{
-						ServerType: "cpx31",
-						Image:      "ubuntu-24.04",
+					SSH: SSHConfig{
+						KeyName: "main",
 					},
 				},
 				Secrets: SecretsConfig{
@@ -246,36 +243,21 @@ func TestValidate(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name: "missing server type",
+			name: "valid config with legacy defaults",
 			config: Config{
 				Infrastructure: InfrastructureConfig{
 					Provider: "hetzner",
-					Defaults: DefaultServerConfig{
-						ServerType: "",
-						Image:      "ubuntu-24.04",
-					},
-				},
-				Secrets: SecretsConfig{
-					HetznerAPIToken: "token",
-				},
-			},
-			expectErr: true,
-		},
-		{
-			name: "missing image",
-			config: Config{
-				Infrastructure: InfrastructureConfig{
-					Provider: "hetzner",
-					Defaults: DefaultServerConfig{
+					Defaults: &DefaultServerConfig{
 						ServerType: "cpx31",
-						Image:      "",
+						Image:      "ubuntu-24.04",
+						SSHKey:     "main",
 					},
 				},
 				Secrets: SecretsConfig{
 					HetznerAPIToken: "token",
 				},
 			},
-			expectErr: true,
+			expectErr: false,
 		},
 	}
 

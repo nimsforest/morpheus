@@ -229,25 +229,55 @@ func handlePlant() {
 	// Generate forest ID
 	forestID := fmt.Sprintf("forest-%d", time.Now().Unix())
 
-	// Determine location
-	var location string
+	// Create context early for provider operations
+	ctx := context.Background()
+
+	// Determine machine profile, server type, and location
+	var location, serverType, image string
 	if deploymentType == "local" {
 		location = "local"
+		serverType = "local"
+		image = "ubuntu:24.04"
 	} else {
-		if len(cfg.Infrastructure.Locations) == 0 {
-			fmt.Fprintln(os.Stderr, "No locations configured in config")
+		// Use machine profile system for cloud deployments
+		profile := provider.GetProfileForSize(size)
+		
+		// For Hetzner, select the best server type and locations
+		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+			// Get default locations if not configured
+			preferredLocations := cfg.Infrastructure.Locations
+			if len(preferredLocations) == 0 {
+				preferredLocations = hetzner.GetDefaultLocations()
+			}
+			
+			// Select best server type and available locations
+			selectedType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, preferredLocations)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\n❌ Failed to select server type: %s\n", err)
+				os.Exit(1)
+			}
+			
+			serverType = selectedType
+			location = availableLocations[0] // Use first available location
+			image = "ubuntu-24.04" // Default to Ubuntu 24.04
+			
+			// Update available locations for fallback
+			cfg.Infrastructure.Locations = availableLocations
+		} else {
+			// Non-Hetzner provider (shouldn't happen, but handle gracefully)
+			fmt.Fprintln(os.Stderr, "Unknown cloud provider")
 			os.Exit(1)
 		}
-		// Try to find an available location
-		location = cfg.Infrastructure.Locations[0]
 	}
 
 	// Create provision request
 	req := forest.ProvisionRequest{
-		ForestID: forestID,
-		Size:     size,
-		Location: location,
-		Role:     cloudinit.RoleEdge, // Default role
+		ForestID:   forestID,
+		Size:       size,
+		Location:   location,
+		Role:       cloudinit.RoleEdge, // Default role
+		ServerType: serverType,
+		Image:      image,
 	}
 
 	// Display friendly provisioning header
@@ -269,45 +299,26 @@ func handlePlant() {
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   Forest ID:  %s\n", forestID)
 	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
-	fmt.Printf("   Location:   %s\n", location)
+	if deploymentType == "cloud" {
+		fmt.Printf("   Machine:    %s\n", serverType)
+		fmt.Printf("   Location:   %s\n", hetzner.GetLocationDescription(location))
+	} else {
+		fmt.Printf("   Location:   %s\n", location)
+	}
 	fmt.Printf("   Provider:   %s\n", providerName)
 	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
 	
 	if deploymentType == "cloud" {
-		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimateMonthlyCost(size, cfg.Infrastructure.Defaults.ServerType))
+		estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
+		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimatedCost)
 		fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
 	}
 	
 	fmt.Println("🚀 Starting provisioning...")
 
-	ctx := context.Background()
-
-	// Filter locations by server type availability if the provider supports it
+	// Use the locations already determined during server type selection
 	availableLocations := cfg.Infrastructure.Locations
-	serverType := cfg.Infrastructure.Defaults.ServerType
-	if locationAware, ok := prov.(provider.LocationAwareProvider); ok {
-		supported, unsupported, filterErr := locationAware.FilterLocationsByServerType(ctx, cfg.Infrastructure.Locations, serverType)
-		if filterErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not check server type availability: %s\n", filterErr)
-			// Continue with all locations - will fail at creation time if unavailable
-		} else if len(supported) == 0 {
-			// No configured locations support this server type - offer interactive options
-			newServerType, newLocations := handleServerTypeLocationMismatch(ctx, locationAware, serverType, cfg.Infrastructure.Locations)
-			if newServerType == "" {
-				os.Exit(1)
-			}
-			serverType = newServerType
-			cfg.Infrastructure.Defaults.ServerType = serverType
-			availableLocations = newLocations
-		} else {
-			availableLocations = supported
-			if len(unsupported) > 0 {
-				fmt.Printf("ℹ️  Note: Server type '%s' is not available in: %s\n", serverType, joinLocations(unsupported))
-				fmt.Printf("   Using available locations: %s\n\n", joinLocations(supported))
-			}
-		}
-	}
-
+	
 	err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
@@ -457,7 +468,7 @@ func handleServerTypeLocationMismatch(ctx context.Context, locationAware provide
 		// Let user pick a location
 		fmt.Printf("\nAvailable locations for '%s':\n", serverType)
 		for i, loc := range availableForType {
-			locDesc := getLocationDescription(loc)
+			locDesc := hetzner.GetLocationDescription(loc)
 			fmt.Printf("  [%d] %s - %s\n", i+1, loc, locDesc)
 		}
 		fmt.Print("\nEnter location number: ")
@@ -540,21 +551,6 @@ func handleServerTypeLocationMismatch(ctx context.Context, locationAware provide
 	}
 }
 
-// getLocationDescription returns a human-readable description for a location
-func getLocationDescription(loc string) string {
-	descriptions := map[string]string{
-		"fsn1": "Falkenstein, Germany",
-		"nbg1": "Nuremberg, Germany",
-		"hel1": "Helsinki, Finland",
-		"ash":  "Ashburn, VA, USA",
-		"hil":  "Hillsboro, OR, USA",
-		"sin":  "Singapore",
-	}
-	if desc, ok := descriptions[loc]; ok {
-		return desc
-	}
-	return loc
-}
 
 // containsLocationError checks if an error message indicates a location availability issue
 func containsLocationError(errMsg string) bool {
@@ -608,7 +604,7 @@ func getLocalConfig() *config.Config {
 	return &config.Config{
 		Infrastructure: config.InfrastructureConfig{
 			Provider: "local",
-			Defaults: config.DefaultsConfig{
+			Defaults: &config.DefaultsConfig{
 				ServerType: "local",
 				Image:      "ubuntu:24.04",
 			},
@@ -1012,35 +1008,6 @@ func plural(count int) string {
 	return "s"
 }
 
-// estimateMonthlyCost estimates monthly cost based on size and server type
-func estimateMonthlyCost(size string, serverType string) float64 {
-	// Base costs per server type (approximate monthly costs in EUR)
-	baseCosts := map[string]float64{
-		"cx22":  3.29,  // Shared vCPU, 2 vCPU, 4GB
-		"cx32":  6.29,  // Shared vCPU, 4 vCPU, 8GB
-		"cx42":  12.29, // Shared vCPU, 8 vCPU, 16GB
-		"cx52":  24.29, // Shared vCPU, 16 vCPU, 32GB
-		"cpx11": 4.49,  // Dedicated vCPU, 2 vCPU, 2GB
-		"cpx21": 8.49,  // Dedicated vCPU, 3 vCPU, 4GB
-		"cpx31": 15.49, // Dedicated vCPU, 4 vCPU, 8GB
-		"cpx41": 29.49, // Dedicated vCPU, 8 vCPU, 16GB
-		"cpx51": 57.49, // Dedicated vCPU, 16 vCPU, 32GB
-		"cax11": 3.79,  // ARM, 2 vCPU, 4GB
-		"cax21": 7.59,  // ARM, 4 vCPU, 8GB
-		"cax31": 15.19, // ARM, 8 vCPU, 16GB
-		"cax41": 30.39, // ARM, 16 vCPU, 32GB
-	}
-	
-	// Default cost if server type not found
-	baseCost := 5.0
-	if cost, ok := baseCosts[serverType]; ok {
-		baseCost = cost
-	}
-	
-	// Calculate based on forest size
-	nodeCount := getNodeCount(size)
-	return baseCost * float64(nodeCount)
-}
 
 // truncateIP truncates an IP address to fit within maxLen characters
 func truncateIP(ip string, maxLen int) string {
