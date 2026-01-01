@@ -7,9 +7,15 @@ infrastructure:
     ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
                        # If not specified, Morpheus will search common SSH key locations
   locations:
-    - fsn1
-    - nbg1
-    - hel1
+    # Morpheus will try each location in order and automatically fall back
+    # to the next one if a location is unavailable or at capacity
+    - fsn1  # Falkenstein, Germany (Europe)
+    - nbg1  # Nuremberg, Germany (Europe)
+    - hel1  # Helsinki, Finland (Europe)
+    # Other available locations:
+    # - ash   # Ashburn, VA, USA (US East)
+    # - hil   # Hillsboro, OR, USA (US West)
+    # - sin   # Singapore (Asia)
 
 integration:
   # NimsForest callback URL for bootstrap notifications

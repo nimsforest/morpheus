@@ -280,6 +280,33 @@ func (p *Provider) ListServers(ctx context.Context, filters map[string]string) (
 	return result, nil
 }
 
+// CheckLocationAvailability checks if a location is available for server creation
+// This is a best-effort check - the actual availability is determined when creating the server
+func (p *Provider) CheckLocationAvailability(ctx context.Context, locationName, serverTypeName string) (bool, error) {
+	// Get location
+	location, _, err := p.client.Location.GetByName(ctx, locationName)
+	if err != nil {
+		return false, wrapAuthError(err, "failed to get location")
+	}
+	if location == nil {
+		return false, nil
+	}
+
+	// Get server type
+	serverType, _, err := p.client.ServerType.GetByName(ctx, serverTypeName)
+	if err != nil {
+		return false, wrapAuthError(err, "failed to get server type")
+	}
+	if serverType == nil {
+		return false, nil
+	}
+
+	// Both location and server type exist
+	// The actual availability for creating a server in this location
+	// can only be determined when attempting to create the server
+	return true, nil
+}
+
 // ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.
 // If not found, it attempts to read from common SSH key locations and upload it.
 // Returns the SSH key from Hetzner Cloud.

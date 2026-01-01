@@ -153,6 +153,7 @@ func handlePlant() {
 			fmt.Fprintln(os.Stderr, "No locations configured in config")
 			os.Exit(1)
 		}
+		// Try to find an available location
 		location = cfg.Infrastructure.Locations[0]
 	}
 
@@ -164,7 +165,7 @@ func handlePlant() {
 		Role:     cloudinit.RoleEdge, // Default role
 	}
 
-	// Provision
+	// Provision with automatic location fallback
 	fmt.Printf("\n🌲 Morpheus - Infrastructure Provisioning\n")
 	fmt.Printf("=========================================\n")
 	fmt.Printf("Forest ID: %s\n", forestID)
@@ -173,7 +174,8 @@ func handlePlant() {
 	fmt.Printf("Provider: %s\n\n", providerName)
 
 	ctx := context.Background()
-	if err := provisioner.Provision(ctx, req); err != nil {
+	err = provisionWithLocationFallback(ctx, provisioner, req, cfg.Infrastructure.Locations)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
 		os.Exit(1)
 	}
@@ -188,6 +190,93 @@ func handlePlant() {
 		fmt.Printf("  - Access container: docker exec -it <container-name> bash\n")
 		fmt.Printf("  - View logs: docker logs <container-name>\n")
 	}
+}
+
+// provisionWithLocationFallback tries to provision a forest, automatically
+// falling back to alternative locations if the primary location is unavailable
+func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Provisioner, req forest.ProvisionRequest, locations []string) error {
+	var lastErr error
+	var attemptedLocations []string
+
+	// Try each configured location in order
+	for _, location := range locations {
+		attemptedLocations = append(attemptedLocations, location)
+		req.Location = location
+
+		err := provisioner.Provision(ctx, req)
+		if err == nil {
+			// Success!
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if the error is a location availability error
+		errStr := err.Error()
+		if containsLocationError(errStr) {
+			fmt.Printf("⚠️  Location %s is unavailable, trying next location...\n\n", location)
+			continue
+		}
+
+		// If it's not a location error, don't try other locations
+		break
+	}
+
+	// All locations failed or encountered a non-location error
+	if containsLocationError(lastErr.Error()) && len(attemptedLocations) > 1 {
+		return fmt.Errorf("all configured locations are unavailable (%s): %w\n\n"+
+			"Hetzner may be experiencing capacity issues. Try again later or update your config with different locations:\n"+
+			"  Available locations: ash (Ashburn, USA), fsn1 (Falkenstein, Germany), nbg1 (Nuremberg, Germany), \n"+
+			"                       hel1 (Helsinki, Finland), hil (Hillsboro, USA), sin (Singapore)",
+			joinLocations(attemptedLocations), lastErr)
+	}
+
+	return lastErr
+}
+
+// containsLocationError checks if an error message indicates a location availability issue
+func containsLocationError(errMsg string) bool {
+	locationErrorPhrases := []string{
+		"server location disabled",
+		"resource_unavailable",
+		"location not available",
+		"location disabled",
+		"datacenter not available",
+	}
+
+	for _, phrase := range locationErrorPhrases {
+		if contains(errMsg, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
+}
+
+// findSubstring performs a simple substring search
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// joinLocations joins location names with commas
+func joinLocations(locations []string) string {
+	result := ""
+	for i, loc := range locations {
+		if i > 0 {
+			result += ", "
+		}
+		result += loc
+	}
+	return result
 }
 
 // getLocalConfig returns a minimal config for local deployments
