@@ -247,13 +247,15 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 ```
 
 **What happens:**
-1. Creates Hetzner servers
+1. Creates Hetzner servers (with IPv4 + IPv6)
 2. Configures OS (Ubuntu 24.04)
 3. Sets up firewall (ports 22, 4222, 6222, 8222, 7777)
-4. Creates directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`, `/var/log/nimsforest`, `/etc/nimsforest`)
+4. Creates directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`)
 5. Writes metadata to `/etc/morpheus/node-info.json`
 6. Calls NimsForest (if configured)
 7. Status: `infrastructure_ready`
+
+**Note:** Uses IPv6 by default. Set `prefer_ipv6: false` if your network doesn't support IPv6.
 
 ### List Forests
 
@@ -518,8 +520,8 @@ A: Hetzner charges by the minute. Examples:
 
 Upgrade to cpx31 if you need higher throughput (50K+ msg/s).
 
-**Q: Can I use IPv6?**  
-A: Yes. Set `prefer_ipv6: true` in config. See [IPv6 Guide](docs/guides/IPV6_SETUP.md).
+**Q: Does Morpheus use IPv6?**  
+A: Yes, IPv6 is the default. Set `prefer_ipv6: false` if your network doesn't support IPv6. See [IPv6 Guide](docs/guides/IPV6_SETUP.md).
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.

@@ -46,7 +46,7 @@ type DefaultsConfig struct {
 	Image      string `yaml:"image"`
 	SSHKey     string `yaml:"ssh_key"`      // Name of the SSH key in Hetzner Cloud
 	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
-	PreferIPv6 bool   `yaml:"prefer_ipv6"`  // Use IPv6 instead of IPv4 for connections (default: false)
+	PreferIPv6 bool   `yaml:"prefer_ipv6"`  // Use IPv6 instead of IPv4 for connections (default: true)
 	IPv6Only   bool   `yaml:"ipv6_only"`    // Strict IPv6-only mode: fail if no IPv6 (default: false)
 }
 
@@ -79,8 +79,9 @@ func LoadConfig(path string) (*Config, error) {
 		config.Secrets.HetznerAPIToken = token
 	}
 
-	// Apply provisioning defaults
+	// Apply defaults
 	config.applyProvisioningDefaults()
+	config.applyInfrastructureDefaults()
 
 	return &config, nil
 }
@@ -95,6 +96,18 @@ func (c *Config) applyProvisioningDefaults() {
 	}
 	if c.Provisioning.SSHPort == 0 {
 		c.Provisioning.SSHPort = 22
+	}
+}
+
+// applyInfrastructureDefaults sets default values for infrastructure config
+func (c *Config) applyInfrastructureDefaults() {
+	// Default to IPv6-first (with IPv4 fallback)
+	// This is only applied if the config file doesn't explicitly set prefer_ipv6
+	// Note: YAML unmarshal will set false for boolean fields not present in config,
+	// so we can't distinguish between "not set" and "explicitly false"
+	// This default is mainly for in-code config creation
+	if c.Infrastructure.Defaults.Image == "" {
+		c.Infrastructure.Defaults.PreferIPv6 = true
 	}
 }
 

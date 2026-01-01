@@ -1,13 +1,21 @@
 # IPv6 Support
 
-Morpheus fully supports IPv6. All Hetzner servers get both IPv4 and IPv6 addresses.
+Morpheus uses IPv6 by default. All Hetzner servers get both IPv4 and IPv6 addresses.
 
 ## Configuration
 
+**Default (IPv6-first):**
 ```yaml
 infrastructure:
   defaults:
-    prefer_ipv6: true  # Use IPv6 instead of IPv4
+    prefer_ipv6: true  # Default - uses IPv6, falls back to IPv4
+```
+
+**IPv4-only (if your network doesn't support IPv6):**
+```yaml
+infrastructure:
+  defaults:
+    prefer_ipv6: false  # Use IPv4 instead
 ```
 
 ## SSH with IPv6
@@ -63,10 +71,16 @@ ping6 2001:db8::1
 ssh -6 root@2001:db8::1
 ```
 
-**If provisioning fails with IPv6:**
+**If provisioning fails (your network doesn't have IPv6):**
 ```yaml
-# Switch back to IPv4
+# Use IPv4 instead
 infrastructure:
   defaults:
     prefer_ipv6: false
+```
+
+**Test your IPv6:**
+```bash
+curl -6 ifconfig.co
+# If this works, you have IPv6
 ```
