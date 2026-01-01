@@ -65,11 +65,26 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		
 		fmt.Printf("\n   Machine %d/%d: %s\n", i+1, nodeCount, nodeName)
 
-		server, err := p.provisionNode(ctx, req, nodeName, i)
+		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
+			// Register node immediately after server creation (before SSH verification)
+			// This ensures teardown can find and delete it even if interrupted
+			node := &Node{
+				ID:       s.ID,
+				ForestID: req.ForestID,
+				Role:     string(req.Role),
+				IP:       s.PublicIPv6,
+				Location: s.Location,
+				Status:   "provisioning", // Will be updated to "active" after SSH verification
+				Metadata: s.Labels,
+			}
+			if err := p.registry.RegisterNode(node); err != nil {
+				fmt.Printf("   ⚠️  Warning: failed to register node in registry: %s\n", err)
+			}
+		})
 		if err != nil {
-			// Rollback on failure
+			// Rollback on failure - nodes are already registered, so teardown will find them
 			fmt.Printf("\n❌ Provisioning failed: %s\n", err)
-			fmt.Printf("🔄 Rolling back %d machine%s...\n", len(provisionedServers), plural(len(provisionedServers)))
+			fmt.Printf("🔄 Rolling back %d machine%s...\n", len(provisionedServers)+1, plural(len(provisionedServers)+1))
 			p.rollback(ctx, req.ForestID, provisionedServers)
 			return fmt.Errorf("failed to provision node %s: %w", nodeName, err)
 		}
@@ -79,19 +94,9 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		// Update the actual location used (may differ from requested if fallback occurred)
 		forest.Location = server.Location
 
-		// Register node in registry (IPv6 only)
-		node := &Node{
-			ID:       server.ID,
-			ForestID: req.ForestID,
-			Role:     string(req.Role),
-			IP:       server.PublicIPv6,
-			Location: server.Location,
-			Status:   "active",
-			Metadata: server.Labels,
-		}
-
-		if err := p.registry.RegisterNode(node); err != nil {
-			fmt.Printf("   ⚠️  Warning: failed to register node in registry: %s\n", err)
+		// Update node status to active now that SSH verification passed
+		if err := p.registry.UpdateNodeStatus(req.ForestID, server.ID, "active"); err != nil {
+			fmt.Printf("   ⚠️  Warning: failed to update node status: %s\n", err)
 		}
 
 		fmt.Printf("   ✅ Machine %d ready (IPv6: %s)\n", i+1, server.PublicIPv6)
@@ -111,7 +116,9 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 }
 
 // provisionNode provisions a single node
-func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int) (*provider.Server, error) {
+// The onCreated callback is called immediately after the server is created (before SSH verification)
+// to allow early registration for cleanup purposes
+func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
@@ -169,6 +176,15 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	}
 
 	fmt.Printf("      ✓ Server created (ID: %s)\n", server.ID)
+	
+	// Store the location immediately
+	server.Location = req.Location
+	
+	// Register node immediately so teardown can find it even if interrupted
+	if onCreated != nil {
+		onCreated(server)
+	}
+	
 	fmt.Printf("      ⏳ Waiting for server to boot...\n")
 
 	// Wait for server to be running
@@ -292,11 +308,18 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 }
 
 // rollback removes all provisioned servers on failure
-func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*provider.Server) {
-	for i, server := range servers {
-		fmt.Printf("   🗑️  Deleting machine %d/%d...\n", i+1, len(servers))
-		if err := p.provider.DeleteServer(ctx, server.ID); err != nil {
-			fmt.Printf("   ⚠️  Warning: failed to delete server %s: %s\n", server.ID, err)
+func (p *Provisioner) rollback(ctx context.Context, forestID string, _ []*provider.Server) {
+	// Get all registered nodes from registry (includes nodes registered before SSH verification)
+	nodes, err := p.registry.GetNodes(forestID)
+	if err != nil {
+		fmt.Printf("   ⚠️  Warning: failed to get nodes from registry: %s\n", err)
+	}
+
+	// Delete all servers that were registered
+	for i, node := range nodes {
+		fmt.Printf("   🗑️  Deleting machine %d/%d (%s)...\n", i+1, len(nodes), node.ID)
+		if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
+			fmt.Printf("   ⚠️  Warning: failed to delete server %s: %s\n", node.ID, err)
 		} else {
 			fmt.Printf("   ✅ Machine deleted\n")
 		}
