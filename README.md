@@ -217,11 +217,11 @@ secrets:
 ```
 
 **Server Types:**
-- `cpx11`: 2 vCPU, 2 GB RAM (~€4.50/mo) - Testing
-- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - Small production
-- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - **Recommended**
-- `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - High load
-- `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise
+- `cpx11`: 2 vCPU, 2 GB RAM (~€4.50/mo) - Testing only
+- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - **Recommended** (perfect for NATS)
+- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - High throughput (50K+ msg/s)
+- `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - Very high load
+- `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise scale
 
 **OS Image:**
 - **`ubuntu-24.04`** - Recommended for all nodes (5-year LTS support)
@@ -522,10 +522,12 @@ A: Yes! Set `integration.nimsforest_url: ""` and handle application setup manual
 A: Currently Hetzner Cloud. AWS, GCP, Azure coming in future releases.
 
 **Q: How much does it cost?**  
-A: Hetzner charges by the minute. Example with cpx31:
-- wood (1 node): ~€18/month
-- forest (3 nodes): ~€54/month
-- jungle (5 nodes): ~€90/month
+A: Hetzner charges by the minute. Example with cpx21 (default):
+- wood (1 node): ~€9/month
+- forest (3 nodes): ~€27/month
+- jungle (5 nodes): ~€45/month
+
+Upgrade to cpx31 if you need higher throughput (50K+ msg/s).
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.
