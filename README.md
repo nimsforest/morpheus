@@ -217,11 +217,19 @@ secrets:
 ```
 
 **Server Types:**
-- `cpx11`: 2 vCPU, 2 GB RAM (~€4.50/mo) - Testing only
-- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - **Recommended** (perfect for NATS)
+
+**Shared vCPU (CX series - budget-friendly):**
+- `cx22`: 2 vCPU, 4 GB RAM (~€5.29/mo) - **Default** (light NATS workloads)
+- `cx31`: 2 vCPU, 8 GB RAM (~€10/mo) - More RAM for JetStream
+- `cx41`: 4 vCPU, 16 GB RAM (~€18/mo) - Higher throughput
+
+**Dedicated vCPU (CPX series - production-grade):**
+- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - **Recommended** for production NATS
 - `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - High throughput (50K+ msg/s)
 - `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - Very high load
 - `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise scale
+
+**Note:** CX series uses shared vCPU (noisy neighbors possible). CPX series uses dedicated vCPU (consistent performance). For production NATS, CPX21 is worth the extra €3.71/mo.
 
 **OS Image:**
 - **`ubuntu-24.04`** - Recommended for all nodes (5-year LTS support)
@@ -522,7 +530,14 @@ A: Yes! Set `integration.nimsforest_url: ""` and handle application setup manual
 A: Currently Hetzner Cloud. AWS, GCP, Azure coming in future releases.
 
 **Q: How much does it cost?**  
-A: Hetzner charges by the minute. Example with cpx21 (default):
+A: Hetzner charges by the minute. Examples:
+
+**With CX22 (default, shared vCPU):**
+- wood (1 node): ~€5.29/month
+- forest (3 nodes): ~€15.87/month
+- jungle (5 nodes): ~€26.45/month
+
+**With CPX21 (recommended for production, dedicated vCPU):**
 - wood (1 node): ~€9/month
 - forest (3 nodes): ~€27/month
 - jungle (5 nodes): ~€45/month

@@ -263,6 +263,29 @@ See [docs/architecture/BINARY_DEPLOYMENT.md](docs/architecture/BINARY_DEPLOYMENT
 
 **Current Configuration:** Already using Ubuntu 24.04 (optimal choice) ✅
 
+### Changed - Default Server Type to CX22
+
+**Changed default server type from CPX31 to CX22** for cost optimization.
+
+**New Default: CX22**
+- 2 shared vCPU, 4 GB RAM
+- ~€5.29/month per node
+- Suitable for light to medium NATS workloads (<5K msg/s)
+- **50% cheaper** than CPX21
+
+**Cost Savings:**
+- wood (1 node): €5.29/mo (was €18/mo with CPX31) - **Save €12.71/mo**
+- forest (3 nodes): €15.87/mo (was €54/mo) - **Save €38.13/mo**
+- jungle (5 nodes): €26.45/mo (was €90/mo) - **Save €63.55/mo**
+
+**Important Notes:**
+- CX22 uses **shared vCPU** - performance may vary (noisy neighbors)
+- For production NATS with consistent performance, upgrade to **CPX21** (dedicated vCPU, €9/mo)
+- CX22 is perfect for: development, testing, small deployments, budget-conscious projects
+- Upgrade to CPX21/CPX31 for: production, high throughput, predictable performance
+
+**Recommendation:** Start with CX22, monitor performance, upgrade to CPX21 if you need consistency.
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load
