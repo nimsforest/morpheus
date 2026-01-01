@@ -200,6 +200,50 @@ infrastructure:
 
 ## [Unreleased]
 
+### Changed - Direct Binary Deployment
+
+**IMPORTANT**: Removed Docker from cloud deployments. Morpheus now prepares infrastructure for direct Go binary deployment.
+
+**Philosophy:** For single-binary applications like NATS, Docker adds unnecessary overhead. Cloud VMs already provide isolation, so we deploy Go binaries directly via systemd.
+
+**Changes:**
+- ✅ Removed `docker.io` from cloud-init package installation
+- ✅ Added `/opt/nimsforest/bin` directory for Go binaries
+- ✅ Added `/etc/nimsforest` directory for configuration files
+- ✅ Replaced Docker setup with systemd preparation
+- ✅ Updated cloud-init templates (EdgeNode, ComputeNode)
+- ✅ Updated documentation to reflect binary deployment approach
+
+**Benefits:**
+- 🚀 Faster startup (no Docker daemon, no container layer)
+- 💾 Lower memory usage (~200MB saved per node)
+- 🔧 Simpler debugging (standard Linux processes)
+- 🔒 Reduced attack surface (no Docker daemon)
+- 📦 Native integration (systemd, journald, standard Linux tools)
+
+**Important Notes:**
+- **Cloud mode** (production): No Docker. Direct binaries via systemd.
+- **Local mode** (development): Still uses Docker for local testing.
+- NimsForest should download NATS binary to `/opt/nimsforest/bin/`
+- NimsForest should create systemd service at `/etc/systemd/system/nats.service`
+- See `docs/architecture/BINARY_DEPLOYMENT.md` for complete guide
+
+**Directory Structure:**
+```
+/opt/nimsforest/bin/         # Go binaries (nats-server)
+/var/lib/nimsforest/         # Data storage (JetStream)
+/var/log/nimsforest/         # Logs
+/etc/nimsforest/             # Configuration (nats.conf)
+```
+
+**For NimsForest developers:** Update bootstrap scripts to:
+1. Download NATS binary from GitHub releases
+2. Create systemd service file
+3. Start service via `systemctl start nats`
+4. No Docker commands needed
+
+See [docs/architecture/BINARY_DEPLOYMENT.md](docs/architecture/BINARY_DEPLOYMENT.md) for detailed implementation guide.
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load

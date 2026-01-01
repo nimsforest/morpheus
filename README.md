@@ -81,10 +81,23 @@ cp config.example.yaml config.yaml
 Morpheus handles **infrastructure only**:
 - ✅ Provision cloud servers (Hetzner, AWS, GCP, etc.)
 - ✅ Configure OS, networking, and firewalls
-- ✅ Prepare directories and storage
+- ✅ Prepare directories for binary deployment
 - ✅ Hand off to NimsForest for application setup
 
 **Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
+
+### Deployment Philosophy
+
+**Cloud deployments** (production): Direct Go binary deployment via systemd
+- No Docker overhead
+- Simpler, faster, more native
+- Perfect for single-binary applications like NATS
+
+**Local development**: Docker for isolated testing
+- `morpheus plant local` uses Docker containers
+- Easy local testing without affecting your system
+
+See [Binary Deployment Guide](docs/architecture/BINARY_DEPLOYMENT.md) for details.
 
 ## Installation
 
@@ -248,11 +261,10 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 1. Creates Hetzner servers
 2. Configures OS (Ubuntu 24.04)
 3. Sets up firewall (ports 22, 4222, 6222, 8222, 7777)
-4. Installs Docker
-5. Creates directories (`/opt/nimsforest`, `/var/lib/nimsforest`)
-6. Writes metadata to `/etc/morpheus/node-info.json`
-7. Calls NimsForest (if configured)
-8. Status: `infrastructure_ready`
+4. Creates directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`, `/var/log/nimsforest`, `/etc/nimsforest`)
+5. Writes metadata to `/etc/morpheus/node-info.json`
+6. Calls NimsForest (if configured)
+7. Status: `infrastructure_ready`
 
 ### List Forests
 
@@ -373,9 +385,10 @@ morpheus help     # Show help
 | Server provisioning | ✅ | |
 | OS & network setup | ✅ | |
 | Firewall config | ✅ | |
-| NATS installation | | ✅ |
+| Directory structure | ✅ | |
+| NATS binary deployment | | ✅ |
 | NATS clustering | | ✅ |
-| Service orchestration | | ✅ |
+| Service management (systemd) | | ✅ |
 
 **Morpheus** = Infrastructure as Code  
 **NimsForest** = Application Orchestration
