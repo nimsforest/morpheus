@@ -423,8 +423,8 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 //
 // Priority order:
 // 1. cx22 in Helsinki (hel1)
-// 2. cpx11 in Helsinki, then Nuremberg (nbg1), then others
-// 3. cx21 in Helsinki, then Nuremberg, then others
+// 2. cpx22 in Helsinki, then Nuremberg (nbg1), then others
+// 3. Other fallbacks in Helsinki, then other locations
 func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner, hetznerProv *hetzner.Provider, req forest.ProvisionRequest, profile provider.MachineProfile) error {
 	// Get all server type options for this profile
 	mapping := hetzner.GetHetznerServerType(profile)
@@ -435,10 +435,29 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 
 	var lastErr error
 	var attemptedCombos []string
+	var validServerTypes []string
 	isFirstAttempt := true
 
-	// Try each server type
-	for serverTypeIdx, serverType := range allServerTypes {
+	// First, validate which server types actually exist in Hetzner
+	for _, serverType := range allServerTypes {
+		exists, err := hetznerProv.ValidateServerType(ctx, serverType)
+		if err != nil {
+			fmt.Printf("   ⚠️  Could not validate server type %s: %v\n", serverType, err)
+			continue
+		}
+		if !exists {
+			fmt.Printf("   ⚠️  Server type %s does not exist in Hetzner, skipping\n", serverType)
+			continue
+		}
+		validServerTypes = append(validServerTypes, serverType)
+	}
+
+	if len(validServerTypes) == 0 {
+		return fmt.Errorf("none of the configured server types exist in Hetzner: %s", joinLocations(allServerTypes))
+	}
+
+	// Try each validated server type
+	for serverTypeIdx, serverType := range validServerTypes {
 		// Get available locations for this server type
 		availableLocations, err := hetznerProv.GetAvailableLocations(ctx, serverType)
 		if err != nil {
@@ -495,11 +514,11 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 	// All combinations failed
 	if lastErr != nil && containsLocationError(lastErr.Error()) {
 		return fmt.Errorf("no server type/location combination available\n\n"+
-			"Tried %d combinations across server types: %s, %s\n\n"+
+			"Tried %d combinations across server types: %s\n\n"+
 			"This usually means Hetzner is experiencing high demand or capacity issues.\n"+
 			"Please try again in a few minutes.\n"+
 			"For status updates, check: https://status.hetzner.com/",
-			len(attemptedCombos), mapping.Primary, joinLocations(mapping.Fallbacks))
+			len(attemptedCombos), joinLocations(validServerTypes))
 	}
 
 	if lastErr != nil {

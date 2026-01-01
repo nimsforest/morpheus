@@ -26,7 +26,8 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 		provider.ProfileSmall: {
 			Primary: "cx22",  // 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
 			Fallbacks: []string{
-				"cpx21", // 3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo (preferred fallback)
+				"cpx22", // 4 vCPU (dedicated AMD), 8 GB RAM - preferred fallback
+				"cpx21", // 3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo
 				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo
 				"cx21",  // 2 vCPU (shared Intel), 4 GB RAM - ~€3.29/mo (older gen)
 			},
@@ -182,14 +183,20 @@ func intersectLocationsPreserveOrder(preferred, available []string) []string {
 // GetEstimatedCost returns the estimated monthly cost for a server type
 func GetEstimatedCost(serverType string) float64 {
 	// Approximate monthly costs in EUR (as of 2024)
+	// Note: Prices may vary; these are estimates for reference
 	costs := map[string]float64{
-		"cx22":  3.29,
+		"cx11":  3.29,
 		"cx21":  3.29,
+		"cx22":  3.29,
+		"cx31":  6.29,
 		"cx32":  6.29,
+		"cx41":  12.29,
 		"cx42":  12.29,
+		"cx51":  24.29,
 		"cx52":  24.29,
 		"cpx11": 4.49,
 		"cpx21": 8.49,
+		"cpx22": 11.49,
 		"cpx31": 15.49,
 		"cpx41": 29.49,
 		"cpx51": 57.49,
