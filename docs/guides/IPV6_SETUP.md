@@ -6,7 +6,10 @@ Morpheus uses IPv6-only by default. Hetzner charges extra for IPv4.
 
 **Your local network must have IPv6:**
 ```bash
-# Test IPv6 connectivity
+# Test IPv6 connectivity using Morpheus (recommended, works on all platforms including Termux)
+morpheus check-ipv6
+
+# Alternative: using curl (may not work on Termux due to certificate issues)
 curl -6 ifconfig.co
 
 # Should return your IPv6 address

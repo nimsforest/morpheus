@@ -223,3 +223,108 @@ func GetCertPaths() []string {
 		"/etc/ca-certificates/extracted/tls-ca-bundle.pem", // Arch alternative
 	}
 }
+
+// IPv6CheckResult contains the results of an IPv6 connectivity check
+type IPv6CheckResult struct {
+	Available bool   // Whether IPv6 is available
+	Address   string // The detected IPv6 address (if available)
+	Error     error  // Any error encountered during the check
+}
+
+// CheckIPv6Connectivity checks if IPv6 connectivity is available by attempting
+// to connect to an IPv6-only service. This is a native Go alternative to
+// running "curl -6 ifconfig.co" which doesn't work on Termux due to certificate issues.
+//
+// It uses multiple fallback services to ensure reliability:
+// - icanhazip.com (IPv6 endpoint)
+// - ifconfig.co (IPv6 endpoint)
+// - api64.ipify.org (IPv6-only service)
+func CheckIPv6Connectivity(ctx context.Context) IPv6CheckResult {
+	// Services that return your public IP address (IPv6-only endpoints)
+	services := []string{
+		"https://ipv6.icanhazip.com",
+		"https://api64.ipify.org",
+		"https://v6.ident.me",
+	}
+
+	// Create HTTP client with proper TLS and DNS configuration
+	// This handles certificate issues on Termux and other restricted environments
+	client := CreateHTTPClient(10 * time.Second)
+
+	var lastErr error
+	for _, serviceURL := range services {
+		// Create request with IPv6-only context
+		req, err := http.NewRequestWithContext(ctx, "GET", serviceURL, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request for %s: %w", serviceURL, err)
+			continue
+		}
+
+		// Set user agent
+		req.Header.Set("User-Agent", "Morpheus-IPv6-Check/1.0")
+
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to connect to %s: %w", serviceURL, err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("service %s returned status %d", serviceURL, resp.StatusCode)
+			continue
+		}
+
+		// Read the response (should be the IPv6 address)
+		body := make([]byte, 256)
+		n, err := resp.Body.Read(body)
+		if err != nil && err.Error() != "EOF" {
+			lastErr = fmt.Errorf("failed to read response from %s: %w", serviceURL, err)
+			continue
+		}
+
+		ipv6Address := string(body[:n])
+		ipv6Address = trimWhitespace(ipv6Address)
+
+		// Validate that we got an IPv6 address
+		if isValidIPv6(ipv6Address) {
+			return IPv6CheckResult{
+				Available: true,
+				Address:   ipv6Address,
+				Error:     nil,
+			}
+		}
+
+		lastErr = fmt.Errorf("service %s returned invalid IPv6 address: %s", serviceURL, ipv6Address)
+	}
+
+	// All services failed
+	return IPv6CheckResult{
+		Available: false,
+		Address:   "",
+		Error:     fmt.Errorf("IPv6 connectivity check failed for all services: %w", lastErr),
+	}
+}
+
+// isValidIPv6 checks if a string is a valid IPv6 address
+func isValidIPv6(addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	// Check if it's IPv6 (not IPv4)
+	return ip.To4() == nil && ip.To16() != nil
+}
+
+// trimWhitespace removes whitespace, newlines, and control characters from a string
+func trimWhitespace(s string) string {
+	var result []rune
+	for _, r := range s {
+		// Only keep printable non-space characters
+		if r > 32 && r < 127 || r == ':' {
+			result = append(result, r)
+		}
+	}
+	return string(result)
+}
