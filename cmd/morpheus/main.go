@@ -55,26 +55,94 @@ func main() {
 }
 
 func handlePlant() {
-	if len(os.Args) < 4 {
+	// Parse arguments with smart defaults
+	var deploymentType, size string
+	
+	// Check if we have enough arguments
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "❌ Missing arguments")
+		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage: morpheus plant <cloud|local> <size>")
-		fmt.Fprintln(os.Stderr, "Sizes: wood (1 node), forest (3 nodes), jungle (5 nodes)")
+		fmt.Fprintln(os.Stderr, "       morpheus plant <size>           (defaults to 'cloud' on Termux)")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Sizes:")
+		fmt.Fprintln(os.Stderr, "  wood   - 1 machine  (~5-7 min)  💰 ~€3/month")
+		fmt.Fprintln(os.Stderr, "  forest - 3 machines (~15-20 min) 💰 ~€9/month")
+		fmt.Fprintln(os.Stderr, "  jungle - 5 machines (~25-35 min) 💰 ~€15/month")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
-		fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Create 1-node forest on Hetzner")
-		fmt.Fprintln(os.Stderr, "  morpheus plant local wood   # Create 1-node forest locally (Docker)")
+		if isTermux() {
+			fmt.Fprintln(os.Stderr, "  morpheus plant wood         # Quick! Create 1 machine (cloud mode)")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Same, explicit cloud mode")
+		} else {
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Create 1 machine on Hetzner Cloud")
+			fmt.Fprintln(os.Stderr, "  morpheus plant local wood   # Create 1 machine locally (Docker)")
+			fmt.Fprintln(os.Stderr, "  morpheus plant forest       # Create 3-machine cluster")
+		}
 		os.Exit(1)
 	}
 
-	deploymentType := os.Args[2]
-	size := os.Args[3]
+	// Smart argument parsing: support both 2 and 3 argument forms
+	if len(os.Args) == 3 {
+		// Two arguments: could be "plant wood" or "plant cloud wood"
+		arg := os.Args[2]
+		if arg == "wood" || arg == "forest" || arg == "jungle" {
+			// It's a size, default to cloud mode (especially on Termux)
+			deploymentType = "cloud"
+			size = arg
+			if isTermux() {
+				fmt.Println("💡 Using cloud mode (default for Termux)")
+			} else {
+				fmt.Println("💡 Using cloud mode (use 'local' for Docker-based testing)")
+			}
+		} else if arg == "cloud" || arg == "local" {
+			// It's a deployment type without size
+			fmt.Fprintf(os.Stderr, "❌ Missing size argument\n\n")
+			fmt.Fprintf(os.Stderr, "Usage: morpheus plant %s <size>\n", arg)
+			fmt.Fprintln(os.Stderr, "Sizes: wood, forest, jungle")
+			fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant %s wood\n", arg)
+			os.Exit(1)
+		} else {
+			fmt.Fprintf(os.Stderr, "❌ Unknown argument: %s\n\n", arg)
+			fmt.Fprintln(os.Stderr, "Valid sizes: wood, forest, jungle")
+			fmt.Fprintln(os.Stderr, "Valid deployment types: cloud, local")
+			fmt.Fprintln(os.Stderr, "\nExamples:")
+			fmt.Fprintln(os.Stderr, "  morpheus plant wood")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud forest")
+			os.Exit(1)
+		}
+	} else if len(os.Args) >= 4 {
+		// Three arguments: "plant cloud wood"
+		deploymentType = os.Args[2]
+		size = os.Args[3]
+	}
+
+	// Validate deployment type
 
 	if deploymentType != "cloud" && deploymentType != "local" {
-		fmt.Fprintf(os.Stderr, "Invalid deployment type: %s (must be: cloud or local)\n", deploymentType)
+		fmt.Fprintf(os.Stderr, "❌ Invalid deployment type: '%s'\n\n", deploymentType)
+		fmt.Fprintln(os.Stderr, "Valid options: cloud, local")
+		fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant cloud %s\n", size)
 		os.Exit(1)
 	}
 
 	if size != "wood" && size != "forest" && size != "jungle" {
-		fmt.Fprintf(os.Stderr, "Invalid size: %s (must be: wood, forest, or jungle)\n", size)
+		fmt.Fprintf(os.Stderr, "❌ Invalid size: '%s'\n\n", size)
+		fmt.Fprintln(os.Stderr, "Valid sizes:")
+		fmt.Fprintln(os.Stderr, "  wood   - 1 machine  (quick start)")
+		fmt.Fprintln(os.Stderr, "  forest - 3 machines (small cluster)")
+		fmt.Fprintln(os.Stderr, "  jungle - 5 machines (large cluster)")
+		fmt.Fprintln(os.Stderr, "")
+		// Suggest closest match
+		if len(size) > 0 {
+			if size[0] == 'w' || size[0] == 'W' {
+				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant wood")
+			} else if size[0] == 'f' || size[0] == 'F' {
+				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant forest")
+			} else if size[0] == 'j' || size[0] == 'J' {
+				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant jungle")
+			}
+		}
 		os.Exit(1)
 	}
 
@@ -168,13 +236,35 @@ func handlePlant() {
 		Role:     cloudinit.RoleEdge, // Default role
 	}
 
-	// Provision with automatic location fallback
-	fmt.Printf("\n🌲 Morpheus - Infrastructure Provisioning\n")
-	fmt.Printf("=========================================\n")
-	fmt.Printf("Forest ID: %s\n", forestID)
-	fmt.Printf("Size: %s\n", size)
-	fmt.Printf("Location: %s\n", location)
-	fmt.Printf("Provider: %s\n\n", providerName)
+	// Display friendly provisioning header
+	fmt.Printf("\n🌲 Planting your %s...\n", size)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	
+	// Show what's being created
+	nodeCount := getNodeCount(size)
+	var timeEstimate string
+	switch size {
+	case "wood":
+		timeEstimate = "5-7 minutes"
+	case "forest":
+		timeEstimate = "15-20 minutes"
+	case "jungle":
+		timeEstimate = "25-35 minutes"
+	}
+	
+	fmt.Printf("📋 Configuration:\n")
+	fmt.Printf("   Forest ID:  %s\n", forestID)
+	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
+	fmt.Printf("   Location:   %s\n", location)
+	fmt.Printf("   Provider:   %s\n", providerName)
+	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
+	
+	if deploymentType == "cloud" {
+		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimateMonthlyCost(size, cfg.Infrastructure.Defaults.ServerType))
+		fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
+	}
+	
+	fmt.Println("🚀 Starting provisioning...")
 
 	ctx := context.Background()
 
@@ -210,15 +300,43 @@ func handlePlant() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n✅ Forest provisioned successfully!\n")
-	fmt.Printf("\nNext steps:\n")
-	fmt.Printf("  - Check status: morpheus status %s\n", forestID)
-	fmt.Printf("  - List all: morpheus list\n")
-	fmt.Printf("  - Teardown: morpheus teardown %s\n", forestID)
-	if deploymentType == "local" {
-		fmt.Printf("\nLocal mode tips:\n")
-		fmt.Printf("  - Access container: docker exec -it <container-name> bash\n")
-		fmt.Printf("  - View logs: docker logs <container-name>\n")
+	// Success message with clear next steps
+	fmt.Printf("\n")
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("✨ Success! Your %s is ready!\n", size)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	
+	fmt.Printf("🎯 What's next?\n\n")
+	
+	if deploymentType == "cloud" {
+		fmt.Printf("📊 Check your forest status:\n")
+		fmt.Printf("   morpheus status %s\n\n", forestID)
+		
+		fmt.Printf("🌐 Your machines are ready for NATS deployment\n")
+		fmt.Printf("   Infrastructure is configured and waiting\n\n")
+		
+		fmt.Printf("📋 View all your forests:\n")
+		fmt.Printf("   morpheus list\n\n")
+		
+		fmt.Printf("🗑️  Clean up when done:\n")
+		fmt.Printf("   morpheus teardown %s\n\n", forestID)
+		
+		fmt.Printf("💡 Tip: The infrastructure is ready. Deploy NATS with NimsForest\n")
+		fmt.Printf("   or use the machines for your own applications.\n")
+	} else {
+		fmt.Printf("🐳 Your local Docker containers are running!\n\n")
+		fmt.Printf("📊 Check status:\n")
+		fmt.Printf("   morpheus status %s\n", forestID)
+		fmt.Printf("   docker ps\n\n")
+		
+		fmt.Printf("🔍 Access a container:\n")
+		fmt.Printf("   docker exec -it %s-node-1 bash\n\n", forestID)
+		
+		fmt.Printf("📋 View logs:\n")
+		fmt.Printf("   docker logs %s-node-1\n\n", forestID)
+		
+		fmt.Printf("🗑️  Clean up when done:\n")
+		fmt.Printf("   morpheus teardown %s\n", forestID)
 	}
 }
 
@@ -496,23 +614,44 @@ func handleList() {
 	forests := registry.ListForests()
 
 	if len(forests) == 0 {
-		fmt.Println("No forests found.")
-		fmt.Println("\nCreate one with: morpheus plant cloud <size>")
+		fmt.Println("🌲 No forests yet!")
+		fmt.Println()
+		if isTermux() {
+			fmt.Println("Create your first forest:")
+			fmt.Println("  morpheus plant wood         # Quick start with 1 machine")
+		} else {
+			fmt.Println("Create your first forest:")
+			fmt.Println("  morpheus plant wood         # 1 machine on cloud")
+			fmt.Println("  morpheus plant local wood   # 1 machine locally (Docker)")
+		}
 		return
 	}
 
+	fmt.Printf("🌲 Your Forests (%d)\n", len(forests))
+	fmt.Println()
 	fmt.Println("FOREST ID            SIZE    LOCATION  STATUS       CREATED")
-	fmt.Println("----------------------------------------------------------------------------")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	for _, f := range forests {
-		fmt.Printf("%-20s %-7s %-9s %-12s %s\n",
+		statusIcon := "✅"
+		if f.Status == "provisioning" {
+			statusIcon = "⏳"
+		} else if f.Status != "active" {
+			statusIcon = "⚠️ "
+		}
+		
+		fmt.Printf("%-20s %-7s %-9s %s %-11s %s\n",
 			f.ID,
 			f.Size,
 			f.Location,
+			statusIcon,
 			f.Status,
-			f.CreatedAt.Format("2006-01-02 15:04:05"),
+			f.CreatedAt.Format("2006-01-02 15:04"),
 		)
 	}
+	
+	fmt.Println()
+	fmt.Println("💡 Tip: Use 'morpheus status <forest-id>' to see detailed information")
 }
 
 func handleStatus() {
@@ -543,28 +682,59 @@ func handleStatus() {
 	}
 
 	fmt.Printf("🌲 Forest: %s\n", forestInfo.ID)
-	fmt.Printf("Size: %s\n", forestInfo.Size)
-	fmt.Printf("Location: %s\n", forestInfo.Location)
-	fmt.Printf("Provider: %s\n", forestInfo.Provider)
-	fmt.Printf("Status: %s\n", forestInfo.Status)
-	fmt.Printf("Created: %s\n\n", forestInfo.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	
+	statusIcon := "✅"
+	if forestInfo.Status == "provisioning" {
+		statusIcon = "⏳"
+	} else if forestInfo.Status != "active" {
+		statusIcon = "⚠️ "
+	}
+	
+	fmt.Printf("📊 Overview:\n")
+	fmt.Printf("   Status:   %s %s\n", statusIcon, forestInfo.Status)
+	fmt.Printf("   Size:     %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
+	fmt.Printf("   Location: %s\n", forestInfo.Location)
+	fmt.Printf("   Provider: %s\n", forestInfo.Provider)
+	fmt.Printf("   Created:  %s\n", forestInfo.CreatedAt.Format("2006-01-02 15:04:05"))
 
 	if len(nodes) > 0 {
-		fmt.Printf("Nodes (%d):\n", len(nodes))
-		fmt.Println("ID        ROLE   IP             LOCATION  STATUS")
-		fmt.Println("-----------------------------------------------------------")
+		fmt.Printf("\n🖥️  Machines (%d):\n", len(nodes))
+		fmt.Println()
+		fmt.Println("   ID        ROLE   IPV6 ADDRESS        LOCATION  STATUS")
+		fmt.Println("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		for _, node := range nodes {
-			fmt.Printf("%-9s %-6s %-14s %-9s %s\n",
+			nodeStatusIcon := "✅"
+			if node.Status != "active" {
+				nodeStatusIcon = "⏳"
+			}
+			fmt.Printf("   %-9s %-6s %-19s %-9s %s %s\n",
 				node.ID,
 				node.Role,
-				node.IP,
+				truncateIP(node.IP, 19),
 				node.Location,
+				nodeStatusIcon,
 				node.Status,
 			)
 		}
+		
+		fmt.Println()
+		fmt.Printf("💡 SSH into machines:\n")
+		for i, node := range nodes {
+			if i < 2 { // Show first 2 examples
+				fmt.Printf("   ssh root@[%s]\n", node.IP)
+			}
+		}
+		if len(nodes) > 2 {
+			fmt.Printf("   ... (%d more machine%s)\n", len(nodes)-2, plural(len(nodes)-2))
+		}
 	} else {
-		fmt.Println("No nodes registered yet.")
+		fmt.Println("\n⏳ No machines registered yet (still provisioning)")
 	}
+	
+	fmt.Println()
+	fmt.Printf("🗑️  Teardown: morpheus teardown %s\n", forestInfo.ID)
 }
 
 func handleTeardown() {
@@ -624,26 +794,47 @@ func handleTeardown() {
 	// Create provisioner
 	provisioner := forest.NewProvisioner(prov, registry, cfg)
 
-	// Confirm
-	fmt.Printf("⚠️  This will permanently delete forest: %s\n", forestID)
-	fmt.Print("Are you sure? (yes/no): ")
+	// Show what will be deleted
+	nodes, _ := registry.GetNodes(forestID)
+	
+	fmt.Printf("\n⚠️  About to permanently delete:\n")
+	fmt.Printf("   Forest: %s\n", forestID)
+	fmt.Printf("   Size:   %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
+	if len(nodes) > 0 {
+		fmt.Printf("   Machines:\n")
+		for _, node := range nodes {
+			fmt.Printf("      • %s (%s)\n", node.ID, node.IP)
+		}
+	}
+	fmt.Println()
+	fmt.Printf("💰 This will stop billing for these resources\n")
+	fmt.Println()
+	fmt.Print("Type 'yes' to confirm deletion: ")
 
 	var response string
 	fmt.Scanln(&response)
 
 	if response != "yes" {
-		fmt.Println("Teardown cancelled.")
+		fmt.Println("\n✅ Teardown cancelled - your forest is safe!")
 		return
 	}
 
 	// Teardown
+	fmt.Println()
 	ctx := context.Background()
 	if err := provisioner.Teardown(ctx, forestID); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Teardown failed: %s\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n✅ Forest %s has been torn down successfully!\n", forestID)
+	fmt.Println()
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("✅ Forest %s deleted successfully!\n", forestID)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("💰 Resources have been removed and billing stopped")
+	fmt.Println()
+	fmt.Println("💡 View your remaining forests: morpheus list")
 }
 
 func loadConfig() (*config.Config, error) {
@@ -799,18 +990,106 @@ func isTermux() bool {
 	return false
 }
 
+// plural returns "s" if count is not 1, empty string otherwise
+func plural(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// estimateMonthlyCost estimates monthly cost based on size and server type
+func estimateMonthlyCost(size string, serverType string) float64 {
+	// Base costs per server type (approximate monthly costs in EUR)
+	baseCosts := map[string]float64{
+		"cx22":  3.29,  // Shared vCPU, 2 vCPU, 4GB
+		"cx32":  6.29,  // Shared vCPU, 4 vCPU, 8GB
+		"cx42":  12.29, // Shared vCPU, 8 vCPU, 16GB
+		"cx52":  24.29, // Shared vCPU, 16 vCPU, 32GB
+		"cpx11": 4.49,  // Dedicated vCPU, 2 vCPU, 2GB
+		"cpx21": 8.49,  // Dedicated vCPU, 3 vCPU, 4GB
+		"cpx31": 15.49, // Dedicated vCPU, 4 vCPU, 8GB
+		"cpx41": 29.49, // Dedicated vCPU, 8 vCPU, 16GB
+		"cpx51": 57.49, // Dedicated vCPU, 16 vCPU, 32GB
+		"cax11": 3.79,  // ARM, 2 vCPU, 4GB
+		"cax21": 7.59,  // ARM, 4 vCPU, 8GB
+		"cax31": 15.19, // ARM, 8 vCPU, 16GB
+		"cax41": 30.39, // ARM, 16 vCPU, 32GB
+	}
+	
+	// Default cost if server type not found
+	baseCost := 5.0
+	if cost, ok := baseCosts[serverType]; ok {
+		baseCost = cost
+	}
+	
+	// Calculate based on forest size
+	nodeCount := getNodeCount(size)
+	return baseCost * float64(nodeCount)
+}
+
+// truncateIP truncates an IP address to fit within maxLen characters
+func truncateIP(ip string, maxLen int) string {
+	if len(ip) <= maxLen {
+		return ip
+	}
+	// For IPv6, show first part and last part with ellipsis
+	if maxLen < 10 {
+		return ip[:maxLen]
+	}
+	prefixLen := (maxLen - 3) / 2
+	suffixLen := maxLen - 3 - prefixLen
+	return ip[:prefixLen] + "..." + ip[len(ip)-suffixLen:]
+}
+
+// getNodeCount returns the number of nodes for a given forest size
+func getNodeCount(size string) int {
+	switch size {
+	case "wood":
+		return 1
+	case "forest":
+		return 3
+	case "jungle":
+		return 5
+	default:
+		return 1
+	}
+}
+
 func printHelp() {
-	fmt.Println("Morpheus - Nims Forest Infrastructure Provisioning Tool")
+	isOnTermux := isTermux()
+	
+	fmt.Println("🌲 Morpheus - Nims Forest Infrastructure Provisioning")
 	fmt.Println()
+	
+	if isOnTermux {
+		fmt.Println("Quick Start (Termux):")
+		fmt.Println("  morpheus plant wood         # Create 1 machine on Hetzner (~5-7 min)")
+		fmt.Println("  morpheus plant forest       # Create 3 machines (~15-20 min)")
+		fmt.Println()
+	}
+	
 	fmt.Println("Usage:")
 	fmt.Println("  morpheus <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
-	fmt.Println("                              Deployment types:")
-	fmt.Println("                                cloud - Provision on Hetzner Cloud")
-	fmt.Println("                                local - Provision locally using Docker")
-	fmt.Println("                              Sizes: wood (1 node), forest (3 nodes), jungle (5 nodes)")
+	if isOnTermux {
+		fmt.Println("  plant <size>                Plant a forest (defaults to cloud mode)")
+		fmt.Println("                              Sizes:")
+		fmt.Println("                                wood   - 1 machine  (~5-7 min, €3/mo)")
+		fmt.Println("                                forest - 3 machines (~15-20 min, €9/mo)")
+		fmt.Println("                                jungle - 5 machines (~25-35 min, €15/mo)")
+	} else {
+		fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
+		fmt.Println("  plant <size>                Provision on cloud (shortcut)")
+		fmt.Println("                              Deployment types:")
+		fmt.Println("                                cloud - Provision on Hetzner Cloud")
+		fmt.Println("                                local - Provision locally using Docker")
+		fmt.Println("                              Sizes:")
+		fmt.Println("                                wood   - 1 machine  (~5-7 min)")
+		fmt.Println("                                forest - 3 machines (~15-20 min)")
+		fmt.Println("                                jungle - 5 machines (~25-35 min)")
+	}
 	fmt.Println("  list                        List all forests")
 	fmt.Println("  status <forest-id>          Show detailed forest status")
 	fmt.Println("  teardown <forest-id>        Delete a forest and all its resources")
@@ -821,31 +1100,40 @@ func printHelp() {
 	fmt.Println("  help                        Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  morpheus plant cloud wood     # Create 1-node forest on Hetzner")
-	fmt.Println("  morpheus plant local wood     # Create 1-node forest locally (Docker)")
-	fmt.Println("  morpheus plant cloud forest   # Create 3-node forest on Hetzner")
-	fmt.Println("  morpheus plant local forest   # Create 3-node forest locally (Docker)")
-	fmt.Println("  morpheus list                 # List all forests")
-	fmt.Println("  morpheus status forest-12345  # Show forest details")
-	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
-	fmt.Println("  morpheus update               # Update to latest version")
-	fmt.Println("  morpheus check-ipv6           # Check IPv6 connectivity")
+	if isOnTermux {
+		fmt.Println("  morpheus plant wood         # Quick! Create 1 machine")
+		fmt.Println("  morpheus plant forest       # Create 3-machine cluster")
+		fmt.Println("  morpheus list               # View all your forests")
+		fmt.Println("  morpheus status forest-123  # Check forest details")
+		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
+	} else {
+		fmt.Println("  morpheus plant wood         # Create 1 machine (cloud mode)")
+		fmt.Println("  morpheus plant cloud wood   # Same, explicit cloud mode")
+		fmt.Println("  morpheus plant local wood   # Create 1 machine locally (Docker)")
+		fmt.Println("  morpheus plant forest       # Create 3-machine cluster")
+		fmt.Println("  morpheus list               # View all forests")
+		fmt.Println("  morpheus status forest-123  # Check forest details")
+		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
+		fmt.Println("  morpheus update             # Update to latest version")
+	}
 	fmt.Println()
-	fmt.Println("Local Mode:")
-	fmt.Println("  Local mode uses Docker to create forest containers on your machine.")
-	fmt.Println("  No cloud account or API token required - great for development!")
-	fmt.Println("  Requirements: Docker must be installed and running.")
-	fmt.Println()
-	fmt.Println("  ⚠️  Termux users: Local mode does NOT work on Android/Termux!")
-	fmt.Println("      Docker cannot run on Termux due to Android kernel limitations.")
-	fmt.Println("      Use 'morpheus plant cloud <size>' instead.")
-	fmt.Println()
+	
+	if !isOnTermux {
+		fmt.Println("Local Mode:")
+		fmt.Println("  Local mode uses Docker to create containers on your machine.")
+		fmt.Println("  No cloud account required - great for development!")
+		fmt.Println("  Requirements: Docker must be installed and running.")
+		fmt.Println()
+	}
+	
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")
 	fmt.Println("    - ./config.yaml")
 	fmt.Println("    - ~/.morpheus/config.yaml")
 	fmt.Println("    - /etc/morpheus/config.yaml")
-	fmt.Println("  Note: Local mode doesn't require a config file.")
+	if !isOnTermux {
+		fmt.Println("  Note: Local mode doesn't require a config file.")
+	}
 	fmt.Println()
-	fmt.Println("For more information, see: https://github.com/nimsforest/morpheus")
+	fmt.Println("More info: https://github.com/nimsforest/morpheus")
 }

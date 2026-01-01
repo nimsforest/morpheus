@@ -37,9 +37,6 @@ type ProvisionRequest struct {
 
 // Provision creates a new forest with the specified configuration
 func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error {
-	fmt.Printf("Starting forest provisioning: %s (size: %s, location: %s)\n",
-		req.ForestID, req.Size, req.Location)
-
 	// Register forest
 	forest := &Forest{
 		ID:       req.ForestID,
@@ -56,17 +53,21 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 	// Determine number of nodes based on size
 	nodeCount := getNodeCount(req.Size)
 
-	fmt.Printf("Provisioning %d node(s)...\n", nodeCount)
+	fmt.Printf("\n📦 Step 1/%d: Provisioning machines\n", 2+nodeCount)
+	fmt.Printf("    Creating %d machine%s...\n", nodeCount, plural(nodeCount))
 
 	// Provision nodes
 	var provisionedServers []*provider.Server
 	for i := 0; i < nodeCount; i++ {
 		nodeName := fmt.Sprintf("%s-node-%d", req.ForestID, i+1)
+		
+		fmt.Printf("\n   Machine %d/%d: %s\n", i+1, nodeCount, nodeName)
 
 		server, err := p.provisionNode(ctx, req, nodeName, i)
 		if err != nil {
 			// Rollback on failure
-			fmt.Printf("Provisioning failed: %s. Rolling back...\n", err)
+			fmt.Printf("\n❌ Provisioning failed: %s\n", err)
+			fmt.Printf("🔄 Rolling back %d machine%s...\n", len(provisionedServers), plural(len(provisionedServers)))
 			p.rollback(ctx, req.ForestID, provisionedServers)
 			return fmt.Errorf("failed to provision node %s: %w", nodeName, err)
 		}
@@ -88,27 +89,29 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		}
 
 		if err := p.registry.RegisterNode(node); err != nil {
-			fmt.Printf("Warning: failed to register node in registry: %s\n", err)
+			fmt.Printf("   ⚠️  Warning: failed to register node in registry: %s\n", err)
 		}
 
-		fmt.Printf("✓ Node %s provisioned successfully (IPv6: %s)\n", nodeName, server.PublicIPv6)
+		fmt.Printf("   ✅ Machine %d ready (IPv6: %s)\n", i+1, server.PublicIPv6)
 	}
 
 	// Update forest status and location
+	fmt.Printf("\n📋 Step %d/%d: Finalizing registration\n", 2+nodeCount, 2+nodeCount)
 	if err := p.registry.UpdateForest(forest); err != nil {
-		fmt.Printf("Warning: failed to update forest: %s\n", err)
+		fmt.Printf("   ⚠️  Warning: failed to update forest: %s\n", err)
 	}
 	if err := p.registry.UpdateForestStatus(req.ForestID, "active"); err != nil {
-		fmt.Printf("Warning: failed to update forest status: %s\n", err)
+		fmt.Printf("   ⚠️  Warning: failed to update forest status: %s\n", err)
 	}
+	fmt.Printf("   ✅ Forest registered and ready\n")
 
-	fmt.Printf("✓ Forest %s provisioned successfully!\n", req.ForestID)
 	return nil
 }
 
 // provisionNode provisions a single node
 func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int) (*provider.Server, error) {
 	// Generate cloud-init script
+	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
 		NodeRole:    req.Role,
 		ForestID:    req.ForestID,
@@ -122,6 +125,7 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	}
 
 	// Create server
+	fmt.Printf("      ⏳ Creating server on cloud provider...\n")
 	createReq := provider.CreateServerRequest{
 		Name:       nodeName,
 		ServerType: p.config.Infrastructure.Defaults.ServerType,
@@ -141,7 +145,8 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		return nil, err
 	}
 
-	fmt.Printf("Server %s created, waiting for it to be ready...\n", server.ID)
+	fmt.Printf("      ✓ Server created (ID: %s)\n", server.ID)
+	fmt.Printf("      ⏳ Waiting for server to boot...\n")
 
 	// Wait for server to be running
 	if err := p.provider.WaitForServer(ctx, server.ID, provider.ServerStateRunning); err != nil {
@@ -154,11 +159,15 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		return nil, fmt.Errorf("failed to get server info: %w", err)
 	}
 
+	fmt.Printf("      ✓ Server running\n")
+	fmt.Printf("      ⏳ Verifying SSH connectivity...\n")
+	
 	// Wait for infrastructure to be ready (SSH accessible, cloud-init complete)
-	fmt.Printf("Server running, verifying infrastructure readiness...\n")
 	if err := p.waitForInfrastructureReady(ctx, server); err != nil {
 		return nil, fmt.Errorf("infrastructure readiness check failed: %w", err)
 	}
+	
+	fmt.Printf("      ✓ SSH accessible\n")
 
 	return server, nil
 }
@@ -178,10 +187,10 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 
 	// Format IPv6 addresses with brackets for SSH
 	addr := fmt.Sprintf("[%s]:%d", server.PublicIPv6, sshPort)
-	fmt.Printf("Waiting for infrastructure readiness (SSH on %s, timeout: %s)...\n", addr, timeout)
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
+	lastDotPrint := time.Now()
 
 	for time.Now().Before(deadline) {
 		select {
@@ -194,14 +203,13 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 
 		// Check SSH port connectivity
 		if err := p.checkSSHConnectivity(addr); err == nil {
-			fmt.Printf("✓ Infrastructure ready after %d attempts (SSH accessible)\n", attempts)
 			return nil
 		}
 
-		// Log progress every few attempts
-		if attempts%3 == 0 {
-			remaining := time.Until(deadline).Round(time.Second)
-			fmt.Printf("  Still waiting for SSH... (%s remaining)\n", remaining)
+		// Print progress dots every 5 seconds
+		if time.Since(lastDotPrint) >= 5*time.Second {
+			fmt.Printf(".")
+			lastDotPrint = time.Now()
 		}
 
 		// Wait before next attempt
@@ -212,7 +220,7 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 		}
 	}
 
-	return fmt.Errorf("timeout waiting for infrastructure readiness after %d attempts (SSH not accessible on %s)", attempts, addr)
+	return fmt.Errorf("timeout after %d attempts (max %s)", attempts, timeout)
 }
 
 // checkSSHConnectivity attempts a TCP connection to verify SSH is accepting connections
@@ -227,7 +235,7 @@ func (p *Provisioner) checkSSHConnectivity(addr string) error {
 
 // Teardown removes a forest and all its resources
 func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
-	fmt.Printf("Tearing down forest: %s\n", forestID)
+	fmt.Printf("🗑️  Tearing down forest: %s\n\n", forestID)
 
 	// Get all nodes for this forest
 	nodes, err := p.registry.GetNodes(forestID)
@@ -236,38 +244,44 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 	}
 
 	// Delete all servers
-	for _, node := range nodes {
-		fmt.Printf("Deleting server %s (IP: %s)...\n", node.ID, node.IP)
+	if len(nodes) > 0 {
+		fmt.Printf("Deleting %d machine%s...\n", len(nodes), plural(len(nodes)))
+		for i, node := range nodes {
+			fmt.Printf("   [%d/%d] Deleting %s...", i+1, len(nodes), node.ID)
 
-		if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
-			fmt.Printf("Warning: failed to delete server %s: %s\n", node.ID, err)
-		} else {
-			fmt.Printf("✓ Server %s deleted\n", node.ID)
+			if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
+				fmt.Printf(" ⚠️  Warning: %s\n", err)
+			} else {
+				fmt.Printf(" ✅\n")
+			}
 		}
 	}
 
 	// Remove from registry
+	fmt.Printf("\nCleaning up registry...")
 	if err := p.registry.DeleteForest(forestID); err != nil {
-		fmt.Printf("Warning: failed to remove forest from registry: %s\n", err)
+		fmt.Printf(" ⚠️  Warning: %s\n", err)
+	} else {
+		fmt.Printf(" ✅\n")
 	}
 
-	fmt.Printf("✓ Forest %s torn down successfully\n", forestID)
 	return nil
 }
 
 // rollback removes all provisioned servers on failure
 func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*provider.Server) {
-	fmt.Printf("Rolling back %d server(s)...\n", len(servers))
-
-	for _, server := range servers {
+	for i, server := range servers {
+		fmt.Printf("   🗑️  Deleting machine %d/%d...\n", i+1, len(servers))
 		if err := p.provider.DeleteServer(ctx, server.ID); err != nil {
-			fmt.Printf("Warning: failed to delete server %s during rollback: %s\n",
-				server.ID, err)
+			fmt.Printf("   ⚠️  Warning: failed to delete server %s: %s\n", server.ID, err)
+		} else {
+			fmt.Printf("   ✅ Machine deleted\n")
 		}
 	}
 
 	// Remove from registry
 	p.registry.DeleteForest(forestID)
+	fmt.Printf("   ✅ Rollback complete\n")
 }
 
 // getNodeCount returns the number of nodes for a given forest size
@@ -282,4 +296,12 @@ func getNodeCount(size string) int {
 	default:
 		return 1
 	}
+}
+
+// plural returns "s" if count is not 1, empty string otherwise
+func plural(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
