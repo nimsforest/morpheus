@@ -29,9 +29,18 @@ type ProvisioningConfig struct {
 
 // InfrastructureConfig defines infrastructure provider settings
 type InfrastructureConfig struct {
-	Provider  string              `yaml:"provider"`
-	Defaults  DefaultServerConfig `yaml:"defaults"`
-	Locations []string            `yaml:"locations"`
+	Provider string              `yaml:"provider"`
+	SSH      SSHConfig           `yaml:"ssh"`
+	
+	// DEPRECATED: Legacy fields for backward compatibility
+	Defaults  *DefaultServerConfig `yaml:"defaults,omitempty"`
+	Locations []string             `yaml:"locations,omitempty"`
+}
+
+// SSHConfig defines SSH key settings
+type SSHConfig struct {
+	KeyName string `yaml:"key_name"` // Name of the SSH key (will be uploaded if needed)
+	KeyPath string `yaml:"key_path"` // Optional: Path to SSH public key file
 }
 
 // IntegrationConfig defines integration with NimsForest
@@ -40,7 +49,7 @@ type IntegrationConfig struct {
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
 }
 
-// DefaultsConfig defines default server settings
+// DefaultsConfig defines default server settings (DEPRECATED)
 type DefaultsConfig struct {
 	ServerType string `yaml:"server_type"`
 	Image      string `yaml:"image"`
@@ -48,7 +57,7 @@ type DefaultsConfig struct {
 	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
 }
 
-// DefaultServerConfig is an alias for backward compatibility
+// DefaultServerConfig is an alias for backward compatibility (DEPRECATED)
 type DefaultServerConfig = DefaultsConfig
 
 // SecretsConfig contains API tokens and credentials
@@ -101,6 +110,22 @@ func (c *Config) applyProvisioningDefaults() {
 func (c *Config) applyInfrastructureDefaults() {
 	// IPv6-only by default (IPv4 costs extra on Hetzner)
 	// No configuration needed - always uses IPv6
+	
+	// Migrate from legacy config format
+	if c.Infrastructure.Defaults != nil {
+		// Migrate SSH config
+		if c.Infrastructure.SSH.KeyName == "" && c.Infrastructure.Defaults.SSHKey != "" {
+			c.Infrastructure.SSH.KeyName = c.Infrastructure.Defaults.SSHKey
+		}
+		if c.Infrastructure.SSH.KeyPath == "" && c.Infrastructure.Defaults.SSHKeyPath != "" {
+			c.Infrastructure.SSH.KeyPath = c.Infrastructure.Defaults.SSHKeyPath
+		}
+	}
+	
+	// Set default SSH key name if not provided
+	if c.Infrastructure.SSH.KeyName == "" {
+		c.Infrastructure.SSH.KeyName = "morpheus"
+	}
 }
 
 // GetReadinessTimeout returns the readiness timeout as a duration
@@ -132,12 +157,7 @@ func (c *Config) Validate() error {
 		if c.Secrets.HetznerAPIToken == "" {
 			return fmt.Errorf("hetzner_api_token is required (set via config or HETZNER_API_TOKEN env var)")
 		}
-		if c.Infrastructure.Defaults.ServerType == "" {
-			return fmt.Errorf("infrastructure.defaults.server_type is required")
-		}
-		if c.Infrastructure.Defaults.Image == "" {
-			return fmt.Errorf("infrastructure.defaults.image is required")
-		}
+		// SSH key name has a default, so no need to validate
 	case "local":
 		// Local provider has minimal requirements - Docker is checked at runtime
 		// No API token or specific server type required
@@ -146,4 +166,28 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// GetSSHKeyName returns the SSH key name (with fallback to legacy config)
+func (c *Config) GetSSHKeyName() string {
+	if c.Infrastructure.SSH.KeyName != "" {
+		return c.Infrastructure.SSH.KeyName
+	}
+	// Fallback to legacy config
+	if c.Infrastructure.Defaults != nil && c.Infrastructure.Defaults.SSHKey != "" {
+		return c.Infrastructure.Defaults.SSHKey
+	}
+	return "morpheus"
+}
+
+// GetSSHKeyPath returns the SSH key path (with fallback to legacy config)
+func (c *Config) GetSSHKeyPath() string {
+	if c.Infrastructure.SSH.KeyPath != "" {
+		return c.Infrastructure.SSH.KeyPath
+	}
+	// Fallback to legacy config
+	if c.Infrastructure.Defaults != nil && c.Infrastructure.Defaults.SSHKeyPath != "" {
+		return c.Infrastructure.Defaults.SSHKeyPath
+	}
+	return ""
 }

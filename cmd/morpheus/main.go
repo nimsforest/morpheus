@@ -70,27 +70,27 @@ func handlePlant() {
 		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Sizes:")
-		fmt.Fprintln(os.Stderr, "  wood   - 1 machine  (~5-7 min)  💰 ~€3/month")
-		fmt.Fprintln(os.Stderr, "  forest - 3 machines (~15-20 min) 💰 ~€9/month")
-		fmt.Fprintln(os.Stderr, "  jungle - 5 machines (~25-35 min) 💰 ~€15/month")
+		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (~5-7 min)   💰 ~€3-4/month")
+		fmt.Fprintln(os.Stderr, "  medium - 3 machines (~15-20 min) 💰 ~€9-12/month")
+		fmt.Fprintln(os.Stderr, "  large  - 5 machines (~25-35 min) 💰 ~€15-20/month")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		if isTermux() {
-			fmt.Fprintln(os.Stderr, "  morpheus plant wood         # Quick! Create 1 machine")
-			fmt.Fprintln(os.Stderr, "  morpheus plant forest       # Create 3-machine cluster")
+			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Quick! Create 1 machine")
+			fmt.Fprintln(os.Stderr, "  morpheus plant medium       # Create 3-machine cluster")
 		} else {
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Create 1 machine on Hetzner Cloud")
-			fmt.Fprintln(os.Stderr, "  morpheus plant local wood   # Create 1 machine locally (Docker)")
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud forest # Create 3-machine cluster")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
+			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 1 machine locally (Docker)")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium # Create 3-machine cluster")
 		}
 		os.Exit(1)
 	}
 
 	// Smart argument parsing: support both 2 and 3 argument forms
 	if len(os.Args) == 3 {
-		// Two arguments: could be "plant wood" or "plant cloud wood"
+		// Two arguments: could be "plant small" or "plant cloud small"
 		arg := os.Args[2]
-		if arg == "wood" || arg == "forest" || arg == "jungle" {
+		if isValidSize(arg) {
 			// On Termux, default to cloud mode (Docker doesn't work on Android)
 			// On Desktop, require explicit mode to prevent accidental cloud deployments
 			if isTermux() {
@@ -113,26 +113,25 @@ func handlePlant() {
 			// It's a deployment type without size
 			fmt.Fprintf(os.Stderr, "❌ Missing size argument\n\n")
 			fmt.Fprintf(os.Stderr, "Usage: morpheus plant %s <size>\n", arg)
-			fmt.Fprintln(os.Stderr, "Sizes: wood, forest, jungle")
-			fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant %s wood\n", arg)
+			fmt.Fprintln(os.Stderr, "Sizes: small, medium, large")
+			fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant %s small\n", arg)
 			os.Exit(1)
 		} else {
 			fmt.Fprintf(os.Stderr, "❌ Unknown argument: %s\n\n", arg)
-			fmt.Fprintln(os.Stderr, "Valid sizes: wood, forest, jungle")
+			fmt.Fprintln(os.Stderr, "Valid sizes: small, medium, large")
 			fmt.Fprintln(os.Stderr, "Valid deployment types: cloud, local")
 			fmt.Fprintln(os.Stderr, "\nExamples:")
-			fmt.Fprintln(os.Stderr, "  morpheus plant wood")
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud forest")
+			fmt.Fprintln(os.Stderr, "  morpheus plant small")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium")
 			os.Exit(1)
 		}
 	} else if len(os.Args) >= 4 {
-		// Three arguments: "plant cloud wood"
+		// Three arguments: "plant cloud small"
 		deploymentType = os.Args[2]
 		size = os.Args[3]
 	}
 
 	// Validate deployment type
-
 	if deploymentType != "cloud" && deploymentType != "local" {
 		fmt.Fprintf(os.Stderr, "❌ Invalid deployment type: '%s'\n\n", deploymentType)
 		fmt.Fprintln(os.Stderr, "Valid options: cloud, local")
@@ -140,22 +139,19 @@ func handlePlant() {
 		os.Exit(1)
 	}
 
-	if size != "wood" && size != "forest" && size != "jungle" {
+	// Validate size
+	if !isValidSize(size) {
 		fmt.Fprintf(os.Stderr, "❌ Invalid size: '%s'\n\n", size)
 		fmt.Fprintln(os.Stderr, "Valid sizes:")
-		fmt.Fprintln(os.Stderr, "  wood   - 1 machine  (quick start)")
-		fmt.Fprintln(os.Stderr, "  forest - 3 machines (small cluster)")
-		fmt.Fprintln(os.Stderr, "  jungle - 5 machines (large cluster)")
+		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (quick start, ~€3-4/mo)")
+		fmt.Fprintln(os.Stderr, "  medium - 3 machines (small cluster, ~€9-12/mo)")
+		fmt.Fprintln(os.Stderr, "  large  - 5 machines (large cluster, ~€15-20/mo)")
 		fmt.Fprintln(os.Stderr, "")
+		
 		// Suggest closest match
-		if len(size) > 0 {
-			if size[0] == 'w' || size[0] == 'W' {
-				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant wood")
-			} else if size[0] == 'f' || size[0] == 'F' {
-				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant forest")
-			} else if size[0] == 'j' || size[0] == 'J' {
-				fmt.Fprintln(os.Stderr, "💡 Did you mean: morpheus plant jungle")
-			}
+		suggestion := suggestSize(size)
+		if suggestion != "" {
+			fmt.Fprintf(os.Stderr, "💡 Did you mean: morpheus plant %s\n", suggestion)
 		}
 		os.Exit(1)
 	}
@@ -229,25 +225,55 @@ func handlePlant() {
 	// Generate forest ID
 	forestID := fmt.Sprintf("forest-%d", time.Now().Unix())
 
-	// Determine location
-	var location string
+	// Create context early for provider operations
+	ctx := context.Background()
+
+	// Determine machine profile, server type, and location
+	var location, serverType, image string
 	if deploymentType == "local" {
 		location = "local"
+		serverType = "local"
+		image = "ubuntu:24.04"
 	} else {
-		if len(cfg.Infrastructure.Locations) == 0 {
-			fmt.Fprintln(os.Stderr, "No locations configured in config")
+		// Use machine profile system for cloud deployments
+		profile := provider.GetProfileForSize(size)
+		
+		// For Hetzner, select the best server type and locations
+		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+			// Get default locations if not configured
+			preferredLocations := cfg.Infrastructure.Locations
+			if len(preferredLocations) == 0 {
+				preferredLocations = hetzner.GetDefaultLocations()
+			}
+			
+			// Select best server type and available locations
+			selectedType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, preferredLocations)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\n❌ Failed to select server type: %s\n", err)
+				os.Exit(1)
+			}
+			
+			serverType = selectedType
+			location = availableLocations[0] // Use first available location
+			image = "ubuntu-24.04" // Default to Ubuntu 24.04
+			
+			// Update available locations for fallback
+			cfg.Infrastructure.Locations = availableLocations
+		} else {
+			// Non-Hetzner provider (shouldn't happen, but handle gracefully)
+			fmt.Fprintln(os.Stderr, "Unknown cloud provider")
 			os.Exit(1)
 		}
-		// Try to find an available location
-		location = cfg.Infrastructure.Locations[0]
 	}
 
 	// Create provision request
 	req := forest.ProvisionRequest{
-		ForestID: forestID,
-		Size:     size,
-		Location: location,
-		Role:     cloudinit.RoleEdge, // Default role
+		ForestID:   forestID,
+		Size:       size,
+		Location:   location,
+		Role:       cloudinit.RoleEdge, // Default role
+		ServerType: serverType,
+		Image:      image,
 	}
 
 	// Display friendly provisioning header
@@ -258,56 +284,37 @@ func handlePlant() {
 	nodeCount := getNodeCount(size)
 	var timeEstimate string
 	switch size {
-	case "wood":
+	case "small":
 		timeEstimate = "5-7 minutes"
-	case "forest":
+	case "medium":
 		timeEstimate = "15-20 minutes"
-	case "jungle":
+	case "large":
 		timeEstimate = "25-35 minutes"
 	}
 	
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   Forest ID:  %s\n", forestID)
 	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
-	fmt.Printf("   Location:   %s\n", location)
+	if deploymentType == "cloud" {
+		fmt.Printf("   Machine:    %s\n", serverType)
+		fmt.Printf("   Location:   %s\n", hetzner.GetLocationDescription(location))
+	} else {
+		fmt.Printf("   Location:   %s\n", location)
+	}
 	fmt.Printf("   Provider:   %s\n", providerName)
 	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
 	
 	if deploymentType == "cloud" {
-		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimateMonthlyCost(size, cfg.Infrastructure.Defaults.ServerType))
+		estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
+		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimatedCost)
 		fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
 	}
 	
 	fmt.Println("🚀 Starting provisioning...")
 
-	ctx := context.Background()
-
-	// Filter locations by server type availability if the provider supports it
+	// Use the locations already determined during server type selection
 	availableLocations := cfg.Infrastructure.Locations
-	serverType := cfg.Infrastructure.Defaults.ServerType
-	if locationAware, ok := prov.(provider.LocationAwareProvider); ok {
-		supported, unsupported, filterErr := locationAware.FilterLocationsByServerType(ctx, cfg.Infrastructure.Locations, serverType)
-		if filterErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Could not check server type availability: %s\n", filterErr)
-			// Continue with all locations - will fail at creation time if unavailable
-		} else if len(supported) == 0 {
-			// No configured locations support this server type - offer interactive options
-			newServerType, newLocations := handleServerTypeLocationMismatch(ctx, locationAware, serverType, cfg.Infrastructure.Locations)
-			if newServerType == "" {
-				os.Exit(1)
-			}
-			serverType = newServerType
-			cfg.Infrastructure.Defaults.ServerType = serverType
-			availableLocations = newLocations
-		} else {
-			availableLocations = supported
-			if len(unsupported) > 0 {
-				fmt.Printf("ℹ️  Note: Server type '%s' is not available in: %s\n", serverType, joinLocations(unsupported))
-				fmt.Printf("   Using available locations: %s\n\n", joinLocations(supported))
-			}
-		}
-	}
-
+	
 	err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
@@ -457,7 +464,7 @@ func handleServerTypeLocationMismatch(ctx context.Context, locationAware provide
 		// Let user pick a location
 		fmt.Printf("\nAvailable locations for '%s':\n", serverType)
 		for i, loc := range availableForType {
-			locDesc := getLocationDescription(loc)
+			locDesc := hetzner.GetLocationDescription(loc)
 			fmt.Printf("  [%d] %s - %s\n", i+1, loc, locDesc)
 		}
 		fmt.Print("\nEnter location number: ")
@@ -540,21 +547,6 @@ func handleServerTypeLocationMismatch(ctx context.Context, locationAware provide
 	}
 }
 
-// getLocationDescription returns a human-readable description for a location
-func getLocationDescription(loc string) string {
-	descriptions := map[string]string{
-		"fsn1": "Falkenstein, Germany",
-		"nbg1": "Nuremberg, Germany",
-		"hel1": "Helsinki, Finland",
-		"ash":  "Ashburn, VA, USA",
-		"hil":  "Hillsboro, OR, USA",
-		"sin":  "Singapore",
-	}
-	if desc, ok := descriptions[loc]; ok {
-		return desc
-	}
-	return loc
-}
 
 // containsLocationError checks if an error message indicates a location availability issue
 func containsLocationError(errMsg string) bool {
@@ -608,7 +600,7 @@ func getLocalConfig() *config.Config {
 	return &config.Config{
 		Infrastructure: config.InfrastructureConfig{
 			Provider: "local",
-			Defaults: config.DefaultsConfig{
+			Defaults: &config.DefaultsConfig{
 				ServerType: "local",
 				Image:      "ubuntu:24.04",
 			},
@@ -632,11 +624,11 @@ func handleList() {
 		fmt.Println()
 		if isTermux() {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant wood         # Quick start with 1 machine")
+			fmt.Println("  morpheus plant small        # Quick start with 1 machine")
 		} else {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant wood         # 1 machine on cloud")
-			fmt.Println("  morpheus plant local wood   # 1 machine locally (Docker)")
+			fmt.Println("  morpheus plant cloud small  # 1 machine on cloud")
+			fmt.Println("  morpheus plant local small  # 1 machine locally (Docker)")
 		}
 		return
 	}
@@ -1012,35 +1004,6 @@ func plural(count int) string {
 	return "s"
 }
 
-// estimateMonthlyCost estimates monthly cost based on size and server type
-func estimateMonthlyCost(size string, serverType string) float64 {
-	// Base costs per server type (approximate monthly costs in EUR)
-	baseCosts := map[string]float64{
-		"cx22":  3.29,  // Shared vCPU, 2 vCPU, 4GB
-		"cx32":  6.29,  // Shared vCPU, 4 vCPU, 8GB
-		"cx42":  12.29, // Shared vCPU, 8 vCPU, 16GB
-		"cx52":  24.29, // Shared vCPU, 16 vCPU, 32GB
-		"cpx11": 4.49,  // Dedicated vCPU, 2 vCPU, 2GB
-		"cpx21": 8.49,  // Dedicated vCPU, 3 vCPU, 4GB
-		"cpx31": 15.49, // Dedicated vCPU, 4 vCPU, 8GB
-		"cpx41": 29.49, // Dedicated vCPU, 8 vCPU, 16GB
-		"cpx51": 57.49, // Dedicated vCPU, 16 vCPU, 32GB
-		"cax11": 3.79,  // ARM, 2 vCPU, 4GB
-		"cax21": 7.59,  // ARM, 4 vCPU, 8GB
-		"cax31": 15.19, // ARM, 8 vCPU, 16GB
-		"cax41": 30.39, // ARM, 16 vCPU, 32GB
-	}
-	
-	// Default cost if server type not found
-	baseCost := 5.0
-	if cost, ok := baseCosts[serverType]; ok {
-		baseCost = cost
-	}
-	
-	// Calculate based on forest size
-	nodeCount := getNodeCount(size)
-	return baseCost * float64(nodeCount)
-}
 
 // truncateIP truncates an IP address to fit within maxLen characters
 func truncateIP(ip string, maxLen int) string {
@@ -1059,14 +1022,44 @@ func truncateIP(ip string, maxLen int) string {
 // getNodeCount returns the number of nodes for a given forest size
 func getNodeCount(size string) int {
 	switch size {
-	case "wood":
+	case "small":
 		return 1
-	case "forest":
+	case "medium":
 		return 3
-	case "jungle":
+	case "large":
 		return 5
 	default:
 		return 1
+	}
+}
+
+// isValidSize checks if a size is valid
+func isValidSize(size string) bool {
+	validSizes := []string{"small", "medium", "large"}
+	for _, valid := range validSizes {
+		if size == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// suggestSize suggests a size based on user input
+func suggestSize(input string) string {
+	if len(input) == 0 {
+		return ""
+	}
+	
+	firstChar := input[0]
+	switch firstChar {
+	case 's', 'S':
+		return "small"
+	case 'm', 'M':
+		return "medium"
+	case 'l', 'L':
+		return "large"
+	default:
+		return ""
 	}
 }
 
@@ -1078,8 +1071,8 @@ func printHelp() {
 	
 	if isOnTermux {
 		fmt.Println("Quick Start (Termux):")
-		fmt.Println("  morpheus plant wood         # Create 1 machine on Hetzner (~5-7 min)")
-		fmt.Println("  morpheus plant forest       # Create 3 machines (~15-20 min)")
+		fmt.Println("  morpheus plant small        # Create 1 machine on Hetzner (~5-7 min)")
+		fmt.Println("  morpheus plant medium       # Create 3 machines (~15-20 min)")
 		fmt.Println()
 	}
 	
@@ -1090,18 +1083,18 @@ func printHelp() {
 	if isOnTermux {
 		fmt.Println("  plant <size>                Plant a forest (cloud mode)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                wood   - 1 machine  (~5-7 min, €3/mo)")
-		fmt.Println("                                forest - 3 machines (~15-20 min, €9/mo)")
-		fmt.Println("                                jungle - 5 machines (~25-35 min, €15/mo)")
+		fmt.Println("                                small  - 1 machine  (~5-7 min, €3-4/mo)")
+		fmt.Println("                                medium - 3 machines (~15-20 min, €9-12/mo)")
+		fmt.Println("                                large  - 5 machines (~25-35 min, €15-20/mo)")
 	} else {
 		fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
 		fmt.Println("                              Deployment types:")
 		fmt.Println("                                cloud - Provision on Hetzner Cloud (requires API token)")
 		fmt.Println("                                local - Provision locally using Docker (free)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                wood   - 1 machine  (~5-7 min)")
-		fmt.Println("                                forest - 3 machines (~15-20 min)")
-		fmt.Println("                                jungle - 5 machines (~25-35 min)")
+		fmt.Println("                                small  - 1 machine  (~5-7 min)")
+		fmt.Println("                                medium - 3 machines (~15-20 min)")
+		fmt.Println("                                large  - 5 machines (~25-35 min)")
 	}
 	fmt.Println("  list                        List all forests")
 	fmt.Println("  status <forest-id>          Show detailed forest status")
@@ -1114,15 +1107,15 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	if isOnTermux {
-		fmt.Println("  morpheus plant wood         # Quick! Create 1 machine")
-		fmt.Println("  morpheus plant forest       # Create 3-machine cluster")
+		fmt.Println("  morpheus plant small        # Quick! Create 1 machine")
+		fmt.Println("  morpheus plant medium       # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all your forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
 	} else {
-		fmt.Println("  morpheus plant cloud wood   # Create 1 machine on Hetzner Cloud")
-		fmt.Println("  morpheus plant local wood   # Create 1 machine locally (Docker)")
-		fmt.Println("  morpheus plant cloud forest # Create 3-machine cluster")
+		fmt.Println("  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
+		fmt.Println("  morpheus plant local small  # Create 1 machine locally (Docker)")
+		fmt.Println("  morpheus plant cloud medium # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")

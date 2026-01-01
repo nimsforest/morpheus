@@ -19,7 +19,7 @@ type Registry struct {
 // Forest represents a NATS forest deployment
 type Forest struct {
 	ID        string    `json:"id"`
-	Size      string    `json:"size"` // wood, forest, jungle
+	Size      string    `json:"size"` // small, medium, large
 	Location  string    `json:"location"`
 	Provider  string    `json:"provider"`
 	Status    string    `json:"status"`

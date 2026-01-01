@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/nimsforest/morpheus/main/scripts/in
 **Step 5: Use Morpheus**
 
 ```bash
-morpheus plant cloud wood    # Create infrastructure
+morpheus plant cloud small   # Create infrastructure
 morpheus list                # View forests
 morpheus status forest-123   # Check status
 morpheus teardown forest-123 # Clean up
@@ -70,7 +70,7 @@ export HETZNER_API_TOKEN="your-token"
 cp config.example.yaml config.yaml
 
 # Use it
-./bin/morpheus plant cloud wood
+./bin/morpheus plant cloud small
 ./bin/morpheus list
 ```
 
@@ -232,18 +232,18 @@ morpheus plant cloud <size>
 ```
 
 **Sizes:**
-- `wood` - 1 node (single server)
-- `forest` - 3 nodes (cluster)
-- `jungle` - 5 nodes (large cluster)
+- `small` - 1 node (single server)
+- `medium` - 3 nodes (cluster)
+- `large` - 5 nodes (large cluster)
 
 > ⚠️ **Termux users:** Only `cloud` mode is supported. Local mode requires Docker which does not work on Android.
 
 **Examples:**
 
 ```bash
-morpheus plant cloud wood     # 1 node, ~5-10 min
-morpheus plant cloud forest   # 3 nodes, ~15-30 min
-morpheus plant cloud jungle   # 5 nodes, ~25-50 min
+morpheus plant cloud small    # 1 node, ~5-10 min
+morpheus plant cloud medium   # 3 nodes, ~15-30 min
+morpheus plant cloud large    # 5 nodes, ~25-50 min
 ```
 
 **What happens:**
@@ -280,7 +280,7 @@ morpheus status forest-<id>
 Output:
 ```
 🌲 Forest: forest-1735234567
-Size: forest
+Size: medium
 Location: fsn1
 Provider: hetzner
 Status: active
@@ -389,7 +389,7 @@ See [docs/architecture/SEPARATION_OF_CONCERNS.md](docs/architecture/SEPARATION_O
 ### Integration Flow
 
 ```
-1. morpheus plant cloud forest
+1. morpheus plant cloud medium
    ↓
 2. Provision servers (Hetzner API)
    ↓
@@ -508,15 +508,12 @@ A: Currently Hetzner Cloud. AWS, GCP, Azure coming in future releases.
 **Q: How much does it cost?**  
 A: Hetzner charges by the minute. IPv6-only (IPv4 costs extra):
 
-**CX23 (default):**
-- wood: ~€2.99/month
-- forest: ~€8.97/month
-- jungle: ~€14.95/month
+**Estimated costs:**
+- small: ~€3-4/month (1 machine)
+- medium: ~€9-12/month (3 machines)
+- large: ~€15-20/month (5 machines)
 
-**CPX21 (production):**
-- wood: ~€9/month
-- forest: ~€27/month
-- jungle: ~€45/month
+*Morpheus automatically selects cost-effective machine types.*
 
 **Q: Does Morpheus support IPv4?**  
 A: No. IPv6-only (IPv4 costs extra on Hetzner). Your network must have IPv6. Test: `morpheus check-ipv6` or `curl -6 ifconfig.co`

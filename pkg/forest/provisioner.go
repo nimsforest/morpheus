@@ -29,10 +29,12 @@ func NewProvisioner(p provider.Provider, r *Registry, cfg *config.Config) *Provi
 
 // ProvisionRequest contains parameters for provisioning a forest
 type ProvisionRequest struct {
-	ForestID string
-	Size     string // wood, forest, jungle
-	Location string
-	Role     cloudinit.NodeRole
+	ForestID   string
+	Size       string // small, medium, large
+	Location   string
+	Role       cloudinit.NodeRole
+	ServerType string // Provider-specific server type
+	Image      string // OS image to use
 }
 
 // Provision creates a new forest with the specified configuration
@@ -124,14 +126,35 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		return nil, fmt.Errorf("failed to generate cloud-init: %w", err)
 	}
 
+	// Determine server type and image based on provisioning context
+	serverType := req.ServerType
+	if serverType == "" {
+		// Fallback to legacy config if available
+		if p.config.Infrastructure.Defaults != nil && p.config.Infrastructure.Defaults.ServerType != "" {
+			serverType = p.config.Infrastructure.Defaults.ServerType
+		} else {
+			return nil, fmt.Errorf("server type not specified in request and no default configured")
+		}
+	}
+	
+	image := req.Image
+	if image == "" {
+		// Default to Ubuntu 24.04 if not specified
+		image = "ubuntu-24.04"
+		// Check legacy config
+		if p.config.Infrastructure.Defaults != nil && p.config.Infrastructure.Defaults.Image != "" {
+			image = p.config.Infrastructure.Defaults.Image
+		}
+	}
+
 	// Create server
 	fmt.Printf("      ⏳ Creating server on cloud provider...\n")
 	createReq := provider.CreateServerRequest{
 		Name:       nodeName,
-		ServerType: p.config.Infrastructure.Defaults.ServerType,
-		Image:      p.config.Infrastructure.Defaults.Image,
+		ServerType: serverType,
+		Image:      image,
 		Location:   req.Location,
-		SSHKeys:    []string{p.config.Infrastructure.Defaults.SSHKey},
+		SSHKeys:    []string{p.config.GetSSHKeyName()},
 		UserData:   userData,
 		Labels: map[string]string{
 			"managed-by": "morpheus",
@@ -287,11 +310,11 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*
 // getNodeCount returns the number of nodes for a given forest size
 func getNodeCount(size string) int {
 	switch size {
-	case "wood":
+	case "small":
 		return 1
-	case "forest":
+	case "medium":
 		return 3
-	case "jungle":
+	case "large":
 		return 5
 	default:
 		return 1

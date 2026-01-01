@@ -72,6 +72,18 @@ echo 'export HETZNER_API_TOKEN="your_token"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### Configuration
+
+Morpheus uses a simple configuration file at `~/.morpheus/config.yaml`. The default configuration works for most users - you only need to provide your Hetzner API token.
+
+**What you DON'T need to configure:**
+- Machine types (Morpheus auto-selects based on forest size)
+- Locations (Morpheus auto-selects available datacenters)
+- Server specifications (handled automatically)
+
+**What you MAY want to configure:**
+- SSH key name (defaults to `morpheus`, Morpheus will auto-upload your key)
+
 ## First Test
 
 After installation completes:
@@ -81,7 +93,7 @@ After installation completes:
 morpheus version
 
 # Create a test forest (1 server)
-morpheus plant cloud wood
+morpheus plant cloud small
 
 # Wait ~5-10 minutes for provisioning
 
@@ -99,9 +111,9 @@ morpheus teardown forest-<id>
 
 ```bash
 # Create infrastructure (cloud mode)
-morpheus plant cloud wood      # 1 server
-morpheus plant cloud forest    # 3 servers
-morpheus plant cloud jungle    # 5 servers
+morpheus plant cloud small     # 1 server
+morpheus plant cloud medium    # 3 servers
+morpheus plant cloud large     # 5 servers
 
 # Manage
 morpheus list                  # List all
@@ -149,12 +161,16 @@ source ~/.bashrc
 
 ### "SSH key not found"
 
+Morpheus automatically uploads your SSH key to Hetzner. If you see this error:
+
 ```bash
-# Edit config to match your SSH key name in Hetzner
+# Edit config to match your SSH key name
 nano ~/.morpheus/config.yaml
 
-# Change this line:
-ssh_key: android  # Must match name in Hetzner console
+# Under the ssh: section, change:
+ssh:
+  key_name: android  # Or whatever you named your key in Hetzner
+  key_path: ""       # Optional: custom path to your SSH public key
 ```
 
 ### Build fails or takes forever

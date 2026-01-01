@@ -1,67 +1,58 @@
+# Morpheus Configuration
+# Copy this file to config.yaml or ~/.morpheus/config.yaml
+
+# Infrastructure provider
 infrastructure:
-  provider: hetzner
-  defaults:
-    server_type: cx22   # 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
-    image: ubuntu-24.04  # Default image for all roles
-    # Note: IPv6-only (IPv4 costs extra on Hetzner)
-    # Note: Your local network must have IPv6 connectivity
-    # Note: CX series has shared vCPU. For production, consider CPX series (dedicated vCPU)
-    ssh_key: main  # Name of SSH key in Hetzner Cloud (will be auto-uploaded if not found)
-    ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
-                       # If not specified, Morpheus will search common SSH key locations
+  provider: hetzner  # Currently only 'hetzner' and 'local' are supported
   
-  # Per-role overrides (optional)
-  roles:
-    edge:
-      # Forest nodes: NATS only, pure CPU/RAM
-      # CX22 for budget, CPX series for production consistency
-      image: ubuntu-24.04
-      server_type: cx22    # 2 vCPU (shared AMD), 4 GB RAM (~€3.29/mo)
-      # Upgrade to cpx11/cpx21 for production (dedicated vCPU)
-    
-    compute:
-      # Nims nodes: GPU-dependent applications
-      # Ubuntu required for NVIDIA drivers and CUDA support
-      # Shared vCPU may hurt GPU performance - consider CPX for consistency
-      image: ubuntu-24.04  # Must be Ubuntu for GPU support
-      server_type: cx22    # Budget option (~€3.29/mo)
-      # Upgrade to cpx21/cpx31 for GPU workloads
-    
-    storage:
-      # Storage nodes: NFS/persistent data
-      image: ubuntu-24.04
-      server_type: cx22    # Sufficient for NFS storage server
-  locations:
-    # Morpheus will try each location in order and automatically fall back
-    # to the next one if a location is unavailable or at capacity
-    # Note: CX22 (shared AMD) is available in ash, hil, sin, fsn1, nbg1, hel1
-    - fsn1  # Falkenstein, Germany (Europe)
-    - nbg1  # Nuremberg, Germany (Europe)
-    - hel1  # Helsinki, Finland (Europe)
-    - ash   # Ashburn, VA, USA (US East)
-    - hil   # Hillsboro, OR, USA (US West)
-    # Other available locations:
-    # - sin   # Singapore (Asia)
+  # SSH key configuration
+  ssh:
+    key_name: morpheus  # Name for the SSH key (will be auto-uploaded to Hetzner)
+    key_path: ""        # Optional: Path to your SSH public key (e.g., ~/.ssh/id_ed25519.pub)
+                        # If not specified, Morpheus will search common locations
 
+# Integration with NimsForest
 integration:
-  # NimsForest callback URL for bootstrap notifications
-  # Morpheus will call this when infrastructure is ready
-  nimsforest_url: ""  # e.g., "https://nimsforest.example.com"
-  
-  # Optional: Morpheus registry URL for infrastructure state tracking
-  registry_url: ""  # e.g., "https://registry.example.com"
+  nimsforest_url: ""  # URL for NimsForest callbacks (optional)
+  registry_url: ""    # Morpheus registry URL (optional)
 
+# Provisioning settings
 provisioning:
-  # How long to wait for infrastructure to be ready after server starts
-  # Morpheus verifies SSH connectivity before marking nodes as ready
-  readiness_timeout: "5m"
-  
-  # How often to check infrastructure readiness
-  readiness_interval: "10s"
-  
-  # SSH port to check for connectivity (default: 22)
-  ssh_port: 22
+  readiness_timeout: "5m"   # How long to wait for servers to be ready
+  readiness_interval: "10s" # How often to check server readiness
+  ssh_port: 22              # SSH port for connectivity checks
 
+# Secrets (can also be set via environment variables)
 secrets:
-  # Hetzner API token - can also be set via HETZNER_API_TOKEN environment variable
-  hetzner_api_token: ""
+  hetzner_api_token: ""  # Or set via HETZNER_API_TOKEN environment variable
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ℹ️  Configuration Notes
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Machine Types & Locations:
+#   Morpheus automatically selects the best machine types and locations based
+#   on your forest size (small/medium/large). You don't need to configure these!
+#
+# SSH Keys:
+#   - Morpheus will automatically upload your SSH key to Hetzner if needed
+#   - Default search locations: ~/.ssh/id_ed25519.pub, ~/.ssh/id_rsa.pub
+#   - You can specify a custom key_path if your key is in a different location
+#
+# IPv6:
+#   - All machines use IPv6 by default (IPv4 costs extra on Hetzner)
+#   - Make sure your network has IPv6 connectivity
+#   - Test with: morpheus check-ipv6
+#
+# API Token:
+#   - Get yours at: https://console.hetzner.cloud/ → Security → API Tokens
+#   - Needs "Read & Write" permissions
+#   - Can be set here or via HETZNER_API_TOKEN environment variable
+#
+# Cost:
+#   - small:  1 machine  ≈ €3-4/month   (perfect for testing)
+#   - medium: 3 machines ≈ €9-12/month  (small production)
+#   - large:  5 machines ≈ €15-20/month (larger deployment)
+#   - Billed by the minute, can teardown anytime
+#
+# ─────────────────────────────────────────────────────────────────────────────
