@@ -57,7 +57,17 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 	// Try primary first
 	allOptions := append([]string{mapping.Primary}, mapping.Fallbacks...)
 	
+	// Filter out ARM types for now (ubuntu-24.04 doesn't support ARM on Hetzner)
+	var x86Options []string
 	for _, serverType := range allOptions {
+		// Skip ARM-based server types (cax series)
+		if len(serverType) >= 3 && serverType[:3] == "cax" {
+			continue
+		}
+		x86Options = append(x86Options, serverType)
+	}
+	
+	for _, serverType := range x86Options {
 		// Get locations where this server type is available
 		availableLocations, err := p.GetAvailableLocations(ctx, serverType)
 		if err != nil {
