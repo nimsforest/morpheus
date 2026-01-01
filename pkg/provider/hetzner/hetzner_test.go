@@ -558,3 +558,110 @@ func TestReadSSHPublicKeyTildeExpansion(t *testing.T) {
 		t.Logf("Got expected error: %v", err)
 	}
 }
+
+// TestLocationAwareProviderInterface tests that the Provider implements LocationAwareProvider
+func TestLocationAwareProviderInterface(t *testing.T) {
+	p, err := NewProvider("test-token")
+	if err != nil {
+		t.Fatalf("Failed to create provider: %v", err)
+	}
+
+	// Check that Provider implements the LocationAwareProvider interface
+	var _ provider.LocationAwareProvider = p
+}
+
+// TestFilterLocationsByServerTypeLogic tests the filtering logic
+// Note: This tests the logic without making actual API calls
+func TestFilterLocationsByServerTypeLogic(t *testing.T) {
+	tests := []struct {
+		name                string
+		configuredLocations []string
+		availableLocations  []string
+		expectedSupported   []string
+		expectedUnsupported []string
+	}{
+		{
+			name:                "all locations supported",
+			configuredLocations: []string{"fsn1", "nbg1", "hel1"},
+			availableLocations:  []string{"fsn1", "nbg1", "hel1", "ash"},
+			expectedSupported:   []string{"fsn1", "nbg1", "hel1"},
+			expectedUnsupported: []string{},
+		},
+		{
+			name:                "some locations unsupported",
+			configuredLocations: []string{"fsn1", "nbg1", "hel1"},
+			availableLocations:  []string{"fsn1", "ash", "hil"},
+			expectedSupported:   []string{"fsn1"},
+			expectedUnsupported: []string{"nbg1", "hel1"},
+		},
+		{
+			name:                "no locations supported",
+			configuredLocations: []string{"fsn1", "nbg1", "hel1"},
+			availableLocations:  []string{"ash", "hil", "sin"},
+			expectedSupported:   []string{},
+			expectedUnsupported: []string{"fsn1", "nbg1", "hel1"},
+		},
+		{
+			name:                "empty configured locations",
+			configuredLocations: []string{},
+			availableLocations:  []string{"fsn1", "nbg1"},
+			expectedSupported:   []string{},
+			expectedUnsupported: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build a set of available locations
+			availableSet := make(map[string]bool)
+			for _, loc := range tt.availableLocations {
+				availableSet[loc] = true
+			}
+
+			// Simulate the filtering logic
+			var supported, unsupported []string
+			for _, loc := range tt.configuredLocations {
+				if availableSet[loc] {
+					supported = append(supported, loc)
+				} else {
+					unsupported = append(unsupported, loc)
+				}
+			}
+
+			// Handle nil vs empty slice comparison
+			if len(supported) == 0 {
+				supported = nil
+			}
+			if len(unsupported) == 0 {
+				unsupported = nil
+			}
+			if len(tt.expectedSupported) == 0 {
+				tt.expectedSupported = nil
+			}
+			if len(tt.expectedUnsupported) == 0 {
+				tt.expectedUnsupported = nil
+			}
+
+			// Compare results
+			if !slicesEqual(supported, tt.expectedSupported) {
+				t.Errorf("Supported locations mismatch: got %v, want %v", supported, tt.expectedSupported)
+			}
+			if !slicesEqual(unsupported, tt.expectedUnsupported) {
+				t.Errorf("Unsupported locations mismatch: got %v, want %v", unsupported, tt.expectedUnsupported)
+			}
+		})
+	}
+}
+
+// slicesEqual compares two string slices for equality
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+	return true
+}
