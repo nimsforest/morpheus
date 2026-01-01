@@ -665,3 +665,87 @@ func slicesEqual(a, b []string) bool {
 	}
 	return true
 }
+
+// TestIntersectLocationsPreserveOrder tests that the intersection preserves preferred location order
+func TestIntersectLocationsPreserveOrder(t *testing.T) {
+	tests := []struct {
+		name      string
+		preferred []string
+		available []string
+		expected  []string
+	}{
+		{
+			name:      "preserves preferred order",
+			preferred: []string{"fsn1", "nbg1", "hel1", "ash"},
+			available: []string{"ash", "hel1", "fsn1"}, // Different order from Hetzner
+			expected:  []string{"fsn1", "hel1", "ash"}, // Should match preferred order
+		},
+		{
+			name:      "all preferred available",
+			preferred: []string{"fsn1", "nbg1"},
+			available: []string{"fsn1", "nbg1", "hel1"},
+			expected:  []string{"fsn1", "nbg1"},
+		},
+		{
+			name:      "some preferred not available",
+			preferred: []string{"fsn1", "nbg1", "hel1"},
+			available: []string{"hel1", "ash"},
+			expected:  []string{"hel1"},
+		},
+		{
+			name:      "no overlap",
+			preferred: []string{"fsn1", "nbg1"},
+			available: []string{"ash", "hil"},
+			expected:  nil,
+		},
+		{
+			name:      "empty preferred",
+			preferred: []string{},
+			available: []string{"fsn1", "nbg1"},
+			expected:  nil,
+		},
+		{
+			name:      "empty available",
+			preferred: []string{"fsn1", "nbg1"},
+			available: []string{},
+			expected:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := intersectLocationsPreserveOrder(tt.preferred, tt.available)
+
+			// Handle nil vs empty slice comparison
+			if len(result) == 0 {
+				result = nil
+			}
+
+			if !slicesEqual(result, tt.expected) {
+				t.Errorf("intersectLocationsPreserveOrder(%v, %v) = %v, want %v",
+					tt.preferred, tt.available, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetHetznerServerTypePrimary tests that cx22 is the primary for small profile
+func TestGetHetznerServerTypePrimary(t *testing.T) {
+	mapping := GetHetznerServerType(provider.ProfileSmall)
+
+	if mapping.Primary != "cx22" {
+		t.Errorf("Expected cx22 as primary for small profile, got %s", mapping.Primary)
+	}
+
+	// Verify fallbacks include cpx11
+	hasCpx11 := false
+	for _, fb := range mapping.Fallbacks {
+		if fb == "cpx11" {
+			hasCpx11 = true
+			break
+		}
+	}
+	if !hasCpx11 {
+		t.Error("Expected cpx11 in fallbacks for small profile")
+	}
+}

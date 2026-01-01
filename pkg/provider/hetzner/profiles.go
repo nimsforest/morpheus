@@ -56,12 +56,17 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 // considering location availability
 //
 // All server types from GetHetznerServerType are x86-only (opinionated for Ubuntu compatibility)
+//
+// Priority: Primary server type (cheapest) is always preferred over fallbacks.
+// If the primary server type is available anywhere, it will be used even if not
+// in the preferred locations. This ensures cost optimization.
 func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.MachineProfile, preferredLocations []string) (string, []string, error) {
 	mapping := GetHetznerServerType(profile)
 	
 	// Try primary first, then fallbacks in order
 	allOptions := append([]string{mapping.Primary}, mapping.Fallbacks...)
 	
+	// First pass: try to find a server type that works with preferred locations
 	for _, serverType := range allOptions {
 		// Get locations where this server type is available
 		availableLocations, err := p.GetAvailableLocations(ctx, serverType)
@@ -74,14 +79,34 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 			continue
 		}
 		
-		// If we have preferred locations, filter to those
+		// If we have preferred locations, filter to those (preserving preferred order)
 		if len(preferredLocations) > 0 {
-			matchingLocations := intersectLocations(availableLocations, preferredLocations)
+			matchingLocations := intersectLocationsPreserveOrder(preferredLocations, availableLocations)
 			if len(matchingLocations) > 0 {
 				return serverType, matchingLocations, nil
 			}
 		} else {
 			// No preferred locations, use all available
+			return serverType, availableLocations, nil
+		}
+	}
+	
+	// Second pass: if no server type works with preferred locations,
+	// use the PRIMARY server type with ANY available location (prioritize cost)
+	primaryType := mapping.Primary
+	availableLocations, err := p.GetAvailableLocations(ctx, primaryType)
+	if err == nil && len(availableLocations) > 0 {
+		// Primary type is available somewhere, use it
+		return primaryType, availableLocations, nil
+	}
+	
+	// Third pass: try fallbacks with any available location
+	for _, serverType := range mapping.Fallbacks {
+		availableLocations, err := p.GetAvailableLocations(ctx, serverType)
+		if err != nil {
+			continue
+		}
+		if len(availableLocations) > 0 {
 			return serverType, availableLocations, nil
 		}
 	}
@@ -118,6 +143,7 @@ func GetLocationDescription(loc string) string {
 }
 
 // intersectLocations returns locations that exist in both lists
+// The result order follows the order of the first list (a)
 func intersectLocations(a, b []string) []string {
 	set := make(map[string]bool)
 	for _, item := range b {
@@ -127,6 +153,24 @@ func intersectLocations(a, b []string) []string {
 	var result []string
 	for _, item := range a {
 		if set[item] {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+// intersectLocationsPreserveOrder returns locations that exist in both lists
+// The result order follows the preferred list order (first argument)
+// This ensures user's preferred location order is respected
+func intersectLocationsPreserveOrder(preferred, available []string) []string {
+	availableSet := make(map[string]bool)
+	for _, item := range available {
+		availableSet[item] = true
+	}
+	
+	var result []string
+	for _, item := range preferred {
+		if availableSet[item] {
 			result = append(result, item)
 		}
 	}
