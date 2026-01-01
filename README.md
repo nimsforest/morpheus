@@ -86,18 +86,7 @@ Morpheus handles **infrastructure only**:
 
 **Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
 
-### Deployment Philosophy
-
-**Cloud deployments** (production): Direct Go binary deployment via systemd
-- No Docker overhead
-- Simpler, faster, more native
-- Perfect for single-binary applications like NATS
-
-**Local development**: Docker for isolated testing
-- `morpheus plant local` uses Docker containers
-- Easy local testing without affecting your system
-
-See [Binary Deployment Guide](docs/architecture/BINARY_DEPLOYMENT.md) for details.
+**Deployment:** Direct Go binaries via systemd (cloud), Docker for local testing only.
 
 ## Installation
 
@@ -217,26 +206,11 @@ secrets:
 ```
 
 **Server Types:**
+- `cx23`: 2 vCPU, 4 GB RAM (~€2.99/mo) - **Default**
+- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - Production (dedicated vCPU)
+- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - High throughput
 
-**Shared vCPU (CX series - budget-friendly):**
-- `cx23`: 2 vCPU, 4 GB RAM (~€2.99/mo) - **Default** (perfect for dev/test)
-- `cx31`: 2 vCPU, 8 GB RAM (~€10/mo) - More RAM for JetStream
-- `cx41`: 4 vCPU, 16 GB RAM (~€18/mo) - Higher throughput
-
-**Dedicated vCPU (CPX series - production-grade):**
-- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - **Recommended** for production NATS
-- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - High throughput (50K+ msg/s)
-- `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - Very high load
-- `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise scale
-
-**Note:** CX series uses shared vCPU (noisy neighbors possible). CPX series uses dedicated vCPU (consistent performance). For production NATS, CPX21 is worth the extra €6/mo.
-
-**OS Image:**
-- **`ubuntu-24.04`** - Recommended for all nodes (5-year LTS support)
-  - Required for GPU workloads (Nims nodes)
-  - Works great for NATS (Forest nodes)
-  - Best community support and GPU driver availability
-  - See [OS Selection Guide](docs/architecture/OS_SELECTION.md) for Ubuntu vs Debian comparison
+**OS:** Ubuntu 24.04 LTS (required for GPU support)
 
 ## Commands
 
@@ -545,7 +519,7 @@ A: Hetzner charges by the minute. Examples:
 Upgrade to cpx31 if you need higher throughput (50K+ msg/s).
 
 **Q: Can I use IPv6?**  
-A: Yes! Hetzner provides both IPv4 and IPv6 for all servers. Set `prefer_ipv6: true` in your config to use IPv6 for connections. All servers get both addresses by default.
+A: Yes. Set `prefer_ipv6: true` in config. See [IPv6 Guide](docs/guides/IPV6_SETUP.md).
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.

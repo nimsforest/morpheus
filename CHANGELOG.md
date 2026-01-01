@@ -202,121 +202,39 @@ infrastructure:
 
 ### Changed - Direct Binary Deployment
 
-**IMPORTANT**: Removed Docker from cloud deployments. Morpheus now prepares infrastructure for direct Go binary deployment.
-
-**Philosophy:** For single-binary applications like NATS, Docker adds unnecessary overhead. Cloud VMs already provide isolation, so we deploy Go binaries directly via systemd.
+Removed Docker from cloud deployments. Deploy Go binaries directly via systemd.
 
 **Changes:**
-- ✅ Removed `docker.io` from cloud-init package installation
-- ✅ Added `/opt/nimsforest/bin` directory for Go binaries
-- ✅ Added `/etc/nimsforest` directory for configuration files
-- ✅ Replaced Docker setup with systemd preparation
-- ✅ Updated cloud-init templates (EdgeNode, ComputeNode)
-- ✅ Updated documentation to reflect binary deployment approach
+- Removed `docker.io` from cloud-init
+- Added `/opt/nimsforest/bin` for binaries
+- Added `/etc/nimsforest` for configuration
+- Cloud mode: No Docker (direct binaries)
+- Local mode: Docker (for testing)
 
-**Benefits:**
-- 🚀 Faster startup (no Docker daemon, no container layer)
-- 💾 Lower memory usage (~200MB saved per node)
-- 🔧 Simpler debugging (standard Linux processes)
-- 🔒 Reduced attack surface (no Docker daemon)
-- 📦 Native integration (systemd, journald, standard Linux tools)
-
-**Important Notes:**
-- **Cloud mode** (production): No Docker. Direct binaries via systemd.
-- **Local mode** (development): Still uses Docker for local testing.
-- NimsForest should download NATS binary to `/opt/nimsforest/bin/`
-- NimsForest should create systemd service at `/etc/systemd/system/nats.service`
-- See `docs/architecture/BINARY_DEPLOYMENT.md` for complete guide
-
-**Directory Structure:**
-```
-/opt/nimsforest/bin/         # Go binaries (nats-server)
-/var/lib/nimsforest/         # Data storage (JetStream)
-/var/log/nimsforest/         # Logs
-/etc/nimsforest/             # Configuration (nats.conf)
-```
-
-**For NimsForest developers:** Update bootstrap scripts to:
-1. Download NATS binary from GitHub releases
-2. Create systemd service file
-3. Start service via `systemctl start nats`
-4. No Docker commands needed
-
-See [docs/architecture/BINARY_DEPLOYMENT.md](docs/architecture/BINARY_DEPLOYMENT.md) for detailed implementation guide.
+See `docs/architecture/BINARY_DEPLOYMENT.md` for deployment pattern.
 
 ### Added - OS Selection Guide
 
-**NEW**: Comprehensive guide for choosing between Ubuntu and Debian for different node types.
+Added `docs/architecture/OS_SELECTION.md`. 
 
-**Documentation:**
-- Added `docs/architecture/OS_SELECTION.md` - Ubuntu vs Debian decision guide
-- Covers Forest nodes (NATS, CPU/RAM heavy) vs Nims nodes (GPU-dependent)
-- Performance comparison, resource usage analysis
-- GPU driver support comparison
-- Recommendation: Use Ubuntu 24.04 LTS for all nodes
-
-**Key Findings:**
-- Ubuntu required for GPU support (Nims nodes)
-- Debian saves only ~50MB RAM (negligible on 8GB+ servers)
-- Ubuntu easier to troubleshoot with better community support
-- Keeping one OS across all nodes simplifies operations
-
-**Current Configuration:** Already using Ubuntu 24.04 (optimal choice) ✅
+**Recommendation:** Use Ubuntu 24.04 LTS for all nodes (required for GPU support).
 
 ### Changed - Default Server Type to CX23
 
-**Changed default server type from CPX31 to CX23** for cost optimization.
+Default changed to CX23 (2 vCPU, 4 GB RAM, €2.99/mo).
 
-**New Default: CX23**
-- 2 shared vCPU, 4 GB RAM
-- ~€2.99/month per node
-- Suitable for light NATS workloads and development
-- **67% cheaper** than CPX21, **83% cheaper** than CPX31
+**Cost:**
+- wood: €2.99/mo
+- forest: €8.97/mo  
+- jungle: €14.95/mo
 
-**Cost Savings:**
-- wood (1 node): €2.99/mo (was €18/mo with CPX31) - **Save €15/mo**
-- forest (3 nodes): €8.97/mo (was €54/mo) - **Save €45/mo**
-- jungle (5 nodes): €14.95/mo (was €90/mo) - **Save €75/mo**
-
-**Annual Savings:** €180-€900/year depending on forest size! 🎉
-
-**Important Notes:**
-- CX23 uses **shared vCPU** - performance may vary (noisy neighbors)
-- Perfect for: development, testing, small deployments, learning, cost-sensitive projects
-- For production NATS with consistent performance, upgrade to **CPX21** (dedicated vCPU, €9/mo)
-- Upgrade to CPX21/CPX31 for: production, high throughput, predictable performance
-
-**Recommendation:** Start with CX23 (save 83%), monitor performance, upgrade to CPX21 if you need consistency.
+Upgrade to CPX21 (€9/mo) for production workloads with dedicated vCPU.
 
 ### Added - IPv6 Support
 
-**NEW**: Full IPv6 support! Morpheus now works with IPv6 addresses.
+Full IPv6 support added. Configure `prefer_ipv6: true` to use IPv6. Three modes available: dual-stack (default), IPv6-first, and IPv6-only.
 
-**Features:**
-- ✅ All Hetzner servers get both IPv4 and IPv6 addresses
-- ✅ Configure `prefer_ipv6: true` to use IPv6 for SSH and connections
-- ✅ Automatic IPv6 address formatting for SSH (with brackets)
-- ✅ Displays both IPv4 and IPv6 in status output
-- ✅ Registry stores the preferred IP address
-
-**Configuration:**
-```yaml
-infrastructure:
-  defaults:
-    prefer_ipv6: false  # Set to true to use IPv6
-```
-
-**Benefits:**
-- 🌍 IPv6-only networks supported
-- 🔒 Better privacy with rotating IPv6 addresses
-- 🚀 Future-proof infrastructure
-- 💰 Some providers charge for IPv4 (IPv6 is free)
-
-**Example output:**
-```
-✓ Node forest-123-node-1 provisioned successfully (IPv4: 95.217.0.1, IPv6: 2001:db8::1)
-Waiting for infrastructure readiness (SSH on [2001:db8::1]:22 via IPv6, timeout: 5m)...
-```
+See `docs/guides/IPV6_SETUP.md` for details.
 
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
