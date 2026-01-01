@@ -1,49 +1,40 @@
-# IPv6 Configuration Modes
+# IPv6 Configuration
 
-Three modes available:
-
-## IPv6-First (Default)
-
-```yaml
-infrastructure:
-  defaults:
-    prefer_ipv6: true   # Default
-    ipv6_only: false
-```
-
-**Behavior:** Uses IPv6, falls back to IPv4 if unavailable.
-
-## IPv4-Only (Legacy)
-
-```yaml
-infrastructure:
-  defaults:
-    prefer_ipv6: false
-    ipv6_only: false
-```
-
-**Behavior:** Uses IPv4. For networks without IPv6 support.
-
-## IPv6-Only (Strict)
+## Default: IPv6-Only
 
 ```yaml
 infrastructure:
   defaults:
     prefer_ipv6: true
-    ipv6_only: true
+    ipv6_only: true    # Default
 ```
 
-**Behavior:** Only uses IPv6. Fails if IPv6 unavailable.
+**Behavior:** Only uses IPv6. Fails if no IPv6 (by design).
 
-**Requirements:**
+**Why:** IPv4 costs extra on Hetzner. IPv6-only saves money.
+
+## Requirements
+
 - Your network must have IPv6
-- All clients must have IPv6
-- Test first: `curl -6 ifconfig.co`
+- Test: `curl -6 ifconfig.co`
 
-## Recommendation
+## Cost Savings
 
-**IPv6-first (default)** is recommended. Modern infrastructure.
+| Setup | Monthly Cost (3-node forest) |
+|-------|----------------------------|
+| **IPv6-only (default)** | €8.97 |
+| IPv4 + IPv6 | €8.97 + IPv4 fees |
 
-Use **IPv4-only** only if your network doesn't support IPv6.
+**Hetzner IPv4 pricing:** Check current rates (charged per IPv4 address).
 
-**Note:** Hetzner always assigns both IPv4 and IPv6. You cannot remove IPv4 from servers.
+## If You Don't Have IPv6
+
+You cannot use Morpheus without IPv6. Options:
+
+1. **Enable IPv6 on your network** (best option)
+2. **Use IPv6 tunnel:** Hurricane Electric (free)
+3. **Use a VPS:** Provision from a VPS that has IPv6
+
+## Note
+
+Hetzner still may provide IPv4 by default, but Morpheus won't use it to avoid charges.

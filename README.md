@@ -247,7 +247,7 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 ```
 
 **What happens:**
-1. Creates Hetzner servers (with IPv4 + IPv6)
+1. Creates Hetzner servers (IPv6-only, IPv4 costs extra)
 2. Configures OS (Ubuntu 24.04)
 3. Sets up firewall (ports 22, 4222, 6222, 8222, 7777)
 4. Creates directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`)
@@ -255,7 +255,7 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 6. Calls NimsForest (if configured)
 7. Status: `infrastructure_ready`
 
-**Note:** Uses IPv6 by default. Set `prefer_ipv6: false` if your network doesn't support IPv6.
+**Requirements:** Your local network must have IPv6 connectivity to provision servers.
 
 ### List Forests
 
@@ -506,22 +506,20 @@ A: Yes! Set `integration.nimsforest_url: ""` and handle application setup manual
 A: Currently Hetzner Cloud. AWS, GCP, Azure coming in future releases.
 
 **Q: How much does it cost?**  
-A: Hetzner charges by the minute. Examples:
+A: Hetzner charges by the minute. IPv6-only (IPv4 costs extra):
 
-**With CX23 (default, shared vCPU):**
-- wood (1 node): ~€2.99/month
-- forest (3 nodes): ~€8.97/month
-- jungle (5 nodes): ~€14.95/month
+**CX23 (default):**
+- wood: ~€2.99/month
+- forest: ~€8.97/month
+- jungle: ~€14.95/month
 
-**With CPX21 (recommended for production, dedicated vCPU):**
-- wood (1 node): ~€9/month
-- forest (3 nodes): ~€27/month
-- jungle (5 nodes): ~€45/month
-
-Upgrade to cpx31 if you need higher throughput (50K+ msg/s).
+**CPX21 (production):**
+- wood: ~€9/month
+- forest: ~€27/month
+- jungle: ~€45/month
 
 **Q: Does Morpheus use IPv6?**  
-A: Yes, IPv6 is the default. Set `prefer_ipv6: false` if your network doesn't support IPv6. See [IPv6 Guide](docs/guides/IPV6_SETUP.md).
+A: Yes, IPv6-only by default (IPv4 costs extra on Hetzner). Your network must have IPv6. See [IPv6 Guide](docs/guides/IPV6_SETUP.md).
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.
