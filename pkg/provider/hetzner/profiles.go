@@ -26,7 +26,8 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 		provider.ProfileSmall: {
 			Primary: "cx22",  // 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
 			Fallbacks: []string{
-				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo (better performance)
+				"cpx21", // 3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo (preferred fallback)
+				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo
 				"cx21",  // 2 vCPU (shared Intel), 4 GB RAM - ~€3.29/mo (older gen)
 			},
 			Architecture: "x86",
