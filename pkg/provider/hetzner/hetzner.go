@@ -280,31 +280,72 @@ func (p *Provider) ListServers(ctx context.Context, filters map[string]string) (
 	return result, nil
 }
 
-// CheckLocationAvailability checks if a location is available for server creation
-// This is a best-effort check - the actual availability is determined when creating the server
+// CheckLocationAvailability checks if a server type is available in a specific location
+// by checking the server type's pricing information which lists all supported locations
 func (p *Provider) CheckLocationAvailability(ctx context.Context, locationName, serverTypeName string) (bool, error) {
-	// Get location
-	location, _, err := p.client.Location.GetByName(ctx, locationName)
-	if err != nil {
-		return false, wrapAuthError(err, "failed to get location")
-	}
-	if location == nil {
-		return false, nil
-	}
-
-	// Get server type
+	// Get server type with pricing info
 	serverType, _, err := p.client.ServerType.GetByName(ctx, serverTypeName)
 	if err != nil {
 		return false, wrapAuthError(err, "failed to get server type")
 	}
 	if serverType == nil {
-		return false, nil
+		return false, fmt.Errorf("server type not found: %s", serverTypeName)
 	}
 
-	// Both location and server type exist
-	// The actual availability for creating a server in this location
-	// can only be determined when attempting to create the server
-	return true, nil
+	// Check if the location is in the server type's supported locations
+	for _, pricing := range serverType.Pricings {
+		if pricing.Location != nil && pricing.Location.Name == locationName {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// GetAvailableLocations returns a list of locations where the server type is available
+func (p *Provider) GetAvailableLocations(ctx context.Context, serverTypeName string) ([]string, error) {
+	serverType, _, err := p.client.ServerType.GetByName(ctx, serverTypeName)
+	if err != nil {
+		return nil, wrapAuthError(err, "failed to get server type")
+	}
+	if serverType == nil {
+		return nil, fmt.Errorf("server type not found: %s", serverTypeName)
+	}
+
+	var locations []string
+	for _, pricing := range serverType.Pricings {
+		if pricing.Location != nil {
+			locations = append(locations, pricing.Location.Name)
+		}
+	}
+
+	return locations, nil
+}
+
+// FilterLocationsByServerType filters the given locations to only include those
+// where the specified server type is available
+func (p *Provider) FilterLocationsByServerType(ctx context.Context, locations []string, serverTypeName string) ([]string, []string, error) {
+	availableLocations, err := p.GetAvailableLocations(ctx, serverTypeName)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build a set of available locations for fast lookup
+	availableSet := make(map[string]bool)
+	for _, loc := range availableLocations {
+		availableSet[loc] = true
+	}
+
+	var supported, unsupported []string
+	for _, loc := range locations {
+		if availableSet[loc] {
+			supported = append(supported, loc)
+		} else {
+			unsupported = append(unsupported, loc)
+		}
+	}
+
+	return supported, unsupported, nil
 }
 
 // ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.

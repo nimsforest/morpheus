@@ -174,7 +174,40 @@ func handlePlant() {
 	fmt.Printf("Provider: %s\n\n", providerName)
 
 	ctx := context.Background()
-	err = provisionWithLocationFallback(ctx, provisioner, req, cfg.Infrastructure.Locations)
+
+	// Filter locations by server type availability if the provider supports it
+	availableLocations := cfg.Infrastructure.Locations
+	if locationAware, ok := prov.(provider.LocationAwareProvider); ok {
+		serverType := cfg.Infrastructure.Defaults.ServerType
+		supported, unsupported, filterErr := locationAware.FilterLocationsByServerType(ctx, cfg.Infrastructure.Locations, serverType)
+		if filterErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Could not check server type availability: %s\n", filterErr)
+			// Continue with all locations - will fail at creation time if unavailable
+		} else if len(supported) == 0 {
+			// No configured locations support this server type
+			allAvailable, _ := locationAware.GetAvailableLocations(ctx, serverType)
+			fmt.Fprintf(os.Stderr, "\n❌ Server type '%s' is not available in any of your configured locations:\n", serverType)
+			fmt.Fprintf(os.Stderr, "   Configured: %s\n", joinLocations(cfg.Infrastructure.Locations))
+			if len(allAvailable) > 0 {
+				fmt.Fprintf(os.Stderr, "\n   Available locations for '%s': %s\n", serverType, joinLocations(allAvailable))
+				fmt.Fprintf(os.Stderr, "\n   To fix this, either:\n")
+				fmt.Fprintf(os.Stderr, "   1. Update your config to use one of the available locations, or\n")
+				fmt.Fprintf(os.Stderr, "   2. Change your server_type to one available in your locations\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "\n   The server type '%s' may not exist or has no available locations.\n", serverType)
+				fmt.Fprintf(os.Stderr, "   Check your config file for typos in the server_type field.\n")
+			}
+			os.Exit(1)
+		} else {
+			availableLocations = supported
+			if len(unsupported) > 0 {
+				fmt.Printf("ℹ️  Note: Server type '%s' is not available in: %s\n", serverType, joinLocations(unsupported))
+				fmt.Printf("   Using available locations: %s\n\n", joinLocations(supported))
+			}
+		}
+	}
+
+	err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
 		os.Exit(1)
