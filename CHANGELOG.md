@@ -200,6 +200,14 @@ infrastructure:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Interactive menu now shown when all locations fail** - Fixed provisioning error handling
+  - When all configured locations fail with "unsupported location for server type" error, Morpheus now offers an interactive menu
+  - Users can select alternative server types or locations instead of seeing a generic error
+  - Automatically retries provisioning with the selected alternative
+  - Improves user experience when server types are unavailable in configured locations
+
 ### Changed - Direct Binary Deployment
 
 Removed Docker from cloud deployments. Deploy Go binaries directly via systemd.

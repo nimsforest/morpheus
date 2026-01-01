@@ -206,8 +206,39 @@ func handlePlant() {
 
 	err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
-		os.Exit(1)
+		// Check if this is a server type/location mismatch error
+		errStr := err.Error()
+		if containsLocationError(errStr) && len(availableLocations) > 0 {
+			// All locations failed due to server type mismatch - offer interactive menu
+			if locationAware, ok := prov.(provider.LocationAwareProvider); ok {
+				fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
+				fmt.Fprintln(os.Stderr, "\nIt appears the server type is not available in the configured locations.")
+				
+				newServerType, newLocations := handleServerTypeLocationMismatch(ctx, locationAware, serverType, cfg.Infrastructure.Locations)
+				if newServerType != "" && len(newLocations) > 0 {
+					// User selected an alternative - retry provisioning
+					serverType = newServerType
+					cfg.Infrastructure.Defaults.ServerType = serverType
+					availableLocations = newLocations
+					
+					fmt.Printf("\nRetrying provisioning with server type '%s' in locations: %s\n\n", serverType, joinLocations(newLocations))
+					err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed again: %s\n", err)
+						os.Exit(1)
+					}
+					// Success after retry!
+				} else {
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Printf("\n✅ Forest provisioned successfully!\n")
