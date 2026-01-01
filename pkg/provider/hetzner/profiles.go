@@ -16,31 +16,34 @@ type MachineTypeMapping struct {
 }
 
 // GetHetznerServerType returns the appropriate Hetzner server type for a machine profile
-// Returns multiple options in order of preference
+// 
+// Morpheus is opinionated: We use Ubuntu 24.04 and x86 architecture only.
+// ARM types (cax series) are NOT included because ubuntu-24.04 doesn't support ARM on Hetzner.
+//
+// Returns multiple x86 options in order of preference for fallback if primary is unavailable.
 func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 	mappings := map[provider.MachineProfile]MachineTypeMapping{
 		provider.ProfileSmall: {
-			Primary: "cx22",
+			Primary: "cx22",  // 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
 			Fallbacks: []string{
-				"cax11", // ARM alternative (similar price, same RAM)
-				"cpx11", // Dedicated vCPU (slightly more expensive but better performance)
-				"cx21",  // Older generation
+				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo (better performance)
+				"cx21",  // 2 vCPU (shared Intel), 4 GB RAM - ~€3.29/mo (older gen)
 			},
 			Architecture: "x86",
 		},
 		provider.ProfileMedium: {
-			Primary: "cpx21",
+			Primary: "cpx21", // 3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo
 			Fallbacks: []string{
-				"cax21", // ARM alternative
-				"cx32",  // Shared vCPU (cheaper but less consistent)
+				"cx32",  // 4 vCPU (shared AMD), 8 GB RAM - ~€6.29/mo (cheaper but shared)
+				"cpx31", // 4 vCPU (dedicated AMD), 8 GB RAM - ~€15.49/mo (more powerful)
 			},
 			Architecture: "x86",
 		},
 		provider.ProfileLarge: {
-			Primary: "cpx41",
+			Primary: "cpx41", // 8 vCPU (dedicated AMD), 16 GB RAM - ~€29.49/mo
 			Fallbacks: []string{
-				"cax41", // ARM alternative
-				"cx52",  // Shared vCPU (cheaper but less consistent)
+				"cpx51", // 16 vCPU (dedicated AMD), 32 GB RAM - ~€57.49/mo (more powerful)
+				"cx52",  // 16 vCPU (shared AMD), 32 GB RAM - ~€24.29/mo (cheaper but shared)
 			},
 			Architecture: "x86",
 		},
@@ -51,23 +54,15 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 
 // SelectBestServerType selects the best available server type for a profile
 // considering location availability
+//
+// All server types from GetHetznerServerType are x86-only (opinionated for Ubuntu compatibility)
 func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.MachineProfile, preferredLocations []string) (string, []string, error) {
 	mapping := GetHetznerServerType(profile)
 	
-	// Try primary first
+	// Try primary first, then fallbacks in order
 	allOptions := append([]string{mapping.Primary}, mapping.Fallbacks...)
 	
-	// Filter out ARM types for now (ubuntu-24.04 doesn't support ARM on Hetzner)
-	var x86Options []string
 	for _, serverType := range allOptions {
-		// Skip ARM-based server types (cax series)
-		if len(serverType) >= 3 && serverType[:3] == "cax" {
-			continue
-		}
-		x86Options = append(x86Options, serverType)
-	}
-	
-	for _, serverType := range x86Options {
 		// Get locations where this server type is available
 		availableLocations, err := p.GetAvailableLocations(ctx, serverType)
 		if err != nil {
