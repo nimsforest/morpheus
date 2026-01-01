@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
@@ -213,7 +214,6 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
-	lastDotPrint := time.Now()
 
 	for time.Now().Before(deadline) {
 		select {
@@ -225,15 +225,14 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 		attempts++
 
 		// Check SSH port connectivity
-		if err := p.checkSSHConnectivity(addr); err == nil {
+		status, err := p.checkSSHConnectivityWithStatus(addr)
+		if err == nil {
+			fmt.Printf("\n")
 			return nil
 		}
 
-		// Print progress dots every 5 seconds
-		if time.Since(lastDotPrint) >= 5*time.Second {
-			fmt.Printf(".")
-			lastDotPrint = time.Now()
-		}
+		// Print informative status message
+		fmt.Printf("SSH to %s attempt %d: %s, waiting for: connection\n", server.PublicIPv6, attempts, status)
 
 		// Wait before next attempt
 		select {
@@ -246,14 +245,43 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 	return fmt.Errorf("timeout after %d attempts (max %s)", attempts, timeout)
 }
 
-// checkSSHConnectivity attempts a TCP connection to verify SSH is accepting connections
-func (p *Provisioner) checkSSHConnectivity(addr string) error {
+// checkSSHConnectivityWithStatus attempts a TCP connection to verify SSH is accepting connections
+// Returns a human-readable status and any error
+func (p *Provisioner) checkSSHConnectivityWithStatus(addr string) (string, error) {
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
-		return err
+		status := classifySSHError(err)
+		return status, err
 	}
 	conn.Close()
-	return nil
+	return "connected", nil
+}
+
+// classifySSHError returns a human-readable status for SSH connection errors
+func classifySSHError(err error) string {
+	if err == nil {
+		return "connected"
+	}
+
+	errStr := strings.ToLower(err.Error())
+
+	// Check for common error patterns
+	switch {
+	case strings.Contains(errStr, "connection refused"):
+		return "port closed"
+	case strings.Contains(errStr, "no route to host"):
+		return "no route"
+	case strings.Contains(errStr, "network is unreachable"):
+		return "network unreachable"
+	case strings.Contains(errStr, "i/o timeout"), strings.Contains(errStr, "timeout"):
+		return "timeout"
+	case strings.Contains(errStr, "connection reset"):
+		return "connection reset"
+	case strings.Contains(errStr, "host is down"):
+		return "host down"
+	default:
+		return "connecting"
+	}
 }
 
 // Teardown removes a forest and all its resources

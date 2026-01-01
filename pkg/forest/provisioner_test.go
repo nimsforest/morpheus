@@ -116,15 +116,52 @@ func TestCheckSSHConnectivity(t *testing.T) {
 
 	// Test successful connection
 	addr := listener.Addr().String()
-	err = p.checkSSHConnectivity(addr)
+	status, err := p.checkSSHConnectivityWithStatus(addr)
 	if err != nil {
 		t.Errorf("Expected successful connection, got error: %v", err)
 	}
+	if status != "connected" {
+		t.Errorf("Expected status 'connected', got '%s'", status)
+	}
 
 	// Test failed connection (no server listening)
-	err = p.checkSSHConnectivity("127.0.0.1:59999")
+	status, err = p.checkSSHConnectivityWithStatus("127.0.0.1:59999")
 	if err == nil {
 		t.Error("Expected connection error for non-listening port")
+	}
+	if status == "connected" {
+		t.Error("Expected non-connected status for failed connection")
+	}
+}
+
+func TestClassifySSHError(t *testing.T) {
+	tests := []struct {
+		name     string
+		errMsg   string
+		expected string
+	}{
+		{"nil error", "", "connected"},
+		{"connection refused", "dial tcp: connection refused", "port closed"},
+		{"no route to host", "dial tcp: no route to host", "no route"},
+		{"network unreachable", "dial tcp: network is unreachable", "network unreachable"},
+		{"i/o timeout", "dial tcp: i/o timeout", "timeout"},
+		{"timeout", "dial tcp: timeout", "timeout"},
+		{"connection reset", "dial tcp: connection reset by peer", "connection reset"},
+		{"host down", "dial tcp: host is down", "host down"},
+		{"unknown error", "some unknown error", "connecting"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var err error
+			if tt.errMsg != "" {
+				err = fmt.Errorf(tt.errMsg)
+			}
+			result := classifySSHError(err)
+			if result != tt.expected {
+				t.Errorf("classifySSHError(%q) = %q, want %q", tt.errMsg, result, tt.expected)
+			}
+		})
 	}
 }
 
