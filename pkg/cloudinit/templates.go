@@ -36,9 +36,9 @@ packages:
   - curl
   - wget
   - git
-  - docker.io
   - ufw
   - jq
+  - systemd
 
 write_files:
   - path: /etc/morpheus/node-info.json
@@ -82,14 +82,12 @@ runcmd:
   - ufw allow 7777/tcp comment 'NATS leafnode port'
   - ufw --force enable
   
-  # Set up Docker for nimsforest
-  - systemctl enable docker
-  - systemctl start docker
-  - usermod -aG docker ubuntu || true
+  # Create directories for nimsforest (binaries, data, logs)
+  - mkdir -p /opt/nimsforest/bin /var/lib/nimsforest /var/log/nimsforest /etc/nimsforest
+  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest /etc/nimsforest
   
-  # Create directories for nimsforest
-  - mkdir -p /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
-  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
+  # Prepare for direct binary deployment (systemd services managed by NimsForest)
+  - systemctl daemon-reload
   
   # Get instance metadata
   - /usr/local/bin/morpheus-bootstrap
@@ -145,9 +143,9 @@ packages:
   - curl
   - wget
   - git
-  - docker.io
   - ufw
   - jq
+  - systemd
 
 write_files:
   - path: /etc/morpheus/node-info.json
@@ -168,14 +166,12 @@ runcmd:
   - ufw allow 4222/tcp comment 'NATS client connection'
   - ufw --force enable
   
-  # Setup Docker
-  - systemctl enable docker
-  - systemctl start docker
-  - usermod -aG docker ubuntu || true
+  # Create directories for nimsforest (binaries, data, logs)
+  - mkdir -p /opt/nimsforest/bin /var/lib/nimsforest /var/log/nimsforest /etc/nimsforest
+  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest /etc/nimsforest
   
-  # Create directories for nimsforest
-  - mkdir -p /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
-  - chown -R ubuntu:ubuntu /opt/nimsforest /var/lib/nimsforest /var/log/nimsforest
+  # Prepare for direct binary deployment
+  - systemctl daemon-reload
   
   # Signal readiness
   - |

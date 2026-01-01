@@ -77,8 +77,9 @@ func LoadConfig(path string) (*Config, error) {
 		config.Secrets.HetznerAPIToken = token
 	}
 
-	// Apply provisioning defaults
+	// Apply defaults
 	config.applyProvisioningDefaults()
+	config.applyInfrastructureDefaults()
 
 	return &config, nil
 }
@@ -94,6 +95,12 @@ func (c *Config) applyProvisioningDefaults() {
 	if c.Provisioning.SSHPort == 0 {
 		c.Provisioning.SSHPort = 22
 	}
+}
+
+// applyInfrastructureDefaults sets default values for infrastructure config
+func (c *Config) applyInfrastructureDefaults() {
+	// IPv6-only by default (IPv4 costs extra on Hetzner)
+	// No configuration needed - always uses IPv6
 }
 
 // GetReadinessTimeout returns the readiness timeout as a duration

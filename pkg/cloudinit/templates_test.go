@@ -71,9 +71,9 @@ func TestGenerateComputeNode(t *testing.T) {
 		t.Error("Script should start with #cloud-config")
 	}
 
-	// Check for Docker installation
-	if !strings.Contains(script, "docker") {
-		t.Error("Script should contain Docker installation")
+	// Check for directory creation (not Docker)
+	if !strings.Contains(script, "/opt/nimsforest/bin") {
+		t.Error("Script should create /opt/nimsforest/bin directory")
 	}
 
 	// Check for forest ID

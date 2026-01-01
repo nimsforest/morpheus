@@ -81,10 +81,12 @@ cp config.example.yaml config.yaml
 Morpheus handles **infrastructure only**:
 - ✅ Provision cloud servers (Hetzner, AWS, GCP, etc.)
 - ✅ Configure OS, networking, and firewalls
-- ✅ Prepare directories and storage
+- ✅ Prepare directories for binary deployment
 - ✅ Hand off to NimsForest for application setup
 
 **Morpheus does NOT install NATS** - that's [NimsForest's](https://github.com/yourusername/nimsforest) responsibility.
+
+**Deployment:** Direct Go binaries via systemd (cloud), Docker for local testing only.
 
 ## Installation
 
@@ -204,11 +206,11 @@ secrets:
 ```
 
 **Server Types:**
-- `cpx11`: 2 vCPU, 2 GB RAM (~€4.50/mo) - Testing
-- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - Small production
-- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - **Recommended**
-- `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - High load
-- `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise
+- `cx23`: 2 vCPU, 4 GB RAM (~€2.99/mo) - **Default**
+- `cpx21`: 3 vCPU, 4 GB RAM (~€9/mo) - Production (dedicated vCPU)
+- `cpx31`: 4 vCPU, 8 GB RAM (~€18/mo) - High throughput
+
+**OS:** Ubuntu 24.04 LTS (required for GPU support)
 
 ## Commands
 
@@ -245,14 +247,15 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 ```
 
 **What happens:**
-1. Creates Hetzner servers
+1. Creates Hetzner servers (IPv6-only, IPv4 costs extra)
 2. Configures OS (Ubuntu 24.04)
 3. Sets up firewall (ports 22, 4222, 6222, 8222, 7777)
-4. Installs Docker
-5. Creates directories (`/opt/nimsforest`, `/var/lib/nimsforest`)
-6. Writes metadata to `/etc/morpheus/node-info.json`
-7. Calls NimsForest (if configured)
-8. Status: `infrastructure_ready`
+4. Creates directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`)
+5. Writes metadata to `/etc/morpheus/node-info.json`
+6. Calls NimsForest (if configured)
+7. Status: `infrastructure_ready`
+
+**Requirements:** IPv6 connectivity required. Test: `curl -6 ifconfig.co`
 
 ### List Forests
 
@@ -373,9 +376,10 @@ morpheus help     # Show help
 | Server provisioning | ✅ | |
 | OS & network setup | ✅ | |
 | Firewall config | ✅ | |
-| NATS installation | | ✅ |
+| Directory structure | ✅ | |
+| NATS binary deployment | | ✅ |
 | NATS clustering | | ✅ |
-| Service orchestration | | ✅ |
+| Service management (systemd) | | ✅ |
 
 **Morpheus** = Infrastructure as Code  
 **NimsForest** = Application Orchestration
@@ -502,10 +506,20 @@ A: Yes! Set `integration.nimsforest_url: ""` and handle application setup manual
 A: Currently Hetzner Cloud. AWS, GCP, Azure coming in future releases.
 
 **Q: How much does it cost?**  
-A: Hetzner charges by the minute. Example with cpx31:
-- wood (1 node): ~€18/month
-- forest (3 nodes): ~€54/month
-- jungle (5 nodes): ~€90/month
+A: Hetzner charges by the minute. IPv6-only (IPv4 costs extra):
+
+**CX23 (default):**
+- wood: ~€2.99/month
+- forest: ~€8.97/month
+- jungle: ~€14.95/month
+
+**CPX21 (production):**
+- wood: ~€9/month
+- forest: ~€27/month
+- jungle: ~€45/month
+
+**Q: Does Morpheus support IPv4?**  
+A: No. IPv6-only (IPv4 costs extra on Hetzner). Your network must have IPv6. Test: `curl -6 ifconfig.co`
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.

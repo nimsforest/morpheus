@@ -48,7 +48,7 @@ func (m *mockProvider) CreateServer(ctx context.Context, req provider.CreateServ
 	server := &provider.Server{
 		ID:         fmt.Sprintf("server-%d", len(m.servers)+1),
 		Name:       req.Name,
-		PublicIPv4: "127.0.0.1",
+		PublicIPv6: "::1",
 		Location:   req.Location,
 		State:      provider.ServerStateStarting,
 		Labels:     req.Labels,
@@ -129,8 +129,8 @@ func TestCheckSSHConnectivity(t *testing.T) {
 }
 
 func TestWaitForInfrastructureReady_Success(t *testing.T) {
-	// Start a test TCP server to simulate SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Start a test TCP server to simulate SSH on IPv6
+	listener, err := net.Listen("tcp6", "[::1]:0")
 	if err != nil {
 		t.Fatalf("Failed to create test listener: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestWaitForInfrastructureReady_Success(t *testing.T) {
 
 	server := &provider.Server{
 		ID:         "test-server",
-		PublicIPv4: "127.0.0.1",
+		PublicIPv6: "::1",
 	}
 
 	ctx := context.Background()
@@ -187,7 +187,7 @@ func TestWaitForInfrastructureReady_Timeout(t *testing.T) {
 
 	server := &provider.Server{
 		ID:         "test-server",
-		PublicIPv4: "127.0.0.1",
+		PublicIPv6: "::1",
 	}
 
 	ctx := context.Background()
@@ -218,13 +218,13 @@ func TestWaitForInfrastructureReady_NoIPAddress(t *testing.T) {
 
 	server := &provider.Server{
 		ID:         "test-server",
-		PublicIPv4: "", // No IP address
+		PublicIPv6: "", // No IP address
 	}
 
 	ctx := context.Background()
 	err := p.waitForInfrastructureReady(ctx, server)
 	if err == nil {
-		t.Error("Expected error for server with no IP address")
+		t.Error("Expected error for server with no IPv6 address")
 	}
 }
 
@@ -241,7 +241,7 @@ func TestWaitForInfrastructureReady_ContextCancelled(t *testing.T) {
 
 	server := &provider.Server{
 		ID:         "test-server",
-		PublicIPv4: "127.0.0.1",
+		PublicIPv6: "::1",
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

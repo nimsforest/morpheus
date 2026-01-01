@@ -200,6 +200,52 @@ infrastructure:
 
 ## [Unreleased]
 
+### Changed - Direct Binary Deployment
+
+Removed Docker from cloud deployments. Deploy Go binaries directly via systemd.
+
+**Changes:**
+- Removed `docker.io` from cloud-init
+- Added `/opt/nimsforest/bin` for binaries
+- Added `/etc/nimsforest` for configuration
+- Cloud mode: No Docker (direct binaries)
+- Local mode: Docker (for testing)
+
+See `docs/architecture/BINARY_DEPLOYMENT.md` for deployment pattern.
+
+### Added - OS Selection Guide
+
+Added `docs/architecture/OS_SELECTION.md`. 
+
+**Recommendation:** Use Ubuntu 24.04 LTS for all nodes (required for GPU support).
+
+### Changed - Default Server Type to CX23
+
+Default changed to CX23 (2 vCPU, 4 GB RAM, €2.99/mo).
+
+**Cost:**
+- wood: €2.99/mo
+- forest: €8.97/mo  
+- jungle: €14.95/mo
+
+Upgrade to CPX21 (€9/mo) for production workloads with dedicated vCPU.
+
+### Changed - IPv6-Only
+
+**Morpheus is now IPv6-only.** All IPv4 code removed. IPv4 costs extra on Hetzner.
+
+**Changes:**
+- Removed `prefer_ipv6` config option
+- Removed `ipv6_only` config option  
+- Removed IPv4 fallback logic
+- Always uses IPv6
+
+**Requirements:**
+- Your network must have IPv6
+- Test: `curl -6 ifconfig.co`
+
+See `docs/guides/IPV6_SETUP.md` for details.
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load

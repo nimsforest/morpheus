@@ -76,12 +76,12 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		// Update the actual location used (may differ from requested if fallback occurred)
 		forest.Location = server.Location
 
-		// Register node in registry
+		// Register node in registry (IPv6 only)
 		node := &Node{
 			ID:       server.ID,
 			ForestID: req.ForestID,
 			Role:     string(req.Role),
-			IP:       server.PublicIPv4,
+			IP:       server.PublicIPv6,
 			Location: server.Location,
 			Status:   "active",
 			Metadata: server.Labels,
@@ -91,7 +91,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			fmt.Printf("Warning: failed to register node in registry: %s\n", err)
 		}
 
-		fmt.Printf("✓ Node %s provisioned successfully (IP: %s)\n", nodeName, server.PublicIPv4)
+		fmt.Printf("✓ Node %s provisioned successfully (IPv6: %s)\n", nodeName, server.PublicIPv6)
 	}
 
 	// Update forest status and location
@@ -167,15 +167,17 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 // This checks SSH connectivity as an indicator that cloud-init has progressed
 // far enough for the server to be usable
 func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
-	if server.PublicIPv4 == "" {
-		return fmt.Errorf("server has no public IPv4 address")
+	// IPv6-only
+	if server.PublicIPv6 == "" {
+		return fmt.Errorf("server has no IPv6 address")
 	}
 
 	timeout := p.config.Provisioning.GetReadinessTimeout()
 	interval := p.config.Provisioning.GetReadinessInterval()
 	sshPort := p.config.Provisioning.SSHPort
 
-	addr := fmt.Sprintf("%s:%d", server.PublicIPv4, sshPort)
+	// Format IPv6 addresses with brackets for SSH
+	addr := fmt.Sprintf("[%s]:%d", server.PublicIPv6, sshPort)
 	fmt.Printf("Waiting for infrastructure readiness (SSH on %s, timeout: %s)...\n", addr, timeout)
 
 	deadline := time.Now().Add(timeout)

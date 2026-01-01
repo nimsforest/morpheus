@@ -40,9 +40,13 @@ Morpheus and NimsForest have distinct, complementary responsibilities in the for
 - Infrastructure-ready servers with:
   - OS updated and configured
   - Firewall configured with NATS ports open
-  - Docker installed (if needed)
+  - Directories prepared for binary deployment
   - Storage configured (if needed)
   - Metadata available at `/etc/morpheus/node-info.json`
+
+**Note on Docker:**
+- **Cloud mode:** No Docker. Deploy Go binaries directly via systemd.
+- **Local mode:** Docker for local development/testing only.
 
 ### What Morpheus Does NOT Do
 
@@ -91,9 +95,9 @@ morpheus plant cloud forest
 2. Waits for servers to be `running`
 3. Cloud-init executes:
    - Updates OS
-   - Installs base packages (docker, curl, etc.)
+   - Installs base packages (curl, wget, systemd)
    - Configures firewall (ports 4222, 6222, 8222)
-   - Sets up directories (`/opt/nimsforest`, `/var/lib/nimsforest`)
+   - Sets up directories (`/opt/nimsforest/bin`, `/var/lib/nimsforest`, `/etc/nimsforest`)
    - Writes node metadata to `/etc/morpheus/node-info.json`
    - Calls NimsForest callback API
 4. Sets node status to `infrastructure_ready`
@@ -114,10 +118,11 @@ POST /api/v1/bootstrap
 **NimsForest:**
 1. SSH to node or use agent
 2. Reads `/etc/morpheus/node-info.json`
-3. Installs NATS server
-4. Configures NATS with clustering
-5. Starts NATS services
-6. Updates forest registry to `active`
+3. Downloads NATS server binary to `/opt/nimsforest/bin/`
+4. Creates NATS configuration at `/etc/nimsforest/nats.conf`
+5. Creates systemd service at `/etc/systemd/system/nats.service`
+6. Starts NATS via systemd (`systemctl start nats`)
+7. Updates forest registry to `active`
 
 ### 3. Alternative: Polling Mode
 
@@ -205,10 +210,15 @@ Morpheus opens these ports for NimsForest:
 Morpheus creates directories for NimsForest:
 
 ```
-/opt/nimsforest/          # Application binaries
+/opt/nimsforest/
+  bin/                    # Go binaries (nats-server, etc.)
+  
 /var/lib/nimsforest/      # Data storage (JetStream, etc.)
 /var/log/nimsforest/      # Application logs
+
+/etc/nimsforest/          # Configuration files (nats.conf)
 /etc/morpheus/            # Morpheus metadata
+
 /mnt/nimsforest-storage/  # NFS exports (storage nodes)
 ```
 
