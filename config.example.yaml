@@ -1,11 +1,11 @@
 infrastructure:
   provider: hetzner
   defaults:
-    server_type: cx23   # 2 vCPU (shared), 4 GB RAM - €2.99/mo
+    server_type: cx22   # 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
     image: ubuntu-24.04  # Default image for all roles
     # Note: IPv6-only (IPv4 costs extra on Hetzner)
     # Note: Your local network must have IPv6 connectivity
-    # Note: CX series has shared vCPU. For production, consider CPX21 (dedicated vCPU)
+    # Note: CX series has shared vCPU. For production, consider CPX series (dedicated vCPU)
     ssh_key: main  # Name of SSH key in Hetzner Cloud (will be auto-uploaded if not found)
     ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
                        # If not specified, Morpheus will search common SSH key locations
@@ -14,32 +14,33 @@ infrastructure:
   roles:
     edge:
       # Forest nodes: NATS only, pure CPU/RAM
-      # CX23 for budget, CPX21 for production consistency
+      # CX22 for budget, CPX series for production consistency
       image: ubuntu-24.04
-      server_type: cx23    # 2 vCPU (shared), 4 GB RAM (~€2.99/mo)
-      # Upgrade to cpx21 for production (dedicated vCPU, €9/mo)
+      server_type: cx22    # 2 vCPU (shared AMD), 4 GB RAM (~€3.29/mo)
+      # Upgrade to cpx11/cpx21 for production (dedicated vCPU)
     
     compute:
       # Nims nodes: GPU-dependent applications
       # Ubuntu required for NVIDIA drivers and CUDA support
       # Shared vCPU may hurt GPU performance - consider CPX for consistency
       image: ubuntu-24.04  # Must be Ubuntu for GPU support
-      server_type: cx23    # Budget option (~€2.99/mo)
+      server_type: cx22    # Budget option (~€3.29/mo)
       # Upgrade to cpx21/cpx31 for GPU workloads
     
     storage:
       # Storage nodes: NFS/persistent data
       image: ubuntu-24.04
-      server_type: cx23    # Sufficient for NFS storage server
+      server_type: cx22    # Sufficient for NFS storage server
   locations:
     # Morpheus will try each location in order and automatically fall back
     # to the next one if a location is unavailable or at capacity
+    # Note: CX22 (shared AMD) is available in ash, hil, sin, fsn1, nbg1, hel1
     - fsn1  # Falkenstein, Germany (Europe)
     - nbg1  # Nuremberg, Germany (Europe)
     - hel1  # Helsinki, Finland (Europe)
+    - ash   # Ashburn, VA, USA (US East)
+    - hil   # Hillsboro, OR, USA (US West)
     # Other available locations:
-    # - ash   # Ashburn, VA, USA (US East)
-    # - hil   # Hillsboro, OR, USA (US West)
     # - sin   # Singapore (Asia)
 
 integration:

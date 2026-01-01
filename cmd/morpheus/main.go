@@ -276,6 +276,7 @@ func containsLocationError(errMsg string) bool {
 		"location disabled",
 		"datacenter not available",
 		"unsupported location",
+		"unsupported location for server type",
 	}
 
 	for _, phrase := range locationErrorPhrases {
