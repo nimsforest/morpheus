@@ -420,10 +420,18 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 // to alternative server types and locations if the primary ones are unavailable.
 // This handles cases where Hetzner's API reports a server type is available in a
 // location (via pricing data) but actual provisioning fails.
+//
+// Priority order:
+// 1. cx22 in Helsinki (hel1)
+// 2. cpx11 in Helsinki, then Nuremberg (nbg1), then others
+// 3. cx21 in Helsinki, then Nuremberg, then others
 func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner, hetznerProv *hetzner.Provider, req forest.ProvisionRequest, profile provider.MachineProfile) error {
 	// Get all server type options for this profile
 	mapping := hetzner.GetHetznerServerType(profile)
 	allServerTypes := append([]string{mapping.Primary}, mapping.Fallbacks...)
+
+	// Preferred location order: Helsinki first, then Nuremberg, then others
+	preferredLocations := hetzner.GetDefaultLocations()
 
 	var lastErr error
 	var attemptedCombos []string
@@ -442,14 +450,17 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 			continue
 		}
 
+		// Reorder available locations to match preferred order
+		orderedLocations := orderLocationsByPreference(availableLocations, preferredLocations)
+
 		// Show info when switching to fallback server type
 		if serverTypeIdx > 0 && len(attemptedCombos) > 0 {
 			fmt.Printf("\n📦 Trying alternative server type: %s (~€%.2f/mo)\n", 
 				serverType, hetzner.GetEstimatedCost(serverType))
 		}
 
-		// Try each location for this server type
-		for _, location := range availableLocations {
+		// Try each location for this server type (in preferred order)
+		for _, location := range orderedLocations {
 			attemptedCombos = append(attemptedCombos, fmt.Sprintf("%s@%s", serverType, location))
 
 			// Update request with current server type and location
@@ -496,6 +507,34 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 	}
 
 	return fmt.Errorf("no server type available for profile")
+}
+
+// orderLocationsByPreference reorders available locations to match the preferred order.
+// Locations in preferredOrder come first (in that order), followed by any remaining locations.
+func orderLocationsByPreference(available, preferredOrder []string) []string {
+	availableSet := make(map[string]bool)
+	for _, loc := range available {
+		availableSet[loc] = true
+	}
+
+	var result []string
+
+	// First, add locations in preferred order (if available)
+	for _, loc := range preferredOrder {
+		if availableSet[loc] {
+			result = append(result, loc)
+			delete(availableSet, loc)
+		}
+	}
+
+	// Then add any remaining available locations
+	for _, loc := range available {
+		if availableSet[loc] {
+			result = append(result, loc)
+		}
+	}
+
+	return result
 }
 
 // handleServerTypeLocationMismatch presents an interactive menu when server type
