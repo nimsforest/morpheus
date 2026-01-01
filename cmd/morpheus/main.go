@@ -95,7 +95,7 @@ func handlePlant() {
 			// On Desktop, require explicit mode to prevent accidental cloud deployments
 			if isTermux() {
 				deploymentType = "cloud"
-				size = normalizeSize(arg)
+				size = arg
 				fmt.Println("\n💡 Using cloud mode (default on Termux)")
 			} else {
 				// Desktop: require explicit mode to prevent billing surprises
@@ -128,7 +128,7 @@ func handlePlant() {
 	} else if len(os.Args) >= 4 {
 		// Three arguments: "plant cloud small"
 		deploymentType = os.Args[2]
-		size = normalizeSize(os.Args[3])
+		size = os.Args[3]
 	}
 
 	// Validate deployment type
@@ -284,11 +284,11 @@ func handlePlant() {
 	nodeCount := getNodeCount(size)
 	var timeEstimate string
 	switch size {
-	case "small", "wood":
+	case "small":
 		timeEstimate = "5-7 minutes"
-	case "medium", "forest":
+	case "medium":
 		timeEstimate = "15-20 minutes"
-	case "large", "jungle":
+	case "large":
 		timeEstimate = "25-35 minutes"
 	}
 	
@@ -1022,40 +1022,26 @@ func truncateIP(ip string, maxLen int) string {
 // getNodeCount returns the number of nodes for a given forest size
 func getNodeCount(size string) int {
 	switch size {
-	case "small", "wood":
+	case "small":
 		return 1
-	case "medium", "forest":
+	case "medium":
 		return 3
-	case "large", "jungle":
+	case "large":
 		return 5
 	default:
 		return 1
 	}
 }
 
-// isValidSize checks if a size is valid (supports both new and legacy names)
+// isValidSize checks if a size is valid
 func isValidSize(size string) bool {
-	validSizes := []string{"small", "medium", "large", "wood", "forest", "jungle"}
+	validSizes := []string{"small", "medium", "large"}
 	for _, valid := range validSizes {
 		if size == valid {
 			return true
 		}
 	}
 	return false
-}
-
-// normalizeSize converts legacy size names to new names
-func normalizeSize(size string) string {
-	switch size {
-	case "wood":
-		return "small"
-	case "forest":
-		return "medium"
-	case "jungle":
-		return "large"
-	default:
-		return size
-	}
 }
 
 // suggestSize suggests a size based on user input
@@ -1066,11 +1052,11 @@ func suggestSize(input string) string {
 	
 	firstChar := input[0]
 	switch firstChar {
-	case 's', 'S', 'w', 'W':
+	case 's', 'S':
 		return "small"
-	case 'm', 'M', 'f', 'F':
+	case 'm', 'M':
 		return "medium"
-	case 'l', 'L', 'j', 'J':
+	case 'l', 'L':
 		return "large"
 	default:
 		return ""

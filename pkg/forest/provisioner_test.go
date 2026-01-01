@@ -16,9 +16,9 @@ func TestGetNodeCount(t *testing.T) {
 		size     string
 		expected int
 	}{
-		{"wood", 1},
-		{"forest", 3},
-		{"jungle", 5},
+		{"small", 1},
+		{"medium", 3},
+		{"large", 5},
 		{"unknown", 1}, // default
 	}
 

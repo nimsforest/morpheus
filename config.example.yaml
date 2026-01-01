@@ -32,7 +32,7 @@ secrets:
 #
 # Machine Types & Locations:
 #   Morpheus automatically selects the best machine types and locations based
-#   on your forest size (wood/forest/jungle). You don't need to configure these!
+#   on your forest size (small/medium/large). You don't need to configure these!
 #
 # SSH Keys:
 #   - Morpheus will automatically upload your SSH key to Hetzner if needed
@@ -50,9 +50,9 @@ secrets:
 #   - Can be set here or via HETZNER_API_TOKEN environment variable
 #
 # Cost:
-#   - wood:   1 machine  ≈ €3-4/month   (perfect for testing)
-#   - forest: 3 machines ≈ €9-12/month  (small production)
-#   - jungle: 5 machines ≈ €15-20/month (larger deployment)
+#   - small:  1 machine  ≈ €3-4/month   (perfect for testing)
+#   - medium: 3 machines ≈ €9-12/month  (small production)
+#   - large:  5 machines ≈ €15-20/month (larger deployment)
 #   - Billed by the minute, can teardown anytime
 #
 # ─────────────────────────────────────────────────────────────────────────────

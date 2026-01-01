@@ -93,7 +93,7 @@ After installation completes:
 morpheus version
 
 # Create a test forest (1 server)
-morpheus plant cloud wood
+morpheus plant cloud small
 
 # Wait ~5-10 minutes for provisioning
 
@@ -111,9 +111,9 @@ morpheus teardown forest-<id>
 
 ```bash
 # Create infrastructure (cloud mode)
-morpheus plant cloud wood      # 1 server
-morpheus plant cloud forest    # 3 servers
-morpheus plant cloud jungle    # 5 servers
+morpheus plant cloud small     # 1 server
+morpheus plant cloud medium    # 3 servers
+morpheus plant cloud large     # 5 servers
 
 # Manage
 morpheus list                  # List all

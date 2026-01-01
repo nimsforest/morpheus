@@ -30,7 +30,7 @@ func NewProvisioner(p provider.Provider, r *Registry, cfg *config.Config) *Provi
 // ProvisionRequest contains parameters for provisioning a forest
 type ProvisionRequest struct {
 	ForestID   string
-	Size       string // wood, forest, jungle
+	Size       string // small, medium, large
 	Location   string
 	Role       cloudinit.NodeRole
 	ServerType string // Provider-specific server type
@@ -310,11 +310,11 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*
 // getNodeCount returns the number of nodes for a given forest size
 func getNodeCount(size string) int {
 	switch size {
-	case "wood":
+	case "small":
 		return 1
-	case "forest":
+	case "medium":
 		return 3
-	case "jungle":
+	case "large":
 		return 5
 	default:
 		return 1

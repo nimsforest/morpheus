@@ -28,7 +28,7 @@ func TestRegisterForest(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -61,7 +61,7 @@ func TestRegisterForestDuplicate(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -85,7 +85,7 @@ func TestRegisterNode(t *testing.T) {
 	// First register a forest
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -151,7 +151,7 @@ func TestUpdateForestStatus(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -177,7 +177,7 @@ func TestUpdateNodeStatus(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -213,7 +213,7 @@ func TestDeleteForest(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -264,7 +264,7 @@ func TestRegistryPersistence(t *testing.T) {
 	registry1, _ := NewRegistry(registryPath)
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "active",
@@ -297,7 +297,7 @@ func TestForestTimestamp(t *testing.T) {
 	before := time.Now()
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
@@ -319,7 +319,7 @@ func TestNodeTimestamp(t *testing.T) {
 
 	forest := &Forest{
 		ID:       "test-forest",
-		Size:     "wood",
+		Size:     "small",
 		Location: "fsn1",
 		Provider: "hetzner",
 		Status:   "provisioning",
