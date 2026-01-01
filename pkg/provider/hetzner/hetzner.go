@@ -410,6 +410,16 @@ func (p *Provider) FilterLocationsByServerType(ctx context.Context, locations []
 	return supported, unsupported, nil
 }
 
+// CheckSSHKeyExists checks if an SSH key with the given name exists in Hetzner Cloud.
+// Returns true if the key exists, false otherwise.
+func (p *Provider) CheckSSHKeyExists(ctx context.Context, keyName string) (bool, error) {
+	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+	if err != nil {
+		return false, wrapAuthError(err, "failed to query SSH key")
+	}
+	return key != nil, nil
+}
+
 // ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.
 // If not found, it attempts to read from common SSH key locations and upload it.
 // Returns the SSH key from Hetzner Cloud.

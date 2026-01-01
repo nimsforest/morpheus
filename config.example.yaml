@@ -42,7 +42,7 @@ secrets:
 # IPv6:
 #   - All machines use IPv6 by default (IPv4 costs extra on Hetzner)
 #   - Make sure your network has IPv6 connectivity
-#   - Test with: morpheus check-ipv6
+#   - Test with: morpheus check (runs all diagnostics)
 #
 # API Token:
 #   - Get yours at: https://console.hetzner.cloud/ → Security → API Tokens
