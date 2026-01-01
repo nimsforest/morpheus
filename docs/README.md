@@ -12,6 +12,7 @@ User-facing guides for getting started and using Morpheus.
 | [ANDROID_TERMUX.md](guides/ANDROID_TERMUX.md) | Complete guide for running Morpheus on Android |
 | [MOBILE_PHILOSOPHY.md](guides/MOBILE_PHILOSOPHY.md) | Why Termux is the natural way for CLI tools |
 | [CONTROL_SERVER_SETUP.md](guides/CONTROL_SERVER_SETUP.md) | Alternative setup for 24/7, teams, CI/CD |
+| [IPV6_SETUP.md](guides/IPV6_SETUP.md) | How to use IPv6 with Morpheus |
 
 ## 🏗️ Architecture
 

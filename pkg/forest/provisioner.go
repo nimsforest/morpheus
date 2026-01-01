@@ -77,11 +77,17 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		forest.Location = server.Location
 
 		// Register node in registry
+		// Use IPv6 if preferred and available, otherwise IPv4
+		nodeIP := server.PublicIPv4
+		if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
+			nodeIP = server.PublicIPv6
+		}
+
 		node := &Node{
 			ID:       server.ID,
 			ForestID: req.ForestID,
 			Role:     string(req.Role),
-			IP:       server.PublicIPv4,
+			IP:       nodeIP,
 			Location: server.Location,
 			Status:   "active",
 			Metadata: server.Labels,
@@ -91,7 +97,12 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			fmt.Printf("Warning: failed to register node in registry: %s\n", err)
 		}
 
-		fmt.Printf("✓ Node %s provisioned successfully (IP: %s)\n", nodeName, server.PublicIPv4)
+		// Display both IPs if available
+		ipDisplay := nodeIP
+		if server.PublicIPv4 != "" && server.PublicIPv6 != "" {
+			ipDisplay = fmt.Sprintf("IPv4: %s, IPv6: %s", server.PublicIPv4, server.PublicIPv6)
+		}
+		fmt.Printf("✓ Node %s provisioned successfully (%s)\n", nodeName, ipDisplay)
 	}
 
 	// Update forest status and location
@@ -167,16 +178,28 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 // This checks SSH connectivity as an indicator that cloud-init has progressed
 // far enough for the server to be usable
 func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
-	if server.PublicIPv4 == "" {
-		return fmt.Errorf("server has no public IPv4 address")
+	// Choose IPv4 or IPv6 based on config
+	var ipAddr string
+	if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
+		ipAddr = server.PublicIPv6
+	} else if server.PublicIPv4 != "" {
+		ipAddr = server.PublicIPv4
+	} else {
+		return fmt.Errorf("server has no public IP address (IPv4: %s, IPv6: %s)",
+			server.PublicIPv4, server.PublicIPv6)
 	}
 
 	timeout := p.config.Provisioning.GetReadinessTimeout()
 	interval := p.config.Provisioning.GetReadinessInterval()
 	sshPort := p.config.Provisioning.SSHPort
 
-	addr := fmt.Sprintf("%s:%d", server.PublicIPv4, sshPort)
-	fmt.Printf("Waiting for infrastructure readiness (SSH on %s, timeout: %s)...\n", addr, timeout)
+	// Format IPv6 addresses properly for SSH (with brackets)
+	addr := formatSSHAddress(ipAddr, sshPort)
+	ipType := "IPv4"
+	if p.config.Infrastructure.Defaults.PreferIPv6 {
+		ipType = "IPv6"
+	}
+	fmt.Printf("Waiting for infrastructure readiness (SSH on %s via %s, timeout: %s)...\n", addr, ipType, timeout)
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
@@ -266,6 +289,27 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*
 
 	// Remove from registry
 	p.registry.DeleteForest(forestID)
+}
+
+// formatSSHAddress formats an IP address and port for SSH connections
+// IPv6 addresses need brackets: [2001:db8::1]:22
+// IPv4 addresses don't: 95.217.0.1:22
+func formatSSHAddress(ip string, port int) string {
+	// Check if it's an IPv6 address (contains colons)
+	if containsColon(ip) {
+		return fmt.Sprintf("[%s]:%d", ip, port)
+	}
+	return fmt.Sprintf("%s:%d", ip, port)
+}
+
+// containsColon checks if a string contains a colon (simple IPv6 detection)
+func containsColon(s string) bool {
+	for _, c := range s {
+		if c == ':' {
+			return true
+		}
+	}
+	return false
 }
 
 // getNodeCount returns the number of nodes for a given forest size

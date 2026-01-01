@@ -85,7 +85,7 @@ Based on your architecture:
 infrastructure:
   defaults:
     image: ubuntu-24.04  # Works for all roles
-    server_type: cpx31   # 4 vCPU, 8 GB RAM
+    server_type: cx23    # 2 vCPU (shared), 4 GB RAM - €2.99/mo
 ```
 
 **Benefits:**
@@ -93,6 +93,7 @@ infrastructure:
 - Consistent across all nodes
 - Easy troubleshooting
 - One OS to maintain
+- Very affordable (€2.99/mo per node)
 
 ### Alternative: Per-Role Images (Future Enhancement)
 

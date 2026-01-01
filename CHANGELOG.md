@@ -263,28 +263,60 @@ See [docs/architecture/BINARY_DEPLOYMENT.md](docs/architecture/BINARY_DEPLOYMENT
 
 **Current Configuration:** Already using Ubuntu 24.04 (optimal choice) ✅
 
-### Changed - Default Server Type to CX22
+### Changed - Default Server Type to CX23
 
-**Changed default server type from CPX31 to CX22** for cost optimization.
+**Changed default server type from CPX31 to CX23** for cost optimization.
 
-**New Default: CX22**
+**New Default: CX23**
 - 2 shared vCPU, 4 GB RAM
-- ~€5.29/month per node
-- Suitable for light to medium NATS workloads (<5K msg/s)
-- **50% cheaper** than CPX21
+- ~€2.99/month per node
+- Suitable for light NATS workloads and development
+- **67% cheaper** than CPX21, **83% cheaper** than CPX31
 
 **Cost Savings:**
-- wood (1 node): €5.29/mo (was €18/mo with CPX31) - **Save €12.71/mo**
-- forest (3 nodes): €15.87/mo (was €54/mo) - **Save €38.13/mo**
-- jungle (5 nodes): €26.45/mo (was €90/mo) - **Save €63.55/mo**
+- wood (1 node): €2.99/mo (was €18/mo with CPX31) - **Save €15/mo**
+- forest (3 nodes): €8.97/mo (was €54/mo) - **Save €45/mo**
+- jungle (5 nodes): €14.95/mo (was €90/mo) - **Save €75/mo**
+
+**Annual Savings:** €180-€900/year depending on forest size! 🎉
 
 **Important Notes:**
-- CX22 uses **shared vCPU** - performance may vary (noisy neighbors)
+- CX23 uses **shared vCPU** - performance may vary (noisy neighbors)
+- Perfect for: development, testing, small deployments, learning, cost-sensitive projects
 - For production NATS with consistent performance, upgrade to **CPX21** (dedicated vCPU, €9/mo)
-- CX22 is perfect for: development, testing, small deployments, budget-conscious projects
 - Upgrade to CPX21/CPX31 for: production, high throughput, predictable performance
 
-**Recommendation:** Start with CX22, monitor performance, upgrade to CPX21 if you need consistency.
+**Recommendation:** Start with CX23 (save 83%), monitor performance, upgrade to CPX21 if you need consistency.
+
+### Added - IPv6 Support
+
+**NEW**: Full IPv6 support! Morpheus now works with IPv6 addresses.
+
+**Features:**
+- ✅ All Hetzner servers get both IPv4 and IPv6 addresses
+- ✅ Configure `prefer_ipv6: true` to use IPv6 for SSH and connections
+- ✅ Automatic IPv6 address formatting for SSH (with brackets)
+- ✅ Displays both IPv4 and IPv6 in status output
+- ✅ Registry stores the preferred IP address
+
+**Configuration:**
+```yaml
+infrastructure:
+  defaults:
+    prefer_ipv6: false  # Set to true to use IPv6
+```
+
+**Benefits:**
+- 🌍 IPv6-only networks supported
+- 🔒 Better privacy with rotating IPv6 addresses
+- 🚀 Future-proof infrastructure
+- 💰 Some providers charge for IPv4 (IPv6 is free)
+
+**Example output:**
+```
+✓ Node forest-123-node-1 provisioned successfully (IPv4: 95.217.0.1, IPv6: 2001:db8::1)
+Waiting for infrastructure readiness (SSH on [2001:db8::1]:22 via IPv6, timeout: 5m)...
+```
 
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
