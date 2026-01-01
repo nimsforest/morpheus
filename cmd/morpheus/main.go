@@ -242,6 +242,7 @@ func containsLocationError(errMsg string) bool {
 		"location not available",
 		"location disabled",
 		"datacenter not available",
+		"unsupported location",
 	}
 
 	for _, phrase := range locationErrorPhrases {
