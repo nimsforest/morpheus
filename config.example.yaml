@@ -2,10 +2,29 @@ infrastructure:
   provider: hetzner
   defaults:
     server_type: cpx31
-    image: ubuntu-24.04
+    image: ubuntu-24.04  # Default image for all roles
     ssh_key: main  # Name of SSH key in Hetzner Cloud (will be auto-uploaded if not found)
     ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
                        # If not specified, Morpheus will search common SSH key locations
+  
+  # Per-role overrides (optional)
+  roles:
+    edge:
+      # Forest nodes: NATS only, pure CPU/RAM
+      # Debian is lighter, but Ubuntu 24.04 minimal works great too
+      image: ubuntu-24.04  # or debian-12 for ~50MB less RAM
+      server_type: cpx31   # 4 vCPU, 8 GB RAM
+    
+    compute:
+      # Nims nodes: GPU-dependent applications
+      # Ubuntu required for NVIDIA drivers and CUDA support
+      image: ubuntu-24.04  # Must be Ubuntu for GPU support
+      server_type: cpx31   # or GPU instances when available
+    
+    storage:
+      # Storage nodes: NFS/persistent data
+      image: ubuntu-24.04  # or debian-12
+      server_type: cpx31
   locations:
     # Morpheus will try each location in order and automatically fall back
     # to the next one if a location is unavailable or at capacity

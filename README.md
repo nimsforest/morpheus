@@ -223,6 +223,13 @@ secrets:
 - `cpx41`: 8 vCPU, 16 GB RAM (~€36/mo) - High load
 - `cpx51`: 16 vCPU, 32 GB RAM (~€72/mo) - Enterprise
 
+**OS Image:**
+- **`ubuntu-24.04`** - Recommended for all nodes (5-year LTS support)
+  - Required for GPU workloads (Nims nodes)
+  - Works great for NATS (Forest nodes)
+  - Best community support and GPU driver availability
+  - See [OS Selection Guide](docs/architecture/OS_SELECTION.md) for Ubuntu vs Debian comparison
+
 ## Commands
 
 All commands work the same on Desktop and Termux!

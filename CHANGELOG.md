@@ -244,6 +244,25 @@ infrastructure:
 
 See [docs/architecture/BINARY_DEPLOYMENT.md](docs/architecture/BINARY_DEPLOYMENT.md) for detailed implementation guide.
 
+### Added - OS Selection Guide
+
+**NEW**: Comprehensive guide for choosing between Ubuntu and Debian for different node types.
+
+**Documentation:**
+- Added `docs/architecture/OS_SELECTION.md` - Ubuntu vs Debian decision guide
+- Covers Forest nodes (NATS, CPU/RAM heavy) vs Nims nodes (GPU-dependent)
+- Performance comparison, resource usage analysis
+- GPU driver support comparison
+- Recommendation: Use Ubuntu 24.04 LTS for all nodes
+
+**Key Findings:**
+- Ubuntu required for GPU support (Nims nodes)
+- Debian saves only ~50MB RAM (negligible on 8GB+ servers)
+- Ubuntu easier to troubleshoot with better community support
+- Keeping one OS across all nodes simplifies operations
+
+**Current Configuration:** Already using Ubuntu 24.04 (optimal choice) ✅
+
 ### Planned
 - Multi-cloud support (AWS, GCP, Azure, OVH, Vultr)
 - Auto-scaling based on load
