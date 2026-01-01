@@ -27,10 +27,7 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 			Primary: "cx23",  // Preferred: shared CPU
 			Fallbacks: []string{
 				"cpx22", // Dedicated AMD - first fallback
-				"cx22",  // 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
-				"cpx21", // 3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo
-				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo
-				"cx21",  // 2 vCPU (shared Intel), 4 GB RAM - ~€3.29/mo (older gen)
+				"ccx13", // Dedicated AMD - second fallback
 			},
 			Architecture: "x86",
 		},
@@ -202,6 +199,9 @@ func GetEstimatedCost(serverType string) float64 {
 		"cpx31": 15.49,
 		"cpx41": 29.49,
 		"cpx51": 57.49,
+		"ccx13": 12.49,
+		"ccx23": 24.49,
+		"ccx33": 48.49,
 		"cax11": 3.79,
 		"cax21": 7.59,
 		"cax31": 15.19,

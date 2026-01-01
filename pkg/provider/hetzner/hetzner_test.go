@@ -742,15 +742,8 @@ func TestGetHetznerServerTypePrimary(t *testing.T) {
 		t.Errorf("Expected cpx22 as first fallback for small profile, got %v", mapping.Fallbacks)
 	}
 
-	// Verify fallbacks include cpx11
-	hasCpx11 := false
-	for _, fb := range mapping.Fallbacks {
-		if fb == "cpx11" {
-			hasCpx11 = true
-			break
-		}
-	}
-	if !hasCpx11 {
-		t.Error("Expected cpx11 in fallbacks for small profile")
+	// Verify ccx13 is the second fallback
+	if len(mapping.Fallbacks) < 2 || mapping.Fallbacks[1] != "ccx13" {
+		t.Errorf("Expected ccx13 as second fallback for small profile, got %v", mapping.Fallbacks)
 	}
 }
