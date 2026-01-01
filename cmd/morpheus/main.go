@@ -10,6 +10,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/forest"
+	"github.com/nimsforest/morpheus/pkg/httputil"
 	"github.com/nimsforest/morpheus/pkg/provider"
 	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
 	"github.com/nimsforest/morpheus/pkg/provider/local"
@@ -42,6 +43,8 @@ func main() {
 		handleUpdate()
 	case "check-update":
 		handleCheckUpdate()
+	case "check-ipv6":
+		handleCheckIPv6()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -741,6 +744,42 @@ func handleCheckUpdate() {
 	}
 }
 
+func handleCheckIPv6() {
+	fmt.Println("🔍 Checking IPv6 connectivity...")
+	fmt.Println()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result := httputil.CheckIPv6Connectivity(ctx)
+
+	if result.Available {
+		fmt.Println("✅ IPv6 connectivity is available!")
+		fmt.Printf("   Your IPv6 address: %s\n", result.Address)
+		fmt.Println()
+		fmt.Println("You can use Morpheus to provision IPv6-only infrastructure on Hetzner Cloud.")
+		os.Exit(0)
+	} else {
+		fmt.Println("❌ IPv6 connectivity is NOT available")
+		fmt.Println()
+		if result.Error != nil {
+			fmt.Printf("   Error: %s\n", result.Error)
+			fmt.Println()
+		}
+		fmt.Println("Morpheus requires IPv6 connectivity to provision infrastructure.")
+		fmt.Println("Hetzner Cloud uses IPv6-only by default (IPv4 costs extra).")
+		fmt.Println()
+		fmt.Println("Options to get IPv6:")
+		fmt.Println("  1. Enable IPv6 on your ISP/router")
+		fmt.Println("  2. Use an IPv6 tunnel service (e.g., Hurricane Electric)")
+		fmt.Println("  3. Use a VPS/server with IPv6 to run Morpheus")
+		fmt.Println()
+		fmt.Println("For more information, see:")
+		fmt.Println("  https://github.com/nimsforest/morpheus/blob/main/docs/guides/IPV6_SETUP.md")
+		os.Exit(1)
+	}
+}
+
 // isTermux checks if we're running on Termux (Android)
 func isTermux() bool {
 	// Check for Termux-specific environment variable
@@ -778,6 +817,7 @@ func printHelp() {
 	fmt.Println("  version                     Show version information")
 	fmt.Println("  update                      Check for updates and install if available")
 	fmt.Println("  check-update                Check for updates without installing")
+	fmt.Println("  check-ipv6                  Check if IPv6 connectivity is available")
 	fmt.Println("  help                        Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -789,6 +829,7 @@ func printHelp() {
 	fmt.Println("  morpheus status forest-12345  # Show forest details")
 	fmt.Println("  morpheus teardown forest-12345 # Delete forest")
 	fmt.Println("  morpheus update               # Update to latest version")
+	fmt.Println("  morpheus check-ipv6           # Check IPv6 connectivity")
 	fmt.Println()
 	fmt.Println("Local Mode:")
 	fmt.Println("  Local mode uses Docker to create forest containers on your machine.")

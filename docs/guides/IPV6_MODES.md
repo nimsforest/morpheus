@@ -16,7 +16,8 @@ infrastructure:
 ## Requirements
 
 - Your network must have IPv6
-- Test: `curl -6 ifconfig.co`
+- Test: `morpheus check-ipv6` (works on all platforms including Termux)
+- Alternative: `curl -6 ifconfig.co` (may not work on Termux)
 
 ## Cost Savings
 

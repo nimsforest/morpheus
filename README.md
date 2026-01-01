@@ -255,7 +255,7 @@ morpheus plant cloud jungle   # 5 nodes, ~25-50 min
 6. Calls NimsForest (if configured)
 7. Status: `infrastructure_ready`
 
-**Requirements:** IPv6 connectivity required. Test: `curl -6 ifconfig.co`
+**Requirements:** IPv6 connectivity required. Test: `morpheus check-ipv6` or `curl -6 ifconfig.co`
 
 ### List Forests
 
@@ -519,7 +519,7 @@ A: Hetzner charges by the minute. IPv6-only (IPv4 costs extra):
 - jungle: ~€45/month
 
 **Q: Does Morpheus support IPv4?**  
-A: No. IPv6-only (IPv4 costs extra on Hetzner). Your network must have IPv6. Test: `curl -6 ifconfig.co`
+A: No. IPv6-only (IPv4 costs extra on Hetzner). Your network must have IPv6. Test: `morpheus check-ipv6` or `curl -6 ifconfig.co`
 
 **Q: Can I change forest size after creation?**  
 A: Not yet. You need to teardown and recreate. Auto-scaling is planned.
