@@ -115,14 +115,16 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 }
 
 // GetDefaultLocations returns a recommended set of locations for Hetzner
-// These are prioritized by reliability and geographic distribution
+// These are prioritized by reliability and server type availability.
+// US locations (ash, hil) are included early as newer server types (cx22)
+// are often available there before EU locations.
 func GetDefaultLocations() []string {
 	return []string{
 		"fsn1", // Falkenstein, Germany - Most established DC
 		"nbg1", // Nuremberg, Germany - Second German DC
+		"ash",  // Ashburn, USA - US East Coast (good for newer server types)
+		"hil",  // Hillsboro, USA - US West Coast (good for newer server types)
 		"hel1", // Helsinki, Finland - Northern Europe
-		"ash",  // Ashburn, USA - US East Coast
-		"hil",  // Hillsboro, USA - US West Coast
 	}
 }
 
