@@ -4,7 +4,9 @@ infrastructure:
     server_type: cx23   # 2 vCPU (shared), 4 GB RAM - €2.99/mo
     image: ubuntu-24.04  # Default image for all roles
     prefer_ipv6: false   # Use IPv6 for SSH checks and connections (default: false for IPv4)
+    ipv6_only: false     # Strict IPv6-only mode - fail if no IPv6 (default: false)
     # Note: CX series has shared vCPU. For production, consider CPX21 (dedicated vCPU)
+    # Note: ipv6_only requires your local network to have IPv6 connectivity
     ssh_key: main  # Name of SSH key in Hetzner Cloud (will be auto-uploaded if not found)
     ssh_key_path: ""  # Optional: Path to local SSH public key (e.g., "~/.ssh/id_ed25519.pub")
                        # If not specified, Morpheus will search common SSH key locations

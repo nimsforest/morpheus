@@ -47,6 +47,7 @@ type DefaultsConfig struct {
 	SSHKey     string `yaml:"ssh_key"`      // Name of the SSH key in Hetzner Cloud
 	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
 	PreferIPv6 bool   `yaml:"prefer_ipv6"`  // Use IPv6 instead of IPv4 for connections (default: false)
+	IPv6Only   bool   `yaml:"ipv6_only"`    // Strict IPv6-only mode: fail if no IPv6 (default: false)
 }
 
 // DefaultServerConfig is an alias for backward compatibility

@@ -77,9 +77,11 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		forest.Location = server.Location
 
 		// Register node in registry
-		// Use IPv6 if preferred and available, otherwise IPv4
+		// Use IPv6 if required or preferred, otherwise IPv4
 		nodeIP := server.PublicIPv4
-		if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
+		if p.config.Infrastructure.Defaults.IPv6Only {
+			nodeIP = server.PublicIPv6 // Must use IPv6 in ipv6_only mode
+		} else if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
 			nodeIP = server.PublicIPv6
 		}
 
@@ -180,9 +182,20 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
 	// Choose IPv4 or IPv6 based on config
 	var ipAddr string
-	if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
+	ipv6Only := p.config.Infrastructure.Defaults.IPv6Only
+	preferIPv6 := p.config.Infrastructure.Defaults.PreferIPv6
+
+	// Strict IPv6-only mode
+	if ipv6Only {
+		if server.PublicIPv6 == "" {
+			return fmt.Errorf("ipv6_only mode enabled but server has no IPv6 address")
+		}
+		ipAddr = server.PublicIPv6
+	} else if preferIPv6 && server.PublicIPv6 != "" {
+		// Prefer IPv6 if available
 		ipAddr = server.PublicIPv6
 	} else if server.PublicIPv4 != "" {
+		// Fall back to IPv4
 		ipAddr = server.PublicIPv4
 	} else {
 		return fmt.Errorf("server has no public IP address (IPv4: %s, IPv6: %s)",
@@ -196,10 +209,14 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 	// Format IPv6 addresses properly for SSH (with brackets)
 	addr := formatSSHAddress(ipAddr, sshPort)
 	ipType := "IPv4"
-	if p.config.Infrastructure.Defaults.PreferIPv6 {
+	if ipv6Only || (preferIPv6 && server.PublicIPv6 != "") {
 		ipType = "IPv6"
 	}
-	fmt.Printf("Waiting for infrastructure readiness (SSH on %s via %s, timeout: %s)...\n", addr, ipType, timeout)
+	modeStr := ""
+	if ipv6Only {
+		modeStr = " [IPv6-only mode]"
+	}
+	fmt.Printf("Waiting for infrastructure readiness (SSH on %s via %s%s, timeout: %s)...\n", addr, ipType, modeStr, timeout)
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
