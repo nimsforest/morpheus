@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
@@ -45,6 +47,8 @@ func main() {
 		handleCheckUpdate()
 	case "check-ipv6":
 		handleCheckIPv6()
+	case "check":
+		handleCheck()
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -1130,6 +1134,279 @@ func handleCheckIPv6() {
 	}
 }
 
+func handleCheck() {
+	// Parse subcommand
+	subcommand := ""
+	if len(os.Args) >= 3 {
+		subcommand = os.Args[2]
+	}
+
+	switch subcommand {
+	case "ipv6":
+		runIPv6Check(true)
+	case "ssh":
+		runSSHCheck(true)
+	case "":
+		// Run all checks
+		fmt.Println("🔍 Running Morpheus Diagnostics")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+
+		ipv6Ok := runIPv6Check(false)
+		fmt.Println()
+		sshOk := runSSHCheck(false)
+
+		fmt.Println()
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		if ipv6Ok && sshOk {
+			fmt.Println("✅ All checks passed! You're ready to use Morpheus.")
+		} else {
+			fmt.Println("⚠️  Some checks failed. Please review the issues above.")
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown check: %s\n\n", subcommand)
+		fmt.Fprintln(os.Stderr, "Usage: morpheus check [ipv6|ssh]")
+		fmt.Fprintln(os.Stderr, "  morpheus check       Run all checks")
+		fmt.Fprintln(os.Stderr, "  morpheus check ipv6  Check IPv6 connectivity")
+		fmt.Fprintln(os.Stderr, "  morpheus check ssh   Check SSH key setup")
+		os.Exit(1)
+	}
+}
+
+// runIPv6Check checks IPv6 connectivity and returns true if successful
+func runIPv6Check(exitOnResult bool) bool {
+	fmt.Println("📡 IPv6 Connectivity")
+	fmt.Println("   Checking connection to IPv6 services...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result := httputil.CheckIPv6Connectivity(ctx)
+
+	if result.Available {
+		fmt.Println("   ✅ IPv6 is available")
+		fmt.Printf("   Your IPv6 address: %s\n", result.Address)
+		if exitOnResult {
+			os.Exit(0)
+		}
+		return true
+	} else {
+		fmt.Println("   ❌ IPv6 is NOT available")
+		if result.Error != nil {
+			fmt.Printf("   Error: %s\n", result.Error)
+		}
+		fmt.Println()
+		fmt.Println("   Morpheus requires IPv6 to connect to provisioned servers.")
+		fmt.Println("   Options:")
+		fmt.Println("     • Enable IPv6 on your ISP/router")
+		fmt.Println("     • Use an IPv6 tunnel (e.g., Hurricane Electric)")
+		fmt.Println("     • Use a VPS with IPv6 connectivity")
+		if exitOnResult {
+			os.Exit(1)
+		}
+		return false
+	}
+}
+
+// runSSHCheck checks SSH key configuration and returns true if successful
+func runSSHCheck(exitOnResult bool) bool {
+	fmt.Println("🔑 SSH Key Setup")
+
+	allOk := true
+
+	// 1. Check for local SSH keys
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		fmt.Println("   ❌ Cannot determine home directory")
+		if exitOnResult {
+			os.Exit(1)
+		}
+		return false
+	}
+
+	sshDir := filepath.Join(homeDir, ".ssh")
+
+	// Check if .ssh directory exists
+	if _, err := os.Stat(sshDir); os.IsNotExist(err) {
+		fmt.Println("   ❌ SSH directory not found (~/.ssh)")
+		fmt.Println("   Run: ssh-keygen -t ed25519")
+		if exitOnResult {
+			os.Exit(1)
+		}
+		return false
+	}
+
+	// Look for SSH keys
+	keyPaths := []string{
+		filepath.Join(sshDir, "id_ed25519.pub"),
+		filepath.Join(sshDir, "id_rsa.pub"),
+	}
+
+	var foundKey string
+	var foundKeyPath string
+	for _, path := range keyPaths {
+		if data, err := os.ReadFile(path); err == nil {
+			content := string(data)
+			if isValidSSHKey(content) {
+				foundKey = content
+				foundKeyPath = path
+				break
+			}
+		}
+	}
+
+	if foundKey == "" {
+		fmt.Println("   ❌ No SSH public key found")
+		fmt.Println("   Searched: ~/.ssh/id_ed25519.pub, ~/.ssh/id_rsa.pub")
+		fmt.Println()
+		fmt.Println("   Generate a new key with:")
+		fmt.Println("     ssh-keygen -t ed25519 -C \"your_email@example.com\"")
+		allOk = false
+	} else {
+		fmt.Printf("   ✅ SSH key found: %s\n", foundKeyPath)
+		// Show key type
+		if len(foundKey) > 20 {
+			keyType := foundKey[:20]
+			if len(keyType) > 0 {
+				parts := splitFirst(foundKey, " ")
+				if parts[0] != "" {
+					fmt.Printf("   Key type: %s\n", parts[0])
+				}
+			}
+		}
+	}
+
+	// 2. Check config and Hetzner API token
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Println()
+		fmt.Println("   ⚠️  No config file found (can't check Hetzner SSH key status)")
+		fmt.Println("   Create config.yaml to enable full SSH key validation")
+	} else if cfg.Secrets.HetznerAPIToken == "" {
+		fmt.Println()
+		fmt.Println("   ⚠️  No Hetzner API token configured (can't verify cloud SSH key)")
+	} else {
+		// Try to check if SSH key exists in Hetzner
+		fmt.Println()
+		fmt.Println("   Checking Hetzner Cloud SSH key status...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		hetznerProv, err := hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+		if err != nil {
+			fmt.Printf("   ⚠️  Could not connect to Hetzner: %s\n", err)
+		} else {
+			keyName := cfg.GetSSHKeyName()
+			keyExists, err := hetznerProv.CheckSSHKeyExists(ctx, keyName)
+			if err != nil {
+				fmt.Printf("   ⚠️  Could not check SSH key: %s\n", err)
+			} else if keyExists {
+				fmt.Printf("   ✅ SSH key '%s' exists in Hetzner Cloud\n", keyName)
+			} else {
+				fmt.Printf("   ⚠️  SSH key '%s' not found in Hetzner Cloud\n", keyName)
+				fmt.Println("   Morpheus will automatically upload it when you provision")
+				if foundKey == "" {
+					allOk = false
+					fmt.Println("   ❌ But no local SSH key was found to upload!")
+				}
+			}
+		}
+	}
+
+	// 3. Check SSH connectivity to existing servers (if any)
+	registryPath := getRegistryPath()
+	registry, err := forest.NewRegistry(registryPath)
+	if err == nil {
+		forests := registry.ListForests()
+		var activeNodes []*forest.Node
+		for _, f := range forests {
+			if f.Status == "active" {
+				nodes, err := registry.GetNodes(f.ID)
+				if err == nil {
+					activeNodes = append(activeNodes, nodes...)
+				}
+			}
+		}
+
+		if len(activeNodes) > 0 {
+			fmt.Println()
+			fmt.Printf("   Testing SSH connectivity to %d active server(s)...\n", len(activeNodes))
+
+			// Test first server only to avoid too many checks
+			node := activeNodes[0]
+			sshPort := 22
+			if cfg != nil && cfg.Provisioning.SSHPort != 0 {
+				sshPort = cfg.Provisioning.SSHPort
+			}
+
+			addr := fmt.Sprintf("[%s]:%d", node.IP, sshPort)
+			conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+			if err != nil {
+				fmt.Printf("   ⚠️  Cannot reach server %s: %s\n", node.IP, classifyNetError(err))
+				fmt.Println("   This could be due to:")
+				fmt.Println("     • Server is still booting")
+				fmt.Println("     • IPv6 connectivity issues from your network")
+				fmt.Println("     • Firewall blocking the connection")
+			} else {
+				conn.Close()
+				fmt.Printf("   ✅ Server %s is reachable on port %d\n", node.IP, sshPort)
+			}
+		}
+	}
+
+	if exitOnResult {
+		if allOk {
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
+	}
+	return allOk
+}
+
+// isValidSSHKey checks if a string looks like a valid SSH public key
+func isValidSSHKey(key string) bool {
+	key = strings.TrimSpace(key)
+	validPrefixes := []string{"ssh-rsa", "ssh-ed25519", "ssh-dss", "ecdsa-sha2-"}
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// splitFirst splits a string on the first occurrence of sep
+func splitFirst(s, sep string) []string {
+	idx := strings.Index(s, sep)
+	if idx == -1 {
+		return []string{s, ""}
+	}
+	return []string{s[:idx], s[idx+len(sep):]}
+}
+
+// classifyNetError returns a human-readable description of a network error
+func classifyNetError(err error) string {
+	if err == nil {
+		return "connected"
+	}
+	errStr := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errStr, "connection refused"):
+		return "port closed"
+	case strings.Contains(errStr, "no route to host"):
+		return "no route"
+	case strings.Contains(errStr, "network is unreachable"):
+		return "network unreachable"
+	case strings.Contains(errStr, "i/o timeout"), strings.Contains(errStr, "timeout"):
+		return "timeout"
+	default:
+		return err.Error()
+	}
+}
+
 // isTermux checks if we're running on Termux (Android)
 func isTermux() bool {
 	// Check for Termux-specific environment variable
@@ -1255,7 +1532,10 @@ func printHelp() {
 	fmt.Println("  version                     Show version information")
 	fmt.Println("  update                      Check for updates and install if available")
 	fmt.Println("  check-update                Check for updates without installing")
-	fmt.Println("  check-ipv6                  Check if IPv6 connectivity is available")
+	fmt.Println("  check                       Run all diagnostics (IPv6, SSH)")
+	fmt.Println("  check ipv6                  Check IPv6 connectivity")
+	fmt.Println("  check ssh                   Check SSH key setup")
+	fmt.Println("  check-ipv6                  (deprecated) Use 'check ipv6' instead")
 	fmt.Println("  help                        Show this help message")
 	fmt.Println()
 	fmt.Println("Examples:")
