@@ -177,27 +177,21 @@ func handlePlant() {
 
 	// Filter locations by server type availability if the provider supports it
 	availableLocations := cfg.Infrastructure.Locations
+	serverType := cfg.Infrastructure.Defaults.ServerType
 	if locationAware, ok := prov.(provider.LocationAwareProvider); ok {
-		serverType := cfg.Infrastructure.Defaults.ServerType
 		supported, unsupported, filterErr := locationAware.FilterLocationsByServerType(ctx, cfg.Infrastructure.Locations, serverType)
 		if filterErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not check server type availability: %s\n", filterErr)
 			// Continue with all locations - will fail at creation time if unavailable
 		} else if len(supported) == 0 {
-			// No configured locations support this server type
-			allAvailable, _ := locationAware.GetAvailableLocations(ctx, serverType)
-			fmt.Fprintf(os.Stderr, "\n❌ Server type '%s' is not available in any of your configured locations:\n", serverType)
-			fmt.Fprintf(os.Stderr, "   Configured: %s\n", joinLocations(cfg.Infrastructure.Locations))
-			if len(allAvailable) > 0 {
-				fmt.Fprintf(os.Stderr, "\n   Available locations for '%s': %s\n", serverType, joinLocations(allAvailable))
-				fmt.Fprintf(os.Stderr, "\n   To fix this, either:\n")
-				fmt.Fprintf(os.Stderr, "   1. Update your config to use one of the available locations, or\n")
-				fmt.Fprintf(os.Stderr, "   2. Change your server_type to one available in your locations\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "\n   The server type '%s' may not exist or has no available locations.\n", serverType)
-				fmt.Fprintf(os.Stderr, "   Check your config file for typos in the server_type field.\n")
+			// No configured locations support this server type - offer interactive options
+			newServerType, newLocations := handleServerTypeLocationMismatch(ctx, locationAware, serverType, cfg.Infrastructure.Locations)
+			if newServerType == "" {
+				os.Exit(1)
 			}
-			os.Exit(1)
+			serverType = newServerType
+			cfg.Infrastructure.Defaults.ServerType = serverType
+			availableLocations = newLocations
 		} else {
 			availableLocations = supported
 			if len(unsupported) > 0 {
@@ -265,6 +259,166 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 	}
 
 	return lastErr
+}
+
+// handleServerTypeLocationMismatch presents an interactive menu when server type
+// is not available in any configured location
+func handleServerTypeLocationMismatch(ctx context.Context, locationAware provider.LocationAwareProvider, serverType string, configuredLocations []string) (string, []string) {
+	fmt.Fprintf(os.Stderr, "\n❌ Server type '%s' is not available in your configured locations:\n", serverType)
+	fmt.Fprintf(os.Stderr, "   Configured: %s\n\n", joinLocations(configuredLocations))
+
+	// Get available locations for current server type
+	availableForType, _ := locationAware.GetAvailableLocations(ctx, serverType)
+
+	// Define recommended server types with their descriptions
+	recommendedTypes := []struct {
+		name        string
+		description string
+	}{
+		{"cx22", "2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo"},
+		{"cpx11", "2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo"},
+		{"cpx21", "3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo"},
+		{"cax11", "2 vCPU (ARM), 4 GB RAM - ~€3.79/mo"},
+	}
+
+	fmt.Println("What would you like to do?")
+	fmt.Println()
+
+	// Option 1: Use a different location (if available for current server type)
+	if len(availableForType) > 0 {
+		fmt.Printf("  [1] Use a different location for '%s'\n", serverType)
+		fmt.Printf("      Available: %s\n", joinLocations(availableForType))
+	} else {
+		fmt.Printf("  [1] (Not available - '%s' has no available locations)\n", serverType)
+	}
+	fmt.Println()
+
+	// Option 2: Change server type
+	fmt.Println("  [2] Change server type (recommended)")
+	fmt.Println("      Suggested server types:")
+	for _, st := range recommendedTypes {
+		locs, _ := locationAware.GetAvailableLocations(ctx, st.name)
+		if len(locs) > 0 {
+			fmt.Printf("        • %s: %s\n", st.name, st.description)
+			fmt.Printf("          Locations: %s\n", joinLocations(locs))
+		}
+	}
+	fmt.Println()
+
+	// Option 3: Exit
+	fmt.Println("  [3] Exit and update config manually")
+	fmt.Println()
+
+	fmt.Print("Enter choice (1/2/3): ")
+	var choice string
+	fmt.Scanln(&choice)
+
+	switch choice {
+	case "1":
+		if len(availableForType) == 0 {
+			fmt.Println("\n❌ No locations available for this server type.")
+			return "", nil
+		}
+		// Let user pick a location
+		fmt.Printf("\nAvailable locations for '%s':\n", serverType)
+		for i, loc := range availableForType {
+			locDesc := getLocationDescription(loc)
+			fmt.Printf("  [%d] %s - %s\n", i+1, loc, locDesc)
+		}
+		fmt.Print("\nEnter location number: ")
+		var locChoice int
+		fmt.Scanln(&locChoice)
+		if locChoice < 1 || locChoice > len(availableForType) {
+			fmt.Println("\n❌ Invalid choice.")
+			return "", nil
+		}
+		selectedLoc := availableForType[locChoice-1]
+		fmt.Printf("\n✓ Using location: %s\n\n", selectedLoc)
+		return serverType, []string{selectedLoc}
+
+	case "2":
+		// Let user pick a server type
+		var availableTypes []struct {
+			name        string
+			description string
+			locations   []string
+		}
+		for _, st := range recommendedTypes {
+			locs, _ := locationAware.GetAvailableLocations(ctx, st.name)
+			if len(locs) > 0 {
+				availableTypes = append(availableTypes, struct {
+					name        string
+					description string
+					locations   []string
+				}{st.name, st.description, locs})
+			}
+		}
+
+		if len(availableTypes) == 0 {
+			fmt.Println("\n❌ No recommended server types are available. Please check Hetzner status.")
+			return "", nil
+		}
+
+		fmt.Println("\nAvailable server types:")
+		for i, st := range availableTypes {
+			fmt.Printf("  [%d] %s: %s\n", i+1, st.name, st.description)
+		}
+		fmt.Print("\nEnter server type number: ")
+		var typeChoice int
+		fmt.Scanln(&typeChoice)
+		if typeChoice < 1 || typeChoice > len(availableTypes) {
+			fmt.Println("\n❌ Invalid choice.")
+			return "", nil
+		}
+		selected := availableTypes[typeChoice-1]
+
+		// Filter locations to prefer configured ones
+		var useLocations []string
+		for _, configLoc := range configuredLocations {
+			for _, availLoc := range selected.locations {
+				if configLoc == availLoc {
+					useLocations = append(useLocations, configLoc)
+				}
+			}
+		}
+		// If none of the configured locations work, use all available
+		if len(useLocations) == 0 {
+			useLocations = selected.locations
+		}
+
+		fmt.Printf("\n✓ Using server type: %s\n", selected.name)
+		fmt.Printf("✓ Available locations: %s\n\n", joinLocations(useLocations))
+		return selected.name, useLocations
+
+	case "3":
+		fmt.Println("\nTo fix this, update your config.yaml:")
+		fmt.Println("  1. Change server_type to one that's available in your locations, or")
+		fmt.Println("  2. Change locations to ones that support your server type")
+		fmt.Println("\nConfig file locations:")
+		fmt.Println("  - ./config.yaml")
+		fmt.Println("  - ~/.morpheus/config.yaml")
+		return "", nil
+
+	default:
+		fmt.Println("\n❌ Invalid choice.")
+		return "", nil
+	}
+}
+
+// getLocationDescription returns a human-readable description for a location
+func getLocationDescription(loc string) string {
+	descriptions := map[string]string{
+		"fsn1": "Falkenstein, Germany",
+		"nbg1": "Nuremberg, Germany",
+		"hel1": "Helsinki, Finland",
+		"ash":  "Ashburn, VA, USA",
+		"hil":  "Hillsboro, OR, USA",
+		"sin":  "Singapore",
+	}
+	if desc, ok := descriptions[loc]; ok {
+		return desc
+	}
+	return loc
 }
 
 // containsLocationError checks if an error message indicates a location availability issue
