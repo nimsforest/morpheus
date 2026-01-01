@@ -46,8 +46,6 @@ type DefaultsConfig struct {
 	Image      string `yaml:"image"`
 	SSHKey     string `yaml:"ssh_key"`      // Name of the SSH key in Hetzner Cloud
 	SSHKeyPath string `yaml:"ssh_key_path"` // Optional: Path to local SSH public key file for auto-upload
-	PreferIPv6 bool   `yaml:"prefer_ipv6"`  // Use IPv6 instead of IPv4 for connections (default: true)
-	IPv6Only   bool   `yaml:"ipv6_only"`    // Strict IPv6-only mode: fail if no IPv6 (default: true, IPv4 costs extra)
 }
 
 // DefaultServerConfig is an alias for backward compatibility
@@ -101,15 +99,8 @@ func (c *Config) applyProvisioningDefaults() {
 
 // applyInfrastructureDefaults sets default values for infrastructure config
 func (c *Config) applyInfrastructureDefaults() {
-	// Default to IPv6-only (IPv4 costs extra on Hetzner)
-	// This is only applied if the config file doesn't explicitly set the values
-	// Note: YAML unmarshal will set false for boolean fields not present in config,
-	// so we can't distinguish between "not set" and "explicitly false"
-	// This default is mainly for in-code config creation
-	if c.Infrastructure.Defaults.Image == "" {
-		c.Infrastructure.Defaults.PreferIPv6 = true
-		c.Infrastructure.Defaults.IPv6Only = true
-	}
+	// IPv6-only by default (IPv4 costs extra on Hetzner)
+	// No configuration needed - always uses IPv6
 }
 
 // GetReadinessTimeout returns the readiness timeout as a duration

@@ -76,20 +76,12 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		// Update the actual location used (may differ from requested if fallback occurred)
 		forest.Location = server.Location
 
-		// Register node in registry
-		// Use IPv6 if required or preferred, otherwise IPv4
-		nodeIP := server.PublicIPv4
-		if p.config.Infrastructure.Defaults.IPv6Only {
-			nodeIP = server.PublicIPv6 // Must use IPv6 in ipv6_only mode
-		} else if p.config.Infrastructure.Defaults.PreferIPv6 && server.PublicIPv6 != "" {
-			nodeIP = server.PublicIPv6
-		}
-
+		// Register node in registry (IPv6 only)
 		node := &Node{
 			ID:       server.ID,
 			ForestID: req.ForestID,
 			Role:     string(req.Role),
-			IP:       nodeIP,
+			IP:       server.PublicIPv6,
 			Location: server.Location,
 			Status:   "active",
 			Metadata: server.Labels,
@@ -99,12 +91,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			fmt.Printf("Warning: failed to register node in registry: %s\n", err)
 		}
 
-		// Display both IPs if available
-		ipDisplay := nodeIP
-		if server.PublicIPv4 != "" && server.PublicIPv6 != "" {
-			ipDisplay = fmt.Sprintf("IPv4: %s, IPv6: %s", server.PublicIPv4, server.PublicIPv6)
-		}
-		fmt.Printf("✓ Node %s provisioned successfully (%s)\n", nodeName, ipDisplay)
+		fmt.Printf("✓ Node %s provisioned successfully (IPv6: %s)\n", nodeName, server.PublicIPv6)
 	}
 
 	// Update forest status and location
@@ -180,43 +167,18 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 // This checks SSH connectivity as an indicator that cloud-init has progressed
 // far enough for the server to be usable
 func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
-	// Choose IPv4 or IPv6 based on config
-	var ipAddr string
-	ipv6Only := p.config.Infrastructure.Defaults.IPv6Only
-	preferIPv6 := p.config.Infrastructure.Defaults.PreferIPv6
-
-	// Strict IPv6-only mode
-	if ipv6Only {
-		if server.PublicIPv6 == "" {
-			return fmt.Errorf("ipv6_only mode enabled but server has no IPv6 address")
-		}
-		ipAddr = server.PublicIPv6
-	} else if preferIPv6 && server.PublicIPv6 != "" {
-		// Prefer IPv6 if available
-		ipAddr = server.PublicIPv6
-	} else if server.PublicIPv4 != "" {
-		// Fall back to IPv4
-		ipAddr = server.PublicIPv4
-	} else {
-		return fmt.Errorf("server has no public IP address (IPv4: %s, IPv6: %s)",
-			server.PublicIPv4, server.PublicIPv6)
+	// IPv6-only
+	if server.PublicIPv6 == "" {
+		return fmt.Errorf("server has no IPv6 address")
 	}
 
 	timeout := p.config.Provisioning.GetReadinessTimeout()
 	interval := p.config.Provisioning.GetReadinessInterval()
 	sshPort := p.config.Provisioning.SSHPort
 
-	// Format IPv6 addresses properly for SSH (with brackets)
-	addr := formatSSHAddress(ipAddr, sshPort)
-	ipType := "IPv4"
-	if ipv6Only || (preferIPv6 && server.PublicIPv6 != "") {
-		ipType = "IPv6"
-	}
-	modeStr := ""
-	if ipv6Only {
-		modeStr = " [IPv6-only mode]"
-	}
-	fmt.Printf("Waiting for infrastructure readiness (SSH on %s via %s%s, timeout: %s)...\n", addr, ipType, modeStr, timeout)
+	// Format IPv6 addresses with brackets for SSH
+	addr := fmt.Sprintf("[%s]:%d", server.PublicIPv6, sshPort)
+	fmt.Printf("Waiting for infrastructure readiness (SSH on %s, timeout: %s)...\n", addr, timeout)
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
@@ -306,27 +268,6 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, servers []*
 
 	// Remove from registry
 	p.registry.DeleteForest(forestID)
-}
-
-// formatSSHAddress formats an IP address and port for SSH connections
-// IPv6 addresses need brackets: [2001:db8::1]:22
-// IPv4 addresses don't: 95.217.0.1:22
-func formatSSHAddress(ip string, port int) string {
-	// Check if it's an IPv6 address (contains colons)
-	if containsColon(ip) {
-		return fmt.Sprintf("[%s]:%d", ip, port)
-	}
-	return fmt.Sprintf("%s:%d", ip, port)
-}
-
-// containsColon checks if a string contains a colon (simple IPv6 detection)
-func containsColon(s string) bool {
-	for _, c := range s {
-		if c == ':' {
-			return true
-		}
-	}
-	return false
 }
 
 // getNodeCount returns the number of nodes for a given forest size

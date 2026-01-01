@@ -230,16 +230,18 @@ Default changed to CX23 (2 vCPU, 4 GB RAM, €2.99/mo).
 
 Upgrade to CPX21 (€9/mo) for production workloads with dedicated vCPU.
 
-### Changed - IPv6-Only by Default
+### Changed - IPv6-Only
 
-**Morpheus now uses IPv6-only.** IPv4 costs extra on Hetzner.
+**Morpheus is now IPv6-only.** All IPv4 code removed. IPv4 costs extra on Hetzner.
 
-**Configuration:**
-- Default: `ipv6_only: true` (IPv6-only, no IPv4)
-- Reason: IPv4 has monthly fees on Hetzner
+**Changes:**
+- Removed `prefer_ipv6` config option
+- Removed `ipv6_only` config option  
+- Removed IPv4 fallback logic
+- Always uses IPv6
 
 **Requirements:**
-- Your local network must have IPv6
+- Your network must have IPv6
 - Test: `curl -6 ifconfig.co`
 
 See `docs/guides/IPV6_SETUP.md` for details.
