@@ -230,6 +230,7 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
+	lastStatus := ""
 
 	for time.Now().Before(deadline) {
 		select {
@@ -247,8 +248,11 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 			return nil
 		}
 
-		// Print informative status message
-		fmt.Printf("SSH to %s attempt %d: %s, waiting for: connection\n", server.PublicIPv6, attempts, status)
+		// Only print status when it changes, or every 5 attempts to show progress
+		if status != lastStatus || attempts%5 == 0 {
+			fmt.Printf("      SSH check attempt %d: %s\n", attempts, status)
+			lastStatus = status
+		}
 
 		// Wait before next attempt
 		select {
@@ -264,7 +268,8 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 // checkSSHConnectivityWithStatus attempts a TCP connection to verify SSH is accepting connections
 // Returns a human-readable status and any error
 func (p *Provisioner) checkSSHConnectivityWithStatus(addr string) (string, error) {
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	// Use a shorter timeout (3s) since we retry frequently anyway
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	if err != nil {
 		status := classifySSHError(err)
 		return status, err

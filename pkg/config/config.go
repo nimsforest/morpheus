@@ -99,7 +99,8 @@ func (c *Config) applyProvisioningDefaults() {
 		c.Provisioning.ReadinessTimeout = "5m"
 	}
 	if c.Provisioning.ReadinessInterval == "" {
-		c.Provisioning.ReadinessInterval = "10s"
+		// Check every 5 seconds for faster detection of SSH readiness
+		c.Provisioning.ReadinessInterval = "5s"
 	}
 	if c.Provisioning.SSHPort == 0 {
 		c.Provisioning.SSHPort = 22
@@ -141,7 +142,7 @@ func (p *ProvisioningConfig) GetReadinessTimeout() time.Duration {
 func (p *ProvisioningConfig) GetReadinessInterval() time.Duration {
 	d, err := time.ParseDuration(p.ReadinessInterval)
 	if err != nil {
-		return 10 * time.Second // default
+		return 5 * time.Second // default
 	}
 	return d
 }

@@ -307,8 +307,8 @@ secrets:
 		t.Errorf("Expected default readiness_timeout '5m', got '%s'", cfg.Provisioning.ReadinessTimeout)
 	}
 
-	if cfg.Provisioning.ReadinessInterval != "10s" {
-		t.Errorf("Expected default readiness_interval '10s', got '%s'", cfg.Provisioning.ReadinessInterval)
+	if cfg.Provisioning.ReadinessInterval != "5s" {
+		t.Errorf("Expected default readiness_interval '5s', got '%s'", cfg.Provisioning.ReadinessInterval)
 	}
 
 	if cfg.Provisioning.SSHPort != 22 {
@@ -372,9 +372,9 @@ func TestProvisioningConfigGetDurations(t *testing.T) {
 		{
 			name:             "valid durations",
 			timeout:          "5m",
-			interval:         "10s",
+			interval:         "5s",
 			expectedTimeout:  5 * time.Minute,
-			expectedInterval: 10 * time.Second,
+			expectedInterval: 5 * time.Second,
 		},
 		{
 			name:             "different valid durations",
@@ -395,7 +395,7 @@ func TestProvisioningConfigGetDurations(t *testing.T) {
 			timeout:          "5m",
 			interval:         "not-a-duration",
 			expectedTimeout:  5 * time.Minute,
-			expectedInterval: 10 * time.Second, // default
+			expectedInterval: 5 * time.Second, // hardcoded fallback in GetReadinessInterval
 		},
 	}
 
