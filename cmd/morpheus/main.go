@@ -62,8 +62,12 @@ func handlePlant() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "❌ Missing arguments")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Usage: morpheus plant <cloud|local> <size>")
-		fmt.Fprintln(os.Stderr, "       morpheus plant <size>           (defaults to 'cloud' on Termux)")
+		if isTermux() {
+			fmt.Fprintln(os.Stderr, "Usage: morpheus plant <size>")
+			fmt.Fprintln(os.Stderr, "       morpheus plant cloud <size>  (explicit)")
+		} else {
+			fmt.Fprintln(os.Stderr, "Usage: morpheus plant <cloud|local> <size>")
+		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Sizes:")
 		fmt.Fprintln(os.Stderr, "  wood   - 1 machine  (~5-7 min)  💰 ~€3/month")
@@ -72,12 +76,12 @@ func handlePlant() {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		if isTermux() {
-			fmt.Fprintln(os.Stderr, "  morpheus plant wood         # Quick! Create 1 machine (cloud mode)")
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Same, explicit cloud mode")
+			fmt.Fprintln(os.Stderr, "  morpheus plant wood         # Quick! Create 1 machine")
+			fmt.Fprintln(os.Stderr, "  morpheus plant forest       # Create 3-machine cluster")
 		} else {
 			fmt.Fprintln(os.Stderr, "  morpheus plant cloud wood   # Create 1 machine on Hetzner Cloud")
 			fmt.Fprintln(os.Stderr, "  morpheus plant local wood   # Create 1 machine locally (Docker)")
-			fmt.Fprintln(os.Stderr, "  morpheus plant forest       # Create 3-machine cluster")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud forest # Create 3-machine cluster")
 		}
 		os.Exit(1)
 	}
@@ -87,13 +91,23 @@ func handlePlant() {
 		// Two arguments: could be "plant wood" or "plant cloud wood"
 		arg := os.Args[2]
 		if arg == "wood" || arg == "forest" || arg == "jungle" {
-			// It's a size, default to cloud mode (especially on Termux)
-			deploymentType = "cloud"
-			size = arg
+			// On Termux, default to cloud mode (Docker doesn't work on Android)
+			// On Desktop, require explicit mode to prevent accidental cloud deployments
 			if isTermux() {
-				fmt.Println("💡 Using cloud mode (default for Termux)")
+				deploymentType = "cloud"
+				size = arg
+				fmt.Println("\n💡 Using cloud mode (default on Termux)")
 			} else {
-				fmt.Println("💡 Using cloud mode (use 'local' for Docker-based testing)")
+				// Desktop: require explicit mode to prevent billing surprises
+				fmt.Fprintf(os.Stderr, "\n❌ Please specify deployment mode\n\n")
+				fmt.Fprintf(os.Stderr, "Usage: morpheus plant <cloud|local> %s\n\n", arg)
+				fmt.Fprintf(os.Stderr, "Options:\n")
+				fmt.Fprintf(os.Stderr, "  cloud - Deploy to Hetzner Cloud (requires API token, incurs charges)\n")
+				fmt.Fprintf(os.Stderr, "  local - Deploy locally with Docker (free, requires Docker running)\n\n")
+				fmt.Fprintf(os.Stderr, "Examples:\n")
+				fmt.Fprintf(os.Stderr, "  morpheus plant cloud %s   # Create on Hetzner Cloud\n", arg)
+				fmt.Fprintf(os.Stderr, "  morpheus plant local %s   # Create locally with Docker\n", arg)
+				os.Exit(1)
 			}
 		} else if arg == "cloud" || arg == "local" {
 			// It's a deployment type without size
@@ -1074,17 +1088,16 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	if isOnTermux {
-		fmt.Println("  plant <size>                Plant a forest (defaults to cloud mode)")
+		fmt.Println("  plant <size>                Plant a forest (cloud mode)")
 		fmt.Println("                              Sizes:")
 		fmt.Println("                                wood   - 1 machine  (~5-7 min, €3/mo)")
 		fmt.Println("                                forest - 3 machines (~15-20 min, €9/mo)")
 		fmt.Println("                                jungle - 5 machines (~25-35 min, €15/mo)")
 	} else {
 		fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
-		fmt.Println("  plant <size>                Provision on cloud (shortcut)")
 		fmt.Println("                              Deployment types:")
-		fmt.Println("                                cloud - Provision on Hetzner Cloud")
-		fmt.Println("                                local - Provision locally using Docker")
+		fmt.Println("                                cloud - Provision on Hetzner Cloud (requires API token)")
+		fmt.Println("                                local - Provision locally using Docker (free)")
 		fmt.Println("                              Sizes:")
 		fmt.Println("                                wood   - 1 machine  (~5-7 min)")
 		fmt.Println("                                forest - 3 machines (~15-20 min)")
@@ -1107,10 +1120,9 @@ func printHelp() {
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
 	} else {
-		fmt.Println("  morpheus plant wood         # Create 1 machine (cloud mode)")
-		fmt.Println("  morpheus plant cloud wood   # Same, explicit cloud mode")
+		fmt.Println("  morpheus plant cloud wood   # Create 1 machine on Hetzner Cloud")
 		fmt.Println("  morpheus plant local wood   # Create 1 machine locally (Docker)")
-		fmt.Println("  morpheus plant forest       # Create 3-machine cluster")
+		fmt.Println("  morpheus plant cloud forest # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
