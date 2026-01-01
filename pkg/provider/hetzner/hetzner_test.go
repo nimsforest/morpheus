@@ -729,23 +729,21 @@ func TestIntersectLocationsPreserveOrder(t *testing.T) {
 	}
 }
 
-// TestGetHetznerServerTypePrimary tests that cx22 is the primary for small profile
+// TestGetHetznerServerTypePrimary tests that cx23 is the primary for small profile
 func TestGetHetznerServerTypePrimary(t *testing.T) {
 	mapping := GetHetznerServerType(provider.ProfileSmall)
 
-	if mapping.Primary != "cx22" {
-		t.Errorf("Expected cx22 as primary for small profile, got %s", mapping.Primary)
+	if mapping.Primary != "cx23" {
+		t.Errorf("Expected cx23 as primary for small profile, got %s", mapping.Primary)
 	}
 
-	// Verify fallbacks include cpx11
-	hasCpx11 := false
-	for _, fb := range mapping.Fallbacks {
-		if fb == "cpx11" {
-			hasCpx11 = true
-			break
-		}
+	// Verify cpx22 is the first fallback
+	if len(mapping.Fallbacks) == 0 || mapping.Fallbacks[0] != "cpx22" {
+		t.Errorf("Expected cpx22 as first fallback for small profile, got %v", mapping.Fallbacks)
 	}
-	if !hasCpx11 {
-		t.Error("Expected cpx11 in fallbacks for small profile")
+
+	// Verify ccx13 is the second fallback
+	if len(mapping.Fallbacks) < 2 || mapping.Fallbacks[1] != "ccx13" {
+		t.Errorf("Expected ccx13 as second fallback for small profile, got %v", mapping.Fallbacks)
 	}
 }

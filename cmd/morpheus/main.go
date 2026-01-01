@@ -296,8 +296,8 @@ func handlePlant() {
 	fmt.Printf("   Forest ID:  %s\n", forestID)
 	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
 	if deploymentType == "cloud" {
-		fmt.Printf("   Machine:    %s\n", serverType)
-		fmt.Printf("   Location:   %s\n", hetzner.GetLocationDescription(location))
+		fmt.Printf("   Machine:    %s (with automatic fallback if unavailable)\n", serverType)
+		fmt.Printf("   Location:   %s (with automatic fallback if unavailable)\n", hetzner.GetLocationDescription(location))
 	} else {
 		fmt.Printf("   Location:   %s\n", location)
 	}
@@ -312,10 +312,23 @@ func handlePlant() {
 	
 	fmt.Println("🚀 Starting provisioning...")
 
-	// Use the locations already determined during server type selection
-	availableLocations := cfg.Infrastructure.Locations
-	
-	err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
+	// For Hetzner cloud deployments, use the full fallback system that tries
+	// alternative server types if the primary one fails in all locations.
+	// This handles cases where Hetzner's API reports availability (via pricing data)
+	// but actual provisioning fails with "unsupported location for server type".
+	if deploymentType == "cloud" {
+		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+			profile := provider.GetProfileForSize(size)
+			err = provisionWithFallback(ctx, provisioner, hetznerProv, req, profile)
+		} else {
+			// Non-Hetzner cloud (shouldn't happen currently)
+			availableLocations := cfg.Infrastructure.Locations
+			err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
+		}
+	} else {
+		// Local deployments - just try the single location
+		err = provisioner.Provision(ctx, req)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Provisioning failed: %s\n", err)
 		os.Exit(1)
@@ -383,7 +396,7 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 		// Check if the error is a location availability error
 		errStr := err.Error()
 		if containsLocationError(errStr) {
-			fmt.Printf("⚠️  Location %s is unavailable, trying next location...\n\n", location)
+			fmt.Printf("⚠️  Location %s is unavailable for %s, trying next location...\n\n", location, req.ServerType)
 			continue
 		}
 
@@ -392,7 +405,7 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 	}
 
 	// All locations failed or encountered a non-location error
-	if containsLocationError(lastErr.Error()) && len(attemptedLocations) > 1 {
+	if containsLocationError(lastErr.Error()) && len(attemptedLocations) > 0 {
 		return fmt.Errorf("all configured locations are unavailable (%s): %w\n\n"+
 			"Hetzner may be experiencing capacity issues. Try again later or update your config with different locations:\n"+
 			"  Available locations: ash (Ashburn, USA), fsn1 (Falkenstein, Germany), nbg1 (Nuremberg, Germany), \n"+
@@ -401,6 +414,146 @@ func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Prov
 	}
 
 	return lastErr
+}
+
+// provisionWithFallback tries to provision a forest, automatically falling back
+// to alternative server types and locations if the primary ones are unavailable.
+// This handles cases where Hetzner's API reports a server type is available in a
+// location (via pricing data) but actual provisioning fails.
+//
+// Priority order:
+// 1. cx22 in Helsinki (hel1)
+// 2. cpx22 in Helsinki, then Nuremberg (nbg1), then others
+// 3. Other fallbacks in Helsinki, then other locations
+func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner, hetznerProv *hetzner.Provider, req forest.ProvisionRequest, profile provider.MachineProfile) error {
+	// Get all server type options for this profile
+	mapping := hetzner.GetHetznerServerType(profile)
+	allServerTypes := append([]string{mapping.Primary}, mapping.Fallbacks...)
+
+	// Preferred location order: Helsinki first, then Nuremberg, then others
+	preferredLocations := hetzner.GetDefaultLocations()
+
+	var lastErr error
+	var attemptedCombos []string
+	var validServerTypes []string
+	isFirstAttempt := true
+
+	// First, validate which server types actually exist in Hetzner
+	for _, serverType := range allServerTypes {
+		exists, err := hetznerProv.ValidateServerType(ctx, serverType)
+		if err != nil {
+			fmt.Printf("   ⚠️  Could not validate server type %s: %v\n", serverType, err)
+			continue
+		}
+		if !exists {
+			fmt.Printf("   ⚠️  Server type %s does not exist in Hetzner, skipping\n", serverType)
+			continue
+		}
+		validServerTypes = append(validServerTypes, serverType)
+	}
+
+	if len(validServerTypes) == 0 {
+		return fmt.Errorf("none of the configured server types exist in Hetzner: %s", joinLocations(allServerTypes))
+	}
+
+	// Try each validated server type
+	for serverTypeIdx, serverType := range validServerTypes {
+		// Get available locations for this server type
+		availableLocations, err := hetznerProv.GetAvailableLocations(ctx, serverType)
+		if err != nil {
+			fmt.Printf("   ⚠️  Could not check availability for %s: %v\n", serverType, err)
+			continue
+		}
+		if len(availableLocations) == 0 {
+			fmt.Printf("   ⚠️  Server type %s has no available locations\n", serverType)
+			continue
+		}
+
+		// Reorder available locations to match preferred order
+		orderedLocations := orderLocationsByPreference(availableLocations, preferredLocations)
+
+		// Show info when switching to fallback server type
+		if serverTypeIdx > 0 && len(attemptedCombos) > 0 {
+			fmt.Printf("\n📦 Trying alternative server type: %s (~€%.2f/mo)\n", 
+				serverType, hetzner.GetEstimatedCost(serverType))
+		}
+
+		// Try each location for this server type (in preferred order)
+		for _, location := range orderedLocations {
+			attemptedCombos = append(attemptedCombos, fmt.Sprintf("%s@%s", serverType, location))
+
+			// Update request with current server type and location
+			req.ServerType = serverType
+			req.Location = location
+
+			if !isFirstAttempt {
+				fmt.Printf("   📍 Trying %s in %s...\n", serverType, hetzner.GetLocationDescription(location))
+			}
+			isFirstAttempt = false
+
+			err := provisioner.Provision(ctx, req)
+			if err == nil {
+				// Success!
+				return nil
+			}
+
+			lastErr = err
+
+			// Check if the error is a location/server type availability error
+			errStr := err.Error()
+			if containsLocationError(errStr) {
+				fmt.Printf("   ⚠️  %s not available in %s, trying next option...\n", serverType, location)
+				continue
+			}
+
+			// If it's not a location error, this is a real error - stop trying
+			return err
+		}
+	}
+
+	// All combinations failed
+	if lastErr != nil && containsLocationError(lastErr.Error()) {
+		return fmt.Errorf("no server type/location combination available\n\n"+
+			"Tried %d combinations across server types: %s\n\n"+
+			"This usually means Hetzner is experiencing high demand or capacity issues.\n"+
+			"Please try again in a few minutes.\n"+
+			"For status updates, check: https://status.hetzner.com/",
+			len(attemptedCombos), joinLocations(validServerTypes))
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+
+	return fmt.Errorf("no server type available for profile")
+}
+
+// orderLocationsByPreference reorders available locations to match the preferred order.
+// Locations in preferredOrder come first (in that order), followed by any remaining locations.
+func orderLocationsByPreference(available, preferredOrder []string) []string {
+	availableSet := make(map[string]bool)
+	for _, loc := range available {
+		availableSet[loc] = true
+	}
+
+	var result []string
+
+	// First, add locations in preferred order (if available)
+	for _, loc := range preferredOrder {
+		if availableSet[loc] {
+			result = append(result, loc)
+			delete(availableSet, loc)
+		}
+	}
+
+	// Then add any remaining available locations
+	for _, loc := range available {
+		if availableSet[loc] {
+			result = append(result, loc)
+		}
+	}
+
+	return result
 }
 
 // handleServerTypeLocationMismatch presents an interactive menu when server type

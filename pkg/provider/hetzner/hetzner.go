@@ -322,6 +322,68 @@ func (p *Provider) GetAvailableLocations(ctx context.Context, serverTypeName str
 	return locations, nil
 }
 
+// ValidateServerType checks if a server type exists in Hetzner's API
+func (p *Provider) ValidateServerType(ctx context.Context, serverTypeName string) (bool, error) {
+	serverType, _, err := p.client.ServerType.GetByName(ctx, serverTypeName)
+	if err != nil {
+		return false, wrapAuthError(err, "failed to validate server type")
+	}
+	return serverType != nil, nil
+}
+
+// ListAvailableServerTypes returns all server types available from Hetzner
+func (p *Provider) ListAvailableServerTypes(ctx context.Context) ([]string, error) {
+	serverTypes, err := p.client.ServerType.All(ctx)
+	if err != nil {
+		return nil, wrapAuthError(err, "failed to list server types")
+	}
+
+	var names []string
+	for _, st := range serverTypes {
+		names = append(names, st.Name)
+	}
+	return names, nil
+}
+
+// GetServerTypeInfo returns detailed information about a server type
+func (p *Provider) GetServerTypeInfo(ctx context.Context, serverTypeName string) (*ServerTypeInfo, error) {
+	serverType, _, err := p.client.ServerType.GetByName(ctx, serverTypeName)
+	if err != nil {
+		return nil, wrapAuthError(err, "failed to get server type info")
+	}
+	if serverType == nil {
+		return nil, fmt.Errorf("server type not found: %s", serverTypeName)
+	}
+
+	var locations []string
+	for _, pricing := range serverType.Pricings {
+		if pricing.Location != nil {
+			locations = append(locations, pricing.Location.Name)
+		}
+	}
+
+	return &ServerTypeInfo{
+		Name:         serverType.Name,
+		Description:  serverType.Description,
+		Cores:        serverType.Cores,
+		Memory:       serverType.Memory,
+		Disk:         serverType.Disk,
+		Architecture: string(serverType.Architecture),
+		Locations:    locations,
+	}, nil
+}
+
+// ServerTypeInfo contains information about a Hetzner server type
+type ServerTypeInfo struct {
+	Name         string
+	Description  string
+	Cores        int
+	Memory       float32
+	Disk         int
+	Architecture string
+	Locations    []string
+}
+
 // FilterLocationsByServerType filters the given locations to only include those
 // where the specified server type is available
 func (p *Provider) FilterLocationsByServerType(ctx context.Context, locations []string, serverTypeName string) ([]string, []string, error) {

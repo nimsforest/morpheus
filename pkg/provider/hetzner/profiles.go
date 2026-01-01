@@ -24,10 +24,10 @@ type MachineTypeMapping struct {
 func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 	mappings := map[provider.MachineProfile]MachineTypeMapping{
 		provider.ProfileSmall: {
-			Primary: "cx22",  // 2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo
+			Primary: "cx23",  // Preferred: shared CPU
 			Fallbacks: []string{
-				"cpx11", // 2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo (better performance)
-				"cx21",  // 2 vCPU (shared Intel), 4 GB RAM - ~€3.29/mo (older gen)
+				"cpx22", // Dedicated AMD - first fallback
+				"ccx13", // Dedicated AMD - second fallback
 			},
 			Architecture: "x86",
 		},
@@ -115,12 +115,13 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 }
 
 // GetDefaultLocations returns a recommended set of locations for Hetzner
-// These are prioritized by reliability and geographic distribution
+// These are prioritized by reliability and server type availability.
+// Helsinki (hel1) is preferred first, then German locations (nbg1, fsn1).
 func GetDefaultLocations() []string {
 	return []string{
-		"fsn1", // Falkenstein, Germany - Most established DC
-		"nbg1", // Nuremberg, Germany - Second German DC
-		"hel1", // Helsinki, Finland - Northern Europe
+		"hel1", // Helsinki, Finland - Preferred location
+		"nbg1", // Nuremberg, Germany - Second choice
+		"fsn1", // Falkenstein, Germany - Third choice
 		"ash",  // Ashburn, USA - US East Coast
 		"hil",  // Hillsboro, USA - US West Coast
 	}
@@ -180,17 +181,27 @@ func intersectLocationsPreserveOrder(preferred, available []string) []string {
 // GetEstimatedCost returns the estimated monthly cost for a server type
 func GetEstimatedCost(serverType string) float64 {
 	// Approximate monthly costs in EUR (as of 2024)
+	// Note: Prices may vary; these are estimates for reference
 	costs := map[string]float64{
-		"cx22":  3.29,
+		"cx11":  3.29,
 		"cx21":  3.29,
+		"cx22":  3.29,
+		"cx23":  4.49,
+		"cx31":  6.29,
 		"cx32":  6.29,
+		"cx41":  12.29,
 		"cx42":  12.29,
+		"cx51":  24.29,
 		"cx52":  24.29,
 		"cpx11": 4.49,
 		"cpx21": 8.49,
+		"cpx22": 11.49,
 		"cpx31": 15.49,
 		"cpx41": 29.49,
 		"cpx51": 57.49,
+		"ccx13": 12.49,
+		"ccx23": 24.49,
+		"ccx33": 48.49,
 		"cax11": 3.79,
 		"cax21": 7.59,
 		"cax31": 15.19,
