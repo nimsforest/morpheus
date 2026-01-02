@@ -431,6 +431,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context, keyName string) (*hcloud.SS
 	}
 	if key != nil {
 		// Key already exists
+		fmt.Printf("      ✓ SSH key '%s' found in Hetzner (ID: %d)\n", keyName, key.ID)
 		return key, nil
 	}
 
@@ -576,7 +577,14 @@ func convertServer(server *hcloud.Server) *provider.Server {
 		publicIPv4 = server.PublicNet.IPv4.IP.String()
 	}
 	if server.PublicNet.IPv6.IP != nil {
-		publicIPv6 = server.PublicNet.IPv6.IP.String()
+		// Hetzner returns the /64 network address (e.g., 2a01:4f8:c17:1234::)
+		// The server's actual address is ::1 within that network
+		ipv6Base := server.PublicNet.IPv6.IP.String()
+		if strings.HasSuffix(ipv6Base, "::") {
+			publicIPv6 = ipv6Base + "1"
+		} else {
+			publicIPv6 = ipv6Base
+		}
 	}
 
 	return &provider.Server{

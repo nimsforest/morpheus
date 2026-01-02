@@ -156,13 +156,15 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	}
 
 	// Create server
+	sshKeyName := p.config.GetSSHKeyName()
 	fmt.Printf("      ⏳ Creating server on cloud provider...\n")
+	fmt.Printf("      SSH key: %s\n", sshKeyName)
 	createReq := provider.CreateServerRequest{
 		Name:       nodeName,
 		ServerType: serverType,
 		Image:      image,
 		Location:   req.Location,
-		SSHKeys:    []string{p.config.GetSSHKeyName()},
+		SSHKeys:    []string{sshKeyName},
 		UserData:   userData,
 		Labels: map[string]string{
 			"managed-by": "morpheus",
