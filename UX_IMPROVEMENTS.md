@@ -142,7 +142,7 @@ forest-1735679456    forest  nbg1      ⏳ provisioning 2026-01-01 11:15
    12345678  edge   2001:db8::1         fsn1      ✅ active
 
 💡 SSH into machines:
-   ssh root@[2001:db8::1]
+   ssh root@2001:db8::1
 
 🗑️  Teardown: morpheus teardown forest-1735679123
 ```
