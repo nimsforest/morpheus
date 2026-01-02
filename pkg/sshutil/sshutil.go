@@ -166,3 +166,127 @@ func ReadAndCalculateFingerprint(keyPath string) (fingerprint, publicKey string,
 
 	return fingerprint, publicKey, nil
 }
+
+// RemoveKnownHostEntry removes entries for a specific host from the known_hosts file.
+// This is useful when a server is reprovisioned and gets a new host key.
+// The host can be an IP address (IPv4 or IPv6) or hostname.
+func RemoveKnownHostEntry(host string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	knownHostsPath := filepath.Join(homeDir, ".ssh", "known_hosts")
+
+	// Read existing known_hosts
+	data, err := os.ReadFile(knownHostsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No known_hosts file, nothing to remove
+			return nil
+		}
+		return fmt.Errorf("failed to read known_hosts: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var newLines []string
+	removed := 0
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			newLines = append(newLines, line)
+			continue
+		}
+
+		// Check if this line contains the host
+		// known_hosts format: host[,host2,...] keytype base64key [comment]
+		// For IPv6, the host might be in brackets: [2001:db8::1]
+		if containsHost(line, host) {
+			removed++
+			continue // Skip this line (remove it)
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	if removed == 0 {
+		// No entries found for this host
+		return nil
+	}
+
+	// Write back the filtered known_hosts
+	newContent := strings.Join(newLines, "\n")
+	// Ensure file ends with newline if it has content
+	if len(newLines) > 0 && newLines[len(newLines)-1] != "" {
+		newContent += "\n"
+	}
+
+	if err := os.WriteFile(knownHostsPath, []byte(newContent), 0600); err != nil {
+		return fmt.Errorf("failed to write known_hosts: %w", err)
+	}
+
+	return nil
+}
+
+// containsHost checks if a known_hosts line contains a specific host.
+// Handles both IPv4 and IPv6 addresses, with or without brackets.
+func containsHost(line, host string) bool {
+	// Split the line to get the hosts part (first field)
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return false
+	}
+
+	hostsPart := fields[0]
+
+	// The hosts can be comma-separated
+	hosts := strings.Split(hostsPart, ",")
+
+	// Normalize the input host (remove brackets if present)
+	normalizedHost := strings.TrimPrefix(host, "[")
+	normalizedHost = strings.TrimSuffix(normalizedHost, "]")
+
+	for _, h := range hosts {
+		// Normalize the host from the file
+		h = strings.TrimSpace(h)
+
+		// Handle bracketed hosts with optional port: [host]:port or [host]
+		if strings.HasPrefix(h, "[") {
+			// Find the closing bracket
+			closeBracket := strings.Index(h, "]")
+			if closeBracket != -1 {
+				// Extract the host inside brackets
+				h = h[1:closeBracket]
+			}
+		}
+
+		if h == normalizedHost {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAllDigits checks if a string contains only digits
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// GetKnownHostsPath returns the path to the user's known_hosts file
+func GetKnownHostsPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(homeDir, ".ssh", "known_hosts")
+}

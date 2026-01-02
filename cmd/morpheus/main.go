@@ -1391,9 +1391,19 @@ func runSSHCheck(exitOnResult bool) bool {
 										fmt.Printf("   ❌ Failed to upload key: %s\n", createErr)
 									} else {
 										fmt.Printf("   ✅ Uploaded new SSH key '%s' to Hetzner\n", keyName)
+
+										// Clear old host keys from known_hosts for all active servers
+										clearKnownHostsForActiveServers()
+
 										fmt.Println()
-										fmt.Println("   After re-provisioning your servers, the new key will be used.")
-										allOk = true // Fixed the issue
+										fmt.Println("   ⚠️  IMPORTANT: Your existing servers still have the OLD key installed.")
+										fmt.Println("   You need to teardown and re-provision to use the new key:")
+										fmt.Println()
+										fmt.Println("      morpheus list                    # See your forests")
+										fmt.Println("      morpheus teardown <forest-id>    # Remove old servers")
+										fmt.Println("      morpheus plant small             # Create new servers with new key")
+										fmt.Println()
+										allOk = true // Fixed the Hetzner key issue
 									}
 								}
 							case "2":
@@ -1511,6 +1521,43 @@ func classifyNetError(err error) string {
 		return "timeout"
 	default:
 		return err.Error()
+	}
+}
+
+// clearKnownHostsForActiveServers removes host key entries from known_hosts
+// for all active servers in the registry. This is useful when SSH keys are
+// updated and servers will be reprovisioned with new host keys.
+func clearKnownHostsForActiveServers() {
+	registryPath := getRegistryPath()
+	registry, err := forest.NewRegistry(registryPath)
+	if err != nil {
+		return // Silently fail if registry can't be loaded
+	}
+
+	forests := registry.ListForests()
+	var clearedHosts []string
+
+	for _, f := range forests {
+		nodes, err := registry.GetNodes(f.ID)
+		if err != nil {
+			continue
+		}
+
+		for _, node := range nodes {
+			if node.IP != "" {
+				if err := sshutil.RemoveKnownHostEntry(node.IP); err == nil {
+					clearedHosts = append(clearedHosts, node.IP)
+				}
+			}
+		}
+	}
+
+	if len(clearedHosts) > 0 {
+		fmt.Println()
+		fmt.Printf("   🔑 Cleared %d old host key(s) from known_hosts:\n", len(clearedHosts))
+		for _, host := range clearedHosts {
+			fmt.Printf("      - %s\n", host)
+		}
 	}
 }
 
