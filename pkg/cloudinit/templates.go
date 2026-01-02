@@ -233,6 +233,61 @@ runcmd:
   # Prepare for direct binary deployment
   - systemctl daemon-reload
   
+  {{if .NimsForestInstall}}
+  # Download and install NimsForest from GitHub releases
+  - |
+    echo "📦 Installing NimsForest from GitHub releases..."
+    NIMSFOREST_REPO="{{.NimsForestRepo}}"
+    NIMSFOREST_BINARY="{{if .NimsForestBinary}}{{.NimsForestBinary}}{{else}}nimsforest-linux-amd64{{end}}"
+    
+    # Get latest release version from GitHub API
+    LATEST_VERSION=$(curl -s "https://api.github.com/repos/${NIMSFOREST_REPO}/releases/latest" | jq -r '.tag_name // empty')
+    
+    if [ -z "$LATEST_VERSION" ]; then
+      echo "⚠️  Could not determine latest version, trying 'latest' tag..."
+      LATEST_VERSION="latest"
+    fi
+    
+    echo "📥 Downloading NimsForest ${LATEST_VERSION}..."
+    DOWNLOAD_URL="https://github.com/${NIMSFOREST_REPO}/releases/download/${LATEST_VERSION}/${NIMSFOREST_BINARY}"
+    
+    if curl -fsSL -o /opt/nimsforest/bin/nimsforest "$DOWNLOAD_URL"; then
+      chmod +x /opt/nimsforest/bin/nimsforest
+      echo "✅ NimsForest installed to /opt/nimsforest/bin/nimsforest"
+      
+      # Create systemd service for NimsForest
+      cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
+[Unit]
+Description=NimsForest Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+Restart=always
+RestartSec=5
+Environment=FOREST_ID={{.ForestID}}
+Environment=NODE_ROLE={{.NodeRole}}
+WorkingDirectory=/var/lib/nimsforest
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+
+      systemctl daemon-reload
+      systemctl enable nimsforest
+      systemctl start nimsforest
+      echo "✅ NimsForest service started"
+    else
+      echo "⚠️  Failed to download NimsForest from ${DOWNLOAD_URL}"
+      echo "    You can manually install later with:"
+      echo "    curl -fsSL -o /opt/nimsforest/bin/nimsforest ${DOWNLOAD_URL}"
+    fi
+  {{end}}
+  
   # Signal readiness
   - |
     INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
@@ -248,12 +303,13 @@ runcmd:
           \"role\": \"{{.NodeRole}}\",
           \"ip\": \"$INSTANCE_IP\",
           \"location\": \"$LOCATION\",
-          \"status\": \"infrastructure_ready\",
+          \"status\": \"{{if .NimsForestInstall}}active{{else}}infrastructure_ready{{end}}\",
           \"provisioner\": \"morpheus\"
         }" || echo "Registry notification failed"
     fi
   
-  # Trigger nimsforest bootstrap
+  # Trigger nimsforest bootstrap (only if not auto-installed)
+  {{if not .NimsForestInstall}}
   - |
     if [ "{{.CallbackURL}}" != "" ]; then
       INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
@@ -268,8 +324,9 @@ runcmd:
           \"role\": \"{{.NodeRole}}\"
         }" || echo "NimsForest callback failed"
     fi
+  {{end}}
 
-final_message: "Morpheus infrastructure provisioning complete. Ready for NimsForest bootstrap."
+final_message: "Morpheus provisioning complete.{{if .NimsForestInstall}} NimsForest installed and running.{{else}} Ready for NimsForest bootstrap.{{end}}"
 `
 
 // StorageNodeTemplate is the cloud-init script for storage nodes
@@ -324,6 +381,52 @@ runcmd:
   - ufw allow 4222/tcp comment 'NATS client'
   - ufw --force enable
   
+  {{if .NimsForestInstall}}
+  # Download and install NimsForest from GitHub releases
+  - |
+    echo "📦 Installing NimsForest from GitHub releases..."
+    NIMSFOREST_REPO="{{.NimsForestRepo}}"
+    NIMSFOREST_BINARY="{{if .NimsForestBinary}}{{.NimsForestBinary}}{{else}}nimsforest-linux-amd64{{end}}"
+    
+    # Get latest release version from GitHub API
+    LATEST_VERSION=$(curl -s "https://api.github.com/repos/${NIMSFOREST_REPO}/releases/latest" | jq -r '.tag_name // empty')
+    
+    if [ -z "$LATEST_VERSION" ]; then
+      LATEST_VERSION="latest"
+    fi
+    
+    DOWNLOAD_URL="https://github.com/${NIMSFOREST_REPO}/releases/download/${LATEST_VERSION}/${NIMSFOREST_BINARY}"
+    
+    if curl -fsSL -o /opt/nimsforest/bin/nimsforest "$DOWNLOAD_URL"; then
+      chmod +x /opt/nimsforest/bin/nimsforest
+      
+      cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
+[Unit]
+Description=NimsForest Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+Restart=always
+RestartSec=5
+Environment=FOREST_ID={{.ForestID}}
+Environment=NODE_ROLE={{.NodeRole}}
+WorkingDirectory=/var/lib/nimsforest
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+
+      systemctl daemon-reload
+      systemctl enable nimsforest
+      systemctl start nimsforest
+    fi
+  {{end}}
+  
   # Signal readiness
   - |
     INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
@@ -339,12 +442,13 @@ runcmd:
           \"role\": \"{{.NodeRole}}\",
           \"ip\": \"$INSTANCE_IP\",
           \"location\": \"$LOCATION\",
-          \"status\": \"infrastructure_ready\",
+          \"status\": \"{{if .NimsForestInstall}}active{{else}}infrastructure_ready{{end}}\",
           \"provisioner\": \"morpheus\",
           \"storage_path\": \"/mnt/nimsforest-storage\"
         }" || echo "Registry notification failed"
     fi
   
+  {{if not .NimsForestInstall}}
   # Trigger nimsforest bootstrap
   - |
     if [ "{{.CallbackURL}}" != "" ]; then
@@ -360,8 +464,9 @@ runcmd:
           \"role\": \"{{.NodeRole}}\"
         }" || echo "NimsForest callback failed"
     fi
+  {{end}}
 
-final_message: "Morpheus infrastructure provisioning complete. Ready for NimsForest bootstrap."
+final_message: "Morpheus provisioning complete.{{if .NimsForestInstall}} NimsForest installed and running.{{else}} Ready for NimsForest bootstrap.{{end}}"
 `
 
 // Generate creates a cloud-init script for the given role and data
