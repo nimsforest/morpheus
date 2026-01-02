@@ -24,9 +24,10 @@ type TemplateData struct {
 	SSHKeys     []string
 
 	// NimsForest auto-installation
-	NimsForestInstall bool   // Auto-install NimsForest from GitHub releases
-	NimsForestRepo    string // GitHub repo (e.g., "nimsforest/nimsforest")
-	NimsForestBinary  string // Binary name pattern (e.g., "nimsforest-linux-amd64")
+	NimsForestInstall     bool   // Auto-install NimsForest
+	NimsForestDownloadURL string // Direct download URL (e.g., "https://nimsforest.io/bin/nimsforest")
+	NimsForestRepo        string // GitHub repo fallback (e.g., "nimsforest/nimsforest2")
+	NimsForestBinary      string // Binary name for GitHub releases (e.g., "nimsforest-linux-amd64")
 }
 
 // EdgeNodeTemplate is the cloud-init script for edge nodes
@@ -98,28 +99,24 @@ runcmd:
   - /usr/local/bin/morpheus-bootstrap
   
   {{if .NimsForestInstall}}
-  # Download and install NimsForest from GitHub releases
+  # Download and install NimsForest
   - |
-    echo "📦 Installing NimsForest from GitHub releases..."
+    echo "📦 Installing NimsForest..."
+    {{if .NimsForestDownloadURL}}
+    DOWNLOAD_URL="{{.NimsForestDownloadURL}}"
+    {{else}}
     NIMSFOREST_REPO="{{.NimsForestRepo}}"
     NIMSFOREST_BINARY="{{if .NimsForestBinary}}{{.NimsForestBinary}}{{else}}nimsforest-linux-amd64{{end}}"
-    
-    # Get latest release version from GitHub API
     LATEST_VERSION=$(curl -s "https://api.github.com/repos/${NIMSFOREST_REPO}/releases/latest" | jq -r '.tag_name // empty')
-    
-    if [ -z "$LATEST_VERSION" ]; then
-      echo "⚠️  Could not determine latest version, trying 'latest' tag..."
-      LATEST_VERSION="latest"
-    fi
-    
-    echo "📥 Downloading NimsForest ${LATEST_VERSION}..."
+    [ -z "$LATEST_VERSION" ] && LATEST_VERSION="latest"
     DOWNLOAD_URL="https://github.com/${NIMSFOREST_REPO}/releases/download/${LATEST_VERSION}/${NIMSFOREST_BINARY}"
+    {{end}}
     
+    echo "📥 Downloading from ${DOWNLOAD_URL}..."
     if curl -fsSL -o /opt/nimsforest/bin/nimsforest "$DOWNLOAD_URL"; then
       chmod +x /opt/nimsforest/bin/nimsforest
-      echo "✅ NimsForest installed to /opt/nimsforest/bin/nimsforest"
+      echo "✅ NimsForest installed"
       
-      # Create systemd service for NimsForest
       cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
 [Unit]
 Description=NimsForest Service
@@ -147,12 +144,10 @@ SERVICEEOF
       echo "✅ NimsForest service started"
     else
       echo "⚠️  Failed to download NimsForest from ${DOWNLOAD_URL}"
-      echo "    You can manually install later with:"
-      echo "    curl -fsSL -o /opt/nimsforest/bin/nimsforest ${DOWNLOAD_URL}"
     fi
   {{end}}
   
-  # Signal readiness to registry (infrastructure ready{{if not .NimsForestInstall}}, waiting for nimsforest{{end}})
+  # Signal readiness to registry
   - |
     INSTANCE_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "unknown")
     INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || hostname)

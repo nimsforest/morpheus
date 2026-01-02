@@ -49,9 +49,10 @@ type IntegrationConfig struct {
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
 
 	// NimsForest auto-installation settings
-	NimsForestInstall bool   `yaml:"nimsforest_install"` // Auto-install NimsForest on provisioned machines
-	NimsForestRepo    string `yaml:"nimsforest_repo"`    // GitHub repo (default: nimsforest/nimsforest)
-	NimsForestBinary  string `yaml:"nimsforest_binary"`  // Binary name pattern (default: nimsforest-linux-amd64)
+	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines
+	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // Direct URL to download binary (e.g., https://nimsforest.io/bin/nimsforest)
+	NimsForestRepo        string `yaml:"nimsforest_repo"`         // GitHub repo fallback (default: nimsforest/nimsforest2)
+	NimsForestBinary      string `yaml:"nimsforest_binary"`       // Binary name for GitHub releases (default: nimsforest-linux-amd64)
 }
 
 // DefaultsConfig defines default server settings (DEPRECATED)
