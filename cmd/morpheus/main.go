@@ -1336,11 +1336,43 @@ func runSSHCheck(exitOnResult bool) bool {
 			fmt.Printf("   ⚠️  Could not connect to Hetzner: %s\n", err)
 		} else {
 			keyName := cfg.GetSSHKeyName()
-			keyExists, err := hetznerProv.CheckSSHKeyExists(ctx, keyName)
+			keyInfo, err := hetznerProv.GetSSHKeyInfo(ctx, keyName)
 			if err != nil {
 				fmt.Printf("   ⚠️  Could not check SSH key: %s\n", err)
-			} else if keyExists {
+			} else if keyInfo != nil {
 				fmt.Printf("   ✅ SSH key '%s' exists in Hetzner Cloud\n", keyName)
+				fmt.Printf("      Hetzner fingerprint: %s\n", keyInfo.Fingerprint)
+
+				// Compare fingerprints if we found a local key
+				if foundKeyPath != "" {
+					localFingerprint, _, err := sshutil.ReadAndCalculateFingerprint(foundKeyPath)
+					if err != nil {
+						fmt.Printf("   ⚠️  Could not calculate local key fingerprint: %s\n", err)
+					} else {
+						fmt.Printf("      Local fingerprint:   %s\n", localFingerprint)
+						if localFingerprint == keyInfo.Fingerprint {
+							fmt.Println("   ✅ Fingerprints MATCH - your local key matches Hetzner")
+						} else {
+							allOk = false
+							fmt.Println()
+							fmt.Println("   ❌ FINGERPRINT MISMATCH!")
+							fmt.Println("      Your local SSH key does NOT match the key in Hetzner Cloud.")
+							fmt.Println("      This is why the server asks for a password!")
+							fmt.Println()
+							fmt.Println("   To fix this, choose one of these options:")
+							fmt.Println()
+							fmt.Println("   Option 1: Update the key in Hetzner (recommended if you regenerated your key):")
+							fmt.Printf("      hcloud ssh-key delete %s\n", keyName)
+							fmt.Printf("      hcloud ssh-key create --name %s --public-key-from-file %s\n", keyName, foundKeyPath)
+							fmt.Println()
+							fmt.Println("   Option 2: Use a different key name in config.yaml:")
+							fmt.Println("      ssh:")
+							fmt.Println("        key_name: my-new-key")
+							fmt.Println()
+							fmt.Println("   After fixing, re-provision your servers for the new key to be used.")
+						}
+					}
+				}
 			} else {
 				fmt.Printf("   ⚠️  SSH key '%s' not found in Hetzner Cloud\n", keyName)
 				fmt.Println("   Morpheus will automatically upload it when you provision")

@@ -2,6 +2,8 @@
 package sshutil
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -108,4 +110,59 @@ func FormatSSHAddress(ip string, port int) string {
 // IsIPv6 returns true if the given IP address appears to be IPv6.
 func IsIPv6(ip string) bool {
 	return strings.Contains(ip, ":")
+}
+
+// CalculateSSHKeyFingerprint calculates the MD5 fingerprint of an SSH public key.
+// The fingerprint format matches what Hetzner Cloud and other providers display.
+// Example output: "ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90"
+func CalculateSSHKeyFingerprint(publicKey string) (string, error) {
+	// SSH public key format: <type> <base64-data> [comment]
+	// Example: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG... user@host
+	parts := strings.Fields(publicKey)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid SSH public key format: expected at least 2 parts")
+	}
+
+	// Decode the base64 key data
+	keyData, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("failed to decode SSH key data: %w", err)
+	}
+
+	// Calculate MD5 hash
+	hash := md5.Sum(keyData)
+
+	// Format as colon-separated hex bytes
+	fingerprint := make([]string, len(hash))
+	for i, b := range hash {
+		fingerprint[i] = fmt.Sprintf("%02x", b)
+	}
+
+	return strings.Join(fingerprint, ":"), nil
+}
+
+// ReadAndCalculateFingerprint reads an SSH public key file and calculates its fingerprint.
+// Returns the fingerprint and the full public key content.
+func ReadAndCalculateFingerprint(keyPath string) (fingerprint, publicKey string, err error) {
+	// Expand ~ if present
+	if strings.HasPrefix(keyPath, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		keyPath = filepath.Join(homeDir, keyPath[2:])
+	}
+
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	publicKey = strings.TrimSpace(string(data))
+	fingerprint, err = CalculateSSHKeyFingerprint(publicKey)
+	if err != nil {
+		return "", "", err
+	}
+
+	return fingerprint, publicKey, nil
 }

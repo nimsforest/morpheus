@@ -424,6 +424,30 @@ func (p *Provider) CheckSSHKeyExists(ctx context.Context, keyName string) (bool,
 	return key != nil, nil
 }
 
+// SSHKeyInfo contains information about an SSH key from Hetzner Cloud
+type SSHKeyInfo struct {
+	Name        string
+	Fingerprint string
+	PublicKey   string
+}
+
+// GetSSHKeyInfo retrieves detailed information about an SSH key from Hetzner Cloud.
+// Returns nil if the key doesn't exist.
+func (p *Provider) GetSSHKeyInfo(ctx context.Context, keyName string) (*SSHKeyInfo, error) {
+	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+	if err != nil {
+		return nil, wrapAuthError(err, "failed to query SSH key")
+	}
+	if key == nil {
+		return nil, nil
+	}
+	return &SSHKeyInfo{
+		Name:        key.Name,
+		Fingerprint: key.Fingerprint,
+		PublicKey:   key.PublicKey,
+	}, nil
+}
+
 // ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.
 // If not found, it attempts to read from common SSH key locations and upload it.
 // Returns the SSH key from Hetzner Cloud.
