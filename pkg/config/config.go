@@ -47,6 +47,11 @@ type SSHConfig struct {
 type IntegrationConfig struct {
 	NimsForestURL string `yaml:"nimsforest_url"` // URL for NimsForest bootstrap callbacks
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
+
+	// NimsForest auto-installation settings
+	NimsForestInstall bool   `yaml:"nimsforest_install"` // Auto-install NimsForest on provisioned machines
+	NimsForestRepo    string `yaml:"nimsforest_repo"`    // GitHub repo (default: nimsforest/nimsforest)
+	NimsForestBinary  string `yaml:"nimsforest_binary"`  // Binary name pattern (default: nimsforest-linux-amd64)
 }
 
 // DefaultsConfig defines default server settings (DEPRECATED)
@@ -126,6 +131,11 @@ func (c *Config) applyInfrastructureDefaults() {
 	// Set default SSH key name if not provided
 	if c.Infrastructure.SSH.KeyName == "" {
 		c.Infrastructure.SSH.KeyName = "morpheus"
+	}
+
+	// Set default NimsForest repo if install is enabled but repo not specified
+	if c.Integration.NimsForestInstall && c.Integration.NimsForestRepo == "" {
+		c.Integration.NimsForestRepo = "nimsforest/nimsforest"
 	}
 }
 
