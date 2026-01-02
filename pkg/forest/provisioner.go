@@ -10,6 +10,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/sshutil"
 )
 
 // Provisioner handles forest provisioning
@@ -227,8 +228,8 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 	interval := p.config.Provisioning.GetReadinessInterval()
 	sshPort := p.config.Provisioning.SSHPort
 
-	// Format IPv6 addresses with brackets for SSH
-	addr := fmt.Sprintf("[%s]:%d", server.PublicIPv6, sshPort)
+	// Format address for TCP connection (IPv6 needs brackets with port)
+	addr := sshutil.FormatSSHAddress(server.PublicIPv6, sshPort)
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0

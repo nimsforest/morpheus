@@ -16,6 +16,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/provider"
 	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
 	"github.com/nimsforest/morpheus/pkg/provider/local"
+	"github.com/nimsforest/morpheus/pkg/sshutil"
 	"github.com/nimsforest/morpheus/pkg/updater"
 )
 
@@ -886,7 +887,7 @@ func handleStatus() {
 		fmt.Printf("💡 SSH into machines:\n")
 		for i, node := range nodes {
 			if i < 2 { // Show first 2 examples
-				fmt.Printf("   ssh root@%s\n", node.IP)
+				fmt.Printf("   %s\n", sshutil.FormatSSHCommand("root", node.IP))
 			}
 		}
 		if len(nodes) > 2 {
@@ -1341,7 +1342,7 @@ func runSSHCheck(exitOnResult bool) bool {
 				sshPort = cfg.Provisioning.SSHPort
 			}
 
-			addr := fmt.Sprintf("[%s]:%d", node.IP, sshPort)
+			addr := sshutil.FormatSSHAddress(node.IP, sshPort)
 			conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 			if err != nil {
 				fmt.Printf("   ⚠️  Cannot reach server %s: %s\n", node.IP, classifyNetError(err))
