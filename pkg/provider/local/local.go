@@ -19,12 +19,12 @@ type Provider struct {
 
 // dockerContainer represents a Docker container from inspect output
 type dockerContainer struct {
-	ID              string            `json:"Id"`
-	Name            string            `json:"Name"`
-	State           dockerState       `json:"State"`
-	NetworkSettings dockerNetwork     `json:"NetworkSettings"`
-	Config          dockerConfig      `json:"Config"`
-	Created         string            `json:"Created"`
+	ID              string        `json:"Id"`
+	Name            string        `json:"Name"`
+	State           dockerState   `json:"State"`
+	NetworkSettings dockerNetwork `json:"NetworkSettings"`
+	Config          dockerConfig  `json:"Config"`
+	Created         string        `json:"Created"`
 }
 
 type dockerState struct {
@@ -101,10 +101,10 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 		"--network", p.networkName,
 		"--hostname", req.Name,
 		// Expose standard ports for NATS
-		"-p", "4222",  // NATS client port
-		"-p", "6222",  // NATS cluster port
-		"-p", "8222",  // NATS monitoring port
-		"-p", "7777",  // Application port
+		"-p", "4222", // NATS client port
+		"-p", "6222", // NATS cluster port
+		"-p", "8222", // NATS monitoring port
+		"-p", "7777", // Application port
 	}
 
 	// Add labels
@@ -224,7 +224,7 @@ func (p *Provider) WaitForServer(ctx context.Context, serverID string, state pro
 func (p *Provider) ListServers(ctx context.Context, filters map[string]string) ([]*provider.Server, error) {
 	// Build filter args
 	args := []string{"ps", "-a", "--format", "{{.ID}}"}
-	
+
 	// Add label filters
 	args = append(args, "--filter", "label=morpheus.managed=true")
 	for key, value := range filters {

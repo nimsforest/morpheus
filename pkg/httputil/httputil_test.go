@@ -18,29 +18,29 @@ func TestCheckIPv6Connectivity(t *testing.T) {
 
 	if result.Available {
 		t.Logf("IPv6 is available, detected address: %s", result.Address)
-		
+
 		// If available, address should not be empty
 		if result.Address == "" {
 			t.Error("IPv6 reported as available but address is empty")
 		}
-		
+
 		// Error should be nil when available
 		if result.Error != nil {
 			t.Errorf("IPv6 reported as available but error is not nil: %v", result.Error)
 		}
-		
+
 		// Verify the address is a valid IPv6 address
 		if !isValidIPv6(result.Address) {
 			t.Errorf("Invalid IPv6 address format: %s", result.Address)
 		}
 	} else {
 		t.Logf("IPv6 is not available: %v", result.Error)
-		
+
 		// If not available, address should be empty
 		if result.Address != "" {
 			t.Errorf("IPv6 reported as unavailable but address is not empty: %s", result.Address)
 		}
-		
+
 		// Error should not be nil when unavailable
 		if result.Error == nil {
 			t.Error("IPv6 reported as unavailable but error is nil")
@@ -92,7 +92,7 @@ func TestIsValidIPv6(t *testing.T) {
 		{
 			name:     "Invalid IPv4-mapped IPv6",
 			input:    "::ffff:192.168.1.1", // IPv4-mapped IPv6 - not considered pure IPv6
-			expected: false,                 // We want pure IPv6 for connectivity check
+			expected: false,                // We want pure IPv6 for connectivity check
 		},
 	}
 
@@ -170,11 +170,11 @@ func TestCreateHTTPClient(t *testing.T) {
 	// Test that creating an HTTP client doesn't panic
 	timeout := 10 * time.Second
 	client := CreateHTTPClient(timeout)
-	
+
 	if client == nil {
 		t.Error("CreateHTTPClient returned nil")
 	}
-	
+
 	if client.Timeout != timeout {
 		t.Errorf("Client timeout = %v, expected %v", client.Timeout, timeout)
 	}

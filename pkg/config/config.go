@@ -29,9 +29,9 @@ type ProvisioningConfig struct {
 
 // InfrastructureConfig defines infrastructure provider settings
 type InfrastructureConfig struct {
-	Provider string              `yaml:"provider"`
-	SSH      SSHConfig           `yaml:"ssh"`
-	
+	Provider string    `yaml:"provider"`
+	SSH      SSHConfig `yaml:"ssh"`
+
 	// DEPRECATED: Legacy fields for backward compatibility
 	Defaults  *DefaultServerConfig `yaml:"defaults,omitempty"`
 	Locations []string             `yaml:"locations,omitempty"`
@@ -111,7 +111,7 @@ func (c *Config) applyProvisioningDefaults() {
 func (c *Config) applyInfrastructureDefaults() {
 	// IPv6-only by default (IPv4 costs extra on Hetzner)
 	// No configuration needed - always uses IPv6
-	
+
 	// Migrate from legacy config format
 	if c.Infrastructure.Defaults != nil {
 		// Migrate SSH config
@@ -122,7 +122,7 @@ func (c *Config) applyInfrastructureDefaults() {
 			c.Infrastructure.SSH.KeyPath = c.Infrastructure.Defaults.SSHKeyPath
 		}
 	}
-	
+
 	// Set default SSH key name if not provided
 	if c.Infrastructure.SSH.KeyName == "" {
 		c.Infrastructure.SSH.KeyName = "morpheus"

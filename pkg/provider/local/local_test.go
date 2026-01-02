@@ -46,7 +46,7 @@ func TestNewProvider(t *testing.T) {
 func TestCheckDockerAvailable(t *testing.T) {
 	// This test depends on whether Docker is installed
 	err := checkDockerAvailable()
-	
+
 	// Check if docker command exists
 	_, cmdErr := exec.LookPath("docker")
 	if cmdErr != nil {

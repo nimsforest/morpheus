@@ -10,13 +10,13 @@ import (
 // MachineTypeMapping maps machine profiles to Hetzner-specific server types
 // with fallback options if the primary type is unavailable
 type MachineTypeMapping struct {
-	Primary    string   // Primary choice
-	Fallbacks  []string // Fallback options in order of preference
-	Architecture string // "x86" or "arm"
+	Primary      string   // Primary choice
+	Fallbacks    []string // Fallback options in order of preference
+	Architecture string   // "x86" or "arm"
 }
 
 // GetHetznerServerType returns the appropriate Hetzner server type for a machine profile
-// 
+//
 // Morpheus is opinionated: We use Ubuntu 24.04 and x86 architecture only.
 // ARM types (cax series) are NOT included because ubuntu-24.04 doesn't support ARM on Hetzner.
 //
@@ -24,7 +24,7 @@ type MachineTypeMapping struct {
 func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 	mappings := map[provider.MachineProfile]MachineTypeMapping{
 		provider.ProfileSmall: {
-			Primary: "cx23",  // Preferred: shared CPU
+			Primary: "cx23", // Preferred: shared CPU
 			Fallbacks: []string{
 				"cpx22", // Dedicated AMD - first fallback
 				"ccx13", // Dedicated AMD - second fallback
@@ -62,10 +62,10 @@ func GetHetznerServerType(profile provider.MachineProfile) MachineTypeMapping {
 // in the preferred locations. This ensures cost optimization.
 func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.MachineProfile, preferredLocations []string) (string, []string, error) {
 	mapping := GetHetznerServerType(profile)
-	
+
 	// Try primary first, then fallbacks in order
 	allOptions := append([]string{mapping.Primary}, mapping.Fallbacks...)
-	
+
 	// First pass: try to find a server type that works with preferred locations
 	for _, serverType := range allOptions {
 		// Get locations where this server type is available
@@ -74,11 +74,11 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 			// Skip this server type if we can't get its locations
 			continue
 		}
-		
+
 		if len(availableLocations) == 0 {
 			continue
 		}
-		
+
 		// If we have preferred locations, filter to those (preserving preferred order)
 		if len(preferredLocations) > 0 {
 			matchingLocations := intersectLocationsPreserveOrder(preferredLocations, availableLocations)
@@ -90,7 +90,7 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 			return serverType, availableLocations, nil
 		}
 	}
-	
+
 	// Second pass: if no server type works with preferred locations,
 	// use the PRIMARY server type with ANY available location (prioritize cost)
 	primaryType := mapping.Primary
@@ -99,7 +99,7 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 		// Primary type is available somewhere, use it
 		return primaryType, availableLocations, nil
 	}
-	
+
 	// Third pass: try fallbacks with any available location
 	for _, serverType := range mapping.Fallbacks {
 		availableLocations, err := p.GetAvailableLocations(ctx, serverType)
@@ -110,7 +110,7 @@ func (p *Provider) SelectBestServerType(ctx context.Context, profile provider.Ma
 			return serverType, availableLocations, nil
 		}
 	}
-	
+
 	return "", nil, fmt.Errorf("no suitable server type found for profile %s", profile)
 }
 
@@ -150,7 +150,7 @@ func intersectLocations(a, b []string) []string {
 	for _, item := range b {
 		set[item] = true
 	}
-	
+
 	var result []string
 	for _, item := range a {
 		if set[item] {
@@ -168,7 +168,7 @@ func intersectLocationsPreserveOrder(preferred, available []string) []string {
 	for _, item := range available {
 		availableSet[item] = true
 	}
-	
+
 	var result []string
 	for _, item := range preferred {
 		if availableSet[item] {
@@ -207,11 +207,11 @@ func GetEstimatedCost(serverType string) float64 {
 		"cax31": 15.19,
 		"cax41": 30.39,
 	}
-	
+
 	if cost, ok := costs[serverType]; ok {
 		return cost
 	}
-	
+
 	// Default estimate
 	return 5.0
 }
