@@ -124,13 +124,12 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
-		NodeRole:          req.Role,
-		ForestID:          req.ForestID,
-		RegistryURL:       p.config.Integration.RegistryURL,
-		CallbackURL:       p.config.Integration.NimsForestURL,
-		NimsForestInstall: p.config.Integration.NimsForestInstall,
-		NimsForestRepo:    p.config.Integration.NimsForestRepo,
-		NimsForestBinary:  p.config.Integration.NimsForestBinary,
+		NodeRole:              req.Role,
+		ForestID:              req.ForestID,
+		RegistryURL:           p.config.Integration.RegistryURL,
+		CallbackURL:           p.config.Integration.NimsForestURL,
+		NimsForestInstall:     p.config.Integration.NimsForestInstall,
+		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
 	}
 
 	userData, err := cloudinit.Generate(req.Role, cloudInitData)

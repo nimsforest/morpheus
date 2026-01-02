@@ -161,11 +161,10 @@ func TestNodeRoleConstants(t *testing.T) {
 
 func TestGenerateWithNimsForestInstall(t *testing.T) {
 	data := TemplateData{
-		NodeRole:          RoleEdge,
-		ForestID:          "test-forest",
-		NimsForestInstall: true,
-		NimsForestRepo:    "nimsforest/nimsforest2",
-		NimsForestBinary:  "nimsforest-linux-amd64",
+		NodeRole:              RoleEdge,
+		ForestID:              "test-forest",
+		NimsForestInstall:     true,
+		NimsForestDownloadURL: "https://nimsforest.io/bin/nimsforest",
 	}
 
 	script, err := Generate(RoleEdge, data)
@@ -173,9 +172,9 @@ func TestGenerateWithNimsForestInstall(t *testing.T) {
 		t.Fatalf("Failed to generate cloud-init script: %v", err)
 	}
 
-	// Check for NimsForest download
-	if !strings.Contains(script, "nimsforest/nimsforest2") {
-		t.Error("Script should contain NimsForest repo")
+	// Check for NimsForest download URL
+	if !strings.Contains(script, "https://nimsforest.io/bin/nimsforest") {
+		t.Error("Script should contain NimsForest download URL")
 	}
 
 	// Check for binary download
@@ -213,11 +212,8 @@ func TestGenerateWithoutNimsForestInstall(t *testing.T) {
 	}
 
 	// Should NOT contain NimsForest download logic
-	if strings.Contains(script, "api.github.com/repos") && strings.Contains(script, "releases/latest") {
-		// Only check if it's for NimsForest download, not morpheus bootstrap
-		if strings.Contains(script, "NIMSFOREST_REPO") {
-			t.Error("Script should NOT download NimsForest when install is disabled")
-		}
+	if strings.Contains(script, "Installing NimsForest") {
+		t.Error("Script should NOT download NimsForest when install is disabled")
 	}
 
 	// Should still have callback logic
