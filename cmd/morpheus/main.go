@@ -886,7 +886,7 @@ func handleStatus() {
 		fmt.Printf("💡 SSH into machines:\n")
 		for i, node := range nodes {
 			if i < 2 { // Show first 2 examples
-				fmt.Printf("   ssh root@[%s]\n", node.IP)
+				fmt.Printf("   ssh root@%s\n", node.IP)
 			}
 		}
 		if len(nodes) > 2 {
