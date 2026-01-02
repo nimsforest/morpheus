@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1378,25 +1377,18 @@ func runSSHCheck(exitOnResult bool) bool {
 								fmt.Println()
 								fmt.Printf("   Deleting old SSH key '%s' from Hetzner...\n", keyName)
 
-								// Delete the old key
-								deleteCmd := exec.Command("hcloud", "ssh-key", "delete", keyName)
-								deleteOut, deleteErr := deleteCmd.CombinedOutput()
+								// Delete the old key using Hetzner API
+								deleteErr := hetznerProv.DeleteSSHKey(ctx, keyName)
 								if deleteErr != nil {
-									fmt.Printf("   ❌ Failed to delete key: %s\n", strings.TrimSpace(string(deleteOut)))
-									fmt.Println("   You may need to install hcloud CLI or run manually:")
-									fmt.Printf("      hcloud ssh-key delete %s\n", keyName)
-									fmt.Printf("      hcloud ssh-key create --name %s --public-key-from-file %s\n", keyName, foundKeyPath)
+									fmt.Printf("   ❌ Failed to delete key: %s\n", deleteErr)
 								} else {
 									fmt.Printf("   ✅ Deleted old key '%s'\n", keyName)
 
-									// Create the new key
+									// Upload the new key using Hetzner API
 									fmt.Printf("   Uploading new SSH key from %s...\n", foundKeyPath)
-									createCmd := exec.Command("hcloud", "ssh-key", "create", "--name", keyName, "--public-key-from-file", foundKeyPath)
-									createOut, createErr := createCmd.CombinedOutput()
+									_, createErr := hetznerProv.EnsureSSHKeyWithPath(ctx, keyName, foundKeyPath)
 									if createErr != nil {
-										fmt.Printf("   ❌ Failed to create key: %s\n", strings.TrimSpace(string(createOut)))
-										fmt.Println("   Please run manually:")
-										fmt.Printf("      hcloud ssh-key create --name %s --public-key-from-file %s\n", keyName, foundKeyPath)
+										fmt.Printf("   ❌ Failed to upload key: %s\n", createErr)
 									} else {
 										fmt.Printf("   ✅ Uploaded new SSH key '%s' to Hetzner\n", keyName)
 										fmt.Println()
@@ -1414,9 +1406,7 @@ func runSSHCheck(exitOnResult bool) bool {
 								fmt.Println("   After updating, re-provision your servers for the new key to be used.")
 							default:
 								fmt.Println()
-								fmt.Println("   No action taken. To fix manually, run:")
-								fmt.Printf("      hcloud ssh-key delete %s\n", keyName)
-								fmt.Printf("      hcloud ssh-key create --name %s --public-key-from-file %s\n", keyName, foundKeyPath)
+								fmt.Println("   No action taken.")
 							}
 						}
 					}
