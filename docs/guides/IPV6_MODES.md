@@ -38,4 +38,4 @@ You cannot use Morpheus without IPv6. Options:
 
 ## Note
 
-Hetzner still may provide IPv4 by default, but Morpheus won't use it to avoid charges.
+Morpheus provisions servers with IPv6 only - no IPv4 address is allocated, saving costs.
