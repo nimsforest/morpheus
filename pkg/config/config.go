@@ -135,7 +135,7 @@ func (c *Config) applyInfrastructureDefaults() {
 
 	// Set default NimsForest repo if install is enabled but repo not specified
 	if c.Integration.NimsForestInstall && c.Integration.NimsForestRepo == "" {
-		c.Integration.NimsForestRepo = "nimsforest/nimsforest"
+		c.Integration.NimsForestRepo = "nimsforest/nimsforest2"
 	}
 }
 

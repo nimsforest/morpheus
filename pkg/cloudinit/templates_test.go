@@ -164,7 +164,7 @@ func TestGenerateWithNimsForestInstall(t *testing.T) {
 		NodeRole:          RoleEdge,
 		ForestID:          "test-forest",
 		NimsForestInstall: true,
-		NimsForestRepo:    "nimsforest/nimsforest",
+		NimsForestRepo:    "nimsforest/nimsforest2",
 		NimsForestBinary:  "nimsforest-linux-amd64",
 	}
 
@@ -174,7 +174,7 @@ func TestGenerateWithNimsForestInstall(t *testing.T) {
 	}
 
 	// Check for NimsForest download
-	if !strings.Contains(script, "nimsforest/nimsforest") {
+	if !strings.Contains(script, "nimsforest/nimsforest2") {
 		t.Error("Script should contain NimsForest repo")
 	}
 

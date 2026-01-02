@@ -18,7 +18,7 @@ integration:
   
   # Auto-install NimsForest on provisioned machines
   nimsforest_install: true                    # Download and start NimsForest automatically
-  nimsforest_repo: "nimsforest/nimsforest"    # GitHub repo for releases
+  nimsforest_repo: "nimsforest/nimsforest2"   # GitHub repo for releases
   nimsforest_binary: ""                       # Binary name (default: nimsforest-linux-amd64)
 
 # Provisioning settings
