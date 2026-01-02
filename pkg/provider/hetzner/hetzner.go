@@ -431,6 +431,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context, keyName string) (*hcloud.SS
 	}
 	if key != nil {
 		// Key already exists
+		fmt.Printf("      ✓ SSH key '%s' found in Hetzner (ID: %d)\n", keyName, key.ID)
 		return key, nil
 	}
 
