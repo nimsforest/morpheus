@@ -8,11 +8,11 @@ const (
 	// ProfileSmall is suitable for edge nodes and small workloads
 	// Typical specs: 2 vCPU, 4GB RAM
 	ProfileSmall MachineProfile = "small"
-	
+
 	// ProfileMedium is suitable for compute nodes with moderate workloads
 	// Typical specs: 3-4 vCPU, 8GB RAM
 	ProfileMedium MachineProfile = "medium"
-	
+
 	// ProfileLarge is suitable for high-performance workloads
 	// Typical specs: 8+ vCPU, 16GB+ RAM
 	ProfileLarge MachineProfile = "large"
@@ -69,6 +69,6 @@ func GetProfileSpec(profile MachineProfile) MachineProfileSpec {
 			TargetCost:  30.00, // ~€30-35/month
 		},
 	}
-	
+
 	return specs[profile]
 }

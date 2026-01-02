@@ -64,7 +64,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 	var provisionedServers []*provider.Server
 	for i := 0; i < nodeCount; i++ {
 		nodeName := fmt.Sprintf("%s-node-%d", req.ForestID, i+1)
-		
+
 		fmt.Printf("\n   Machine %d/%d: %s\n", i+1, nodeCount, nodeName)
 
 		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
@@ -145,7 +145,7 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 			return nil, fmt.Errorf("server type not specified in request and no default configured")
 		}
 	}
-	
+
 	image := req.Image
 	if image == "" {
 		// Default to Ubuntu 24.04 if not specified
@@ -180,15 +180,15 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	}
 
 	fmt.Printf("      ✓ Server created (ID: %s)\n", server.ID)
-	
+
 	// Store the location immediately
 	server.Location = req.Location
-	
+
 	// Register node immediately so teardown can find it even if interrupted
 	if onCreated != nil {
 		onCreated(server)
 	}
-	
+
 	fmt.Printf("      ⏳ Waiting for server to boot...\n")
 
 	// Wait for server to be running
@@ -204,12 +204,12 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 
 	fmt.Printf("      ✓ Server running\n")
 	fmt.Printf("      ⏳ Verifying SSH connectivity...\n")
-	
+
 	// Wait for infrastructure to be ready (SSH accessible, cloud-init complete)
 	if err := p.waitForInfrastructureReady(ctx, server); err != nil {
 		return nil, fmt.Errorf("infrastructure readiness check failed: %w", err)
 	}
-	
+
 	fmt.Printf("      ✓ SSH accessible\n")
 
 	return server, nil

@@ -62,7 +62,7 @@ func main() {
 func handlePlant() {
 	// Parse arguments with smart defaults
 	var deploymentType, size string
-	
+
 	// Check if we have enough arguments
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "❌ Missing arguments")
@@ -152,7 +152,7 @@ func handlePlant() {
 		fmt.Fprintln(os.Stderr, "  medium - 3 machines (small cluster, ~€9-12/mo)")
 		fmt.Fprintln(os.Stderr, "  large  - 5 machines (large cluster, ~€15-20/mo)")
 		fmt.Fprintln(os.Stderr, "")
-		
+
 		// Suggest closest match
 		suggestion := suggestSize(size)
 		if suggestion != "" {
@@ -242,7 +242,7 @@ func handlePlant() {
 	} else {
 		// Use machine profile system for cloud deployments
 		profile := provider.GetProfileForSize(size)
-		
+
 		// For Hetzner, select the best server type and locations
 		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
 			// Get default locations if not configured
@@ -250,18 +250,18 @@ func handlePlant() {
 			if len(preferredLocations) == 0 {
 				preferredLocations = hetzner.GetDefaultLocations()
 			}
-			
+
 			// Select best server type and available locations
 			selectedType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, preferredLocations)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "\n❌ Failed to select server type: %s\n", err)
 				os.Exit(1)
 			}
-			
+
 			serverType = selectedType
 			location = availableLocations[0] // Use first available location
-			image = "ubuntu-24.04" // Default to Ubuntu 24.04
-			
+			image = "ubuntu-24.04"           // Default to Ubuntu 24.04
+
 			// Update available locations for fallback
 			cfg.Infrastructure.Locations = availableLocations
 		} else {
@@ -284,7 +284,7 @@ func handlePlant() {
 	// Display friendly provisioning header
 	fmt.Printf("\n🌲 Planting your %s...\n", size)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-	
+
 	// Show what's being created
 	nodeCount := getNodeCount(size)
 	var timeEstimate string
@@ -296,7 +296,7 @@ func handlePlant() {
 	case "large":
 		timeEstimate = "25-35 minutes"
 	}
-	
+
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   Forest ID:  %s\n", forestID)
 	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
@@ -308,13 +308,13 @@ func handlePlant() {
 	}
 	fmt.Printf("   Provider:   %s\n", providerName)
 	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
-	
+
 	if deploymentType == "cloud" {
 		estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
 		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimatedCost)
 		fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
 	}
-	
+
 	fmt.Println("🚀 Starting provisioning...")
 
 	// For Hetzner cloud deployments, use the full fallback system that tries
@@ -344,22 +344,22 @@ func handlePlant() {
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	fmt.Printf("✨ Success! Your %s is ready!\n", size)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-	
+
 	fmt.Printf("🎯 What's next?\n\n")
-	
+
 	if deploymentType == "cloud" {
 		fmt.Printf("📊 Check your forest status:\n")
 		fmt.Printf("   morpheus status %s\n\n", forestID)
-		
+
 		fmt.Printf("🌐 Your machines are ready for NATS deployment\n")
 		fmt.Printf("   Infrastructure is configured and waiting\n\n")
-		
+
 		fmt.Printf("📋 View all your forests:\n")
 		fmt.Printf("   morpheus list\n\n")
-		
+
 		fmt.Printf("🗑️  Clean up when done:\n")
 		fmt.Printf("   morpheus teardown %s\n\n", forestID)
-		
+
 		fmt.Printf("💡 Tip: The infrastructure is ready. Deploy NATS with NimsForest\n")
 		fmt.Printf("   or use the machines for your own applications.\n")
 	} else {
@@ -367,13 +367,13 @@ func handlePlant() {
 		fmt.Printf("📊 Check status:\n")
 		fmt.Printf("   morpheus status %s\n", forestID)
 		fmt.Printf("   docker ps\n\n")
-		
+
 		fmt.Printf("🔍 Access a container:\n")
 		fmt.Printf("   docker exec -it %s-node-1 bash\n\n", forestID)
-		
+
 		fmt.Printf("📋 View logs:\n")
 		fmt.Printf("   docker logs %s-node-1\n\n", forestID)
-		
+
 		fmt.Printf("🗑️  Clean up when done:\n")
 		fmt.Printf("   morpheus teardown %s\n", forestID)
 	}
@@ -479,7 +479,7 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 
 		// Show info when switching to fallback server type
 		if serverTypeIdx > 0 && len(attemptedCombos) > 0 {
-			fmt.Printf("\n📦 Trying alternative server type: %s (~€%.2f/mo)\n", 
+			fmt.Printf("\n📦 Trying alternative server type: %s (~€%.2f/mo)\n",
 				serverType, hetzner.GetEstimatedCost(serverType))
 		}
 
@@ -705,7 +705,6 @@ func handleServerTypeLocationMismatch(ctx context.Context, locationAware provide
 	}
 }
 
-
 // containsLocationError checks if an error message indicates a location availability issue
 func containsLocationError(errMsg string) bool {
 	locationErrorPhrases := []string{
@@ -803,7 +802,7 @@ func handleList() {
 		} else if f.Status != "active" {
 			statusIcon = "⚠️ "
 		}
-		
+
 		fmt.Printf("%-20s %-7s %-9s %s %-11s %s\n",
 			f.ID,
 			f.Size,
@@ -813,7 +812,7 @@ func handleList() {
 			f.CreatedAt.Format("2006-01-02 15:04"),
 		)
 	}
-	
+
 	fmt.Println()
 	fmt.Println("💡 Tip: Use 'morpheus status <forest-id>' to see detailed information")
 }
@@ -848,14 +847,14 @@ func handleStatus() {
 	fmt.Printf("🌲 Forest: %s\n", forestInfo.ID)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
-	
+
 	statusIcon := "✅"
 	if forestInfo.Status == "provisioning" {
 		statusIcon = "⏳"
 	} else if forestInfo.Status != "active" {
 		statusIcon = "⚠️ "
 	}
-	
+
 	fmt.Printf("📊 Overview:\n")
 	fmt.Printf("   Status:   %s %s\n", statusIcon, forestInfo.Status)
 	fmt.Printf("   Size:     %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
@@ -882,21 +881,34 @@ func handleStatus() {
 				node.Status,
 			)
 		}
-		
+
 		fmt.Println()
+
+		// Detect SSH private key for better guidance
+		sshKeyPath := sshutil.DetectSSHPrivateKeyPath()
+
 		fmt.Printf("💡 SSH into machines:\n")
 		for i, node := range nodes {
 			if i < 2 { // Show first 2 examples
-				fmt.Printf("   %s\n", sshutil.FormatSSHCommand("root", node.IP))
+				if sshKeyPath != "" {
+					fmt.Printf("   %s\n", sshutil.FormatSSHCommandWithIdentity("root", node.IP, sshKeyPath))
+				} else {
+					fmt.Printf("   %s\n", sshutil.FormatSSHCommand("root", node.IP))
+				}
 			}
 		}
 		if len(nodes) > 2 {
 			fmt.Printf("   ... (%d more machine%s)\n", len(nodes)-2, plural(len(nodes)-2))
 		}
+
+		// Add troubleshooting tip for password prompts
+		fmt.Println()
+		fmt.Printf("   ⚠️  If asked for a password, your SSH key may not be configured correctly.\n")
+		fmt.Printf("   Run 'morpheus check ssh' to diagnose SSH key issues.\n")
 	} else {
 		fmt.Println("\n⏳ No machines registered yet (still provisioning)")
 	}
-	
+
 	fmt.Println()
 	fmt.Printf("🗑️  Teardown: morpheus teardown %s\n", forestInfo.ID)
 }
@@ -960,7 +972,7 @@ func handleTeardown() {
 
 	// Show what will be deleted
 	nodes, _ := registry.GetNodes(forestID)
-	
+
 	fmt.Printf("\n⚠️  About to permanently delete:\n")
 	fmt.Printf("   Forest: %s\n", forestID)
 	fmt.Printf("   Size:   %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
@@ -1238,20 +1250,26 @@ func runSSHCheck(exitOnResult bool) bool {
 		return false
 	}
 
-	// Look for SSH keys
+	// Look for SSH keys (both public and private)
 	keyPaths := []string{
-		filepath.Join(sshDir, "id_ed25519.pub"),
-		filepath.Join(sshDir, "id_rsa.pub"),
+		filepath.Join(sshDir, "id_ed25519"),
+		filepath.Join(sshDir, "id_rsa"),
 	}
 
 	var foundKey string
 	var foundKeyPath string
-	for _, path := range keyPaths {
-		if data, err := os.ReadFile(path); err == nil {
+	var foundPrivateKeyPath string
+	for _, basePath := range keyPaths {
+		pubPath := basePath + ".pub"
+		if data, err := os.ReadFile(pubPath); err == nil {
 			content := string(data)
 			if isValidSSHKey(content) {
 				foundKey = content
-				foundKeyPath = path
+				foundKeyPath = pubPath
+				// Check if private key also exists
+				if _, err := os.Stat(basePath); err == nil {
+					foundPrivateKeyPath = basePath
+				}
 				break
 			}
 		}
@@ -1265,16 +1283,34 @@ func runSSHCheck(exitOnResult bool) bool {
 		fmt.Println("     ssh-keygen -t ed25519 -C \"your_email@example.com\"")
 		allOk = false
 	} else {
-		fmt.Printf("   ✅ SSH key found: %s\n", foundKeyPath)
+		fmt.Printf("   ✅ SSH public key found: %s\n", foundKeyPath)
 		// Show key type
 		if len(foundKey) > 20 {
-			keyType := foundKey[:20]
-			if len(keyType) > 0 {
-				parts := splitFirst(foundKey, " ")
-				if parts[0] != "" {
-					fmt.Printf("   Key type: %s\n", parts[0])
-				}
+			parts := splitFirst(foundKey, " ")
+			if parts[0] != "" {
+				fmt.Printf("      Key type: %s\n", parts[0])
 			}
+		}
+
+		// Check private key
+		if foundPrivateKeyPath != "" {
+			fmt.Printf("   ✅ SSH private key found: %s\n", foundPrivateKeyPath)
+
+			// Check if private key might have a passphrase (we can't easily detect this,
+			// but we can inform the user about it)
+			fmt.Println()
+			fmt.Println("   💡 SSH Authentication Tips:")
+			fmt.Printf("      When connecting, use: ssh -i %s root@<ip>\n", foundPrivateKeyPath)
+			fmt.Println()
+			fmt.Println("      If still asked for a password:")
+			fmt.Println("      • Your private key may have a passphrase (enter that, not server password)")
+			fmt.Println("      • Try adding your key to ssh-agent: ssh-add " + foundPrivateKeyPath)
+			fmt.Println("      • Ensure the public key was uploaded to Hetzner (check below)")
+		} else {
+			fmt.Println("   ⚠️  SSH private key NOT found")
+			fmt.Println("      The private key is required for authentication")
+			fmt.Println("      Expected at: " + strings.TrimSuffix(foundKeyPath, ".pub"))
+			allOk = false
 		}
 	}
 
@@ -1435,7 +1471,6 @@ func plural(count int) string {
 	return "s"
 }
 
-
 // truncateIP truncates an IP address to fit within maxLen characters
 func truncateIP(ip string, maxLen int) string {
 	if len(ip) <= maxLen {
@@ -1480,7 +1515,7 @@ func suggestSize(input string) string {
 	if len(input) == 0 {
 		return ""
 	}
-	
+
 	firstChar := input[0]
 	switch firstChar {
 	case 's', 'S':
@@ -1496,17 +1531,17 @@ func suggestSize(input string) string {
 
 func printHelp() {
 	isOnTermux := isTermux()
-	
+
 	fmt.Println("🌲 Morpheus - Nims Forest Infrastructure Provisioning")
 	fmt.Println()
-	
+
 	if isOnTermux {
 		fmt.Println("Quick Start (Termux):")
 		fmt.Println("  morpheus plant small        # Create 1 machine on Hetzner (~5-7 min)")
 		fmt.Println("  morpheus plant medium       # Create 3 machines (~15-20 min)")
 		fmt.Println()
 	}
-	
+
 	fmt.Println("Usage:")
 	fmt.Println("  morpheus <command> [arguments]")
 	fmt.Println()
@@ -1556,7 +1591,7 @@ func printHelp() {
 		fmt.Println("  morpheus update             # Update to latest version")
 	}
 	fmt.Println()
-	
+
 	if !isOnTermux {
 		fmt.Println("Local Mode:")
 		fmt.Println("  Local mode uses Docker to create containers on your machine.")
@@ -1564,7 +1599,7 @@ func printHelp() {
 		fmt.Println("  Requirements: Docker must be installed and running.")
 		fmt.Println()
 	}
-	
+
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")
 	fmt.Println("    - ./config.yaml")

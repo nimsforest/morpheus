@@ -53,7 +53,6 @@ func NewUpdater(currentVersion string) *Updater {
 	}
 }
 
-
 // CheckForUpdate checks if a new version is available using native HTTP client
 func (u *Updater) CheckForUpdate() (*UpdateInfo, error) {
 	// Create HTTP client with timeout and proper TLS configuration

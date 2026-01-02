@@ -211,13 +211,13 @@ func GetCertPaths() []string {
 		"/data/data/com.termux/files/usr/etc/tls/cert.pem",
 		"/data/data/com.termux/files/usr/etc/ssl/certs/ca-certificates.crt",
 		// Standard Linux paths
-		"/etc/ssl/certs/ca-certificates.crt",               // Debian/Ubuntu/Gentoo/Arch
-		"/etc/pki/tls/certs/ca-bundle.crt",                 // Fedora/RHEL
-		"/etc/ssl/ca-bundle.pem",                           // OpenSUSE
-		"/etc/ssl/cert.pem",                                // Alpine/OpenBSD
-		"/usr/local/share/certs/ca-root-nss.crt",           // FreeBSD
-		"/etc/pki/tls/cacert.pem",                          // OpenELEC
-		"/etc/certs/ca-certificates.crt",                   // Alternative
+		"/etc/ssl/certs/ca-certificates.crt",     // Debian/Ubuntu/Gentoo/Arch
+		"/etc/pki/tls/certs/ca-bundle.crt",       // Fedora/RHEL
+		"/etc/ssl/ca-bundle.pem",                 // OpenSUSE
+		"/etc/ssl/cert.pem",                      // Alpine/OpenBSD
+		"/usr/local/share/certs/ca-root-nss.crt", // FreeBSD
+		"/etc/pki/tls/cacert.pem",                // OpenELEC
+		"/etc/certs/ca-certificates.crt",         // Alternative
 		// Additional paths
 		"/usr/share/ca-certificates/cacert.org/cacert.org_root.crt",
 		"/etc/ca-certificates/extracted/tls-ca-bundle.pem", // Arch alternative
