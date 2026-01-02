@@ -303,3 +303,124 @@ func TestCalculateSSHKeyFingerprintFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestContainsHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		host     string
+		expected bool
+	}{
+		{
+			name:     "simple IPv4 match",
+			line:     "192.168.1.1 ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.1",
+			expected: true,
+		},
+		{
+			name:     "IPv4 no match",
+			line:     "192.168.1.1 ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.2",
+			expected: false,
+		},
+		{
+			name:     "simple IPv6 match",
+			line:     "2a01:4f9:c012:1576::1 ssh-ed25519 AAAAC3...",
+			host:     "2a01:4f9:c012:1576::1",
+			expected: true,
+		},
+		{
+			name:     "bracketed IPv6 in known_hosts",
+			line:     "[2a01:4f9:c012:1576::1] ssh-ed25519 AAAAC3...",
+			host:     "2a01:4f9:c012:1576::1",
+			expected: true,
+		},
+		{
+			name:     "bracketed IPv6 with port in known_hosts",
+			line:     "[2a01:4f9:c012:1576::1]:22 ssh-ed25519 AAAAC3...",
+			host:     "2a01:4f9:c012:1576::1",
+			expected: true,
+		},
+		{
+			name:     "host input with brackets",
+			line:     "2a01:4f9:c012:1576::1 ssh-ed25519 AAAAC3...",
+			host:     "[2a01:4f9:c012:1576::1]",
+			expected: true,
+		},
+		{
+			name:     "multiple hosts comma separated - first match",
+			line:     "192.168.1.1,server1.example.com ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.1",
+			expected: true,
+		},
+		{
+			name:     "multiple hosts comma separated - second match",
+			line:     "192.168.1.1,server1.example.com ssh-ed25519 AAAAC3...",
+			host:     "server1.example.com",
+			expected: true,
+		},
+		{
+			name:     "multiple hosts - no match",
+			line:     "192.168.1.1,server1.example.com ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.2",
+			expected: false,
+		},
+		{
+			name:     "IPv4 with port",
+			line:     "[192.168.1.1]:2222 ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.1",
+			expected: true,
+		},
+		{
+			name:     "empty line",
+			line:     "",
+			host:     "192.168.1.1",
+			expected: false,
+		},
+		{
+			name:     "single field line",
+			line:     "192.168.1.1",
+			host:     "192.168.1.1",
+			expected: false, // Invalid known_hosts format (needs at least 2 fields)
+		},
+		{
+			name:     "hashed host entry - no match",
+			line:     "|1|abc123= ssh-ed25519 AAAAC3...",
+			host:     "192.168.1.1",
+			expected: false, // Hashed entries can't be matched by plain host
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := containsHost(tt.line, tt.host)
+			if result != tt.expected {
+				t.Errorf("containsHost(%q, %q) = %v, want %v", tt.line, tt.host, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsAllDigits(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"", false},
+		{"123", true},
+		{"0", true},
+		{"22", true},
+		{"abc", false},
+		{"12a", false},
+		{"12.3", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := isAllDigits(tt.input)
+			if result != tt.expected {
+				t.Errorf("isAllDigits(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
