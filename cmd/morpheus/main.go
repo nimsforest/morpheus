@@ -1359,17 +1359,55 @@ func runSSHCheck(exitOnResult bool) bool {
 							fmt.Println("      Your local SSH key does NOT match the key in Hetzner Cloud.")
 							fmt.Println("      This is why the server asks for a password!")
 							fmt.Println()
-							fmt.Println("   To fix this, choose one of these options:")
+							fmt.Println("   How would you like to fix this?")
 							fmt.Println()
-							fmt.Println("   Option 1: Update the key in Hetzner (recommended if you regenerated your key):")
-							fmt.Printf("      hcloud ssh-key delete %s\n", keyName)
-							fmt.Printf("      hcloud ssh-key create --name %s --public-key-from-file %s\n", keyName, foundKeyPath)
+							fmt.Println("   [1] Update the key in Hetzner (recommended if you regenerated your key)")
+							fmt.Println("       This will delete the old key and upload your current local key.")
 							fmt.Println()
-							fmt.Println("   Option 2: Use a different key name in config.yaml:")
-							fmt.Println("      ssh:")
-							fmt.Println("        key_name: my-new-key")
+							fmt.Println("   [2] Use a different key name in config.yaml (manual)")
+							fmt.Println("       You'll need to edit config.yaml and set a new ssh.key_name")
 							fmt.Println()
-							fmt.Println("   After fixing, re-provision your servers for the new key to be used.")
+							fmt.Print("   Enter choice (1/2): ")
+
+							var choice string
+							fmt.Scanln(&choice)
+
+							switch choice {
+							case "1":
+								fmt.Println()
+								fmt.Printf("   Deleting old SSH key '%s' from Hetzner...\n", keyName)
+
+								// Delete the old key using Hetzner API
+								deleteErr := hetznerProv.DeleteSSHKey(ctx, keyName)
+								if deleteErr != nil {
+									fmt.Printf("   ❌ Failed to delete key: %s\n", deleteErr)
+								} else {
+									fmt.Printf("   ✅ Deleted old key '%s'\n", keyName)
+
+									// Upload the new key using Hetzner API
+									fmt.Printf("   Uploading new SSH key from %s...\n", foundKeyPath)
+									_, createErr := hetznerProv.EnsureSSHKeyWithPath(ctx, keyName, foundKeyPath)
+									if createErr != nil {
+										fmt.Printf("   ❌ Failed to upload key: %s\n", createErr)
+									} else {
+										fmt.Printf("   ✅ Uploaded new SSH key '%s' to Hetzner\n", keyName)
+										fmt.Println()
+										fmt.Println("   After re-provisioning your servers, the new key will be used.")
+										allOk = true // Fixed the issue
+									}
+								}
+							case "2":
+								fmt.Println()
+								fmt.Println("   To use a different key name, edit config.yaml:")
+								fmt.Println()
+								fmt.Println("      ssh:")
+								fmt.Println("        key_name: my-new-key")
+								fmt.Println()
+								fmt.Println("   After updating, re-provision your servers for the new key to be used.")
+							default:
+								fmt.Println()
+								fmt.Println("   No action taken.")
+							}
 						}
 					}
 				}

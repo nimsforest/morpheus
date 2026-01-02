@@ -448,6 +448,24 @@ func (p *Provider) GetSSHKeyInfo(ctx context.Context, keyName string) (*SSHKeyIn
 	}, nil
 }
 
+// DeleteSSHKey deletes an SSH key from Hetzner Cloud by name.
+// Returns nil if the key was deleted or didn't exist.
+func (p *Provider) DeleteSSHKey(ctx context.Context, keyName string) error {
+	key, _, err := p.client.SSHKey.GetByName(ctx, keyName)
+	if err != nil {
+		return wrapAuthError(err, "failed to query SSH key")
+	}
+	if key == nil {
+		// Key doesn't exist, nothing to delete
+		return nil
+	}
+	_, err = p.client.SSHKey.Delete(ctx, key)
+	if err != nil {
+		return wrapAuthError(err, "failed to delete SSH key")
+	}
+	return nil
+}
+
 // ensureSSHKey checks if an SSH key exists in Hetzner Cloud by name.
 // If not found, it attempts to read from common SSH key locations and upload it.
 // Returns the SSH key from Hetzner Cloud.
