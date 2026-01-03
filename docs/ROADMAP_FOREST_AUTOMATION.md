@@ -2,73 +2,131 @@
 
 ## Overview
 
-Morpheus provisions "land" (VMs/machines) that NimsForest grows on. This roadmap covers making machines auto-join forests and enabling forest self-expansion.
+Morpheus provisions "land" (VMs) that run:
+1. **NATS Server** - Message broker with built-in clustering
+2. **NimsForest** - Event-driven business logic that connects to NATS
+
+NimsForest doesn't handle discovery or clustering - NATS does that natively.
 
 ## Architecture
 
 ```
-┌──────────────┐     provisions     ┌──────────────┐     runs      ┌──────────────┐
-│   MORPHEUS   │ ─────────────────► │     LAND     │ ────────────► │  NIMSFOREST  │
-│     (CLI)    │                    │   (VM/VPS)   │               │   (Runtime)  │
-└──────────────┘                    └──────────────┘               └──────────────┘
-       ▲                                                                  │
-       │                         requests more land                       │
-       └──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         MORPHEUS (CLI)                           │
+│                    Runs on: Termux / Laptop                      │
+│                                                                  │
+│   morpheus plant cloud small  → Creates VM + installs software   │
+│   morpheus grow               → Checks health, adds nodes        │
+│   morpheus teardown           → Removes VMs                      │
+└──────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ provisions
+                                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                        VM (Hetzner VPS)                          │
+│                                                                  │
+│  ┌─────────────────────┐    ┌─────────────────────────────────┐  │
+│  │    NATS Server      │    │         NimsForest              │  │
+│  │                     │    │                                 │  │
+│  │  • Port 4222 client │◄───│  Connects to localhost:4222     │  │
+│  │  • Port 6222 cluster│    │  Runs Trees, Nims, etc.         │  │
+│  │  • Routes to peers  │    │                                 │  │
+│  └─────────────────────┘    └─────────────────────────────────┘  │
+│                                                                  │
+│  systemd: nats.service       systemd: nimsforest.service         │
+└──────────────────────────────────────────────────────────────────┘
+                                   │
+                                   │ NATS cluster routes (port 6222)
+                                   ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                        VM 2, VM 3, ...                           │
+│                    (Same setup, clustered)                       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Current State
 
-- [x] `morpheus plant cloud small/medium/large` - provisions VMs on Hetzner
-- [x] Cloud-init installs packages, configures firewall, creates directories
+- [x] `morpheus plant cloud small/medium/large` - provisions VMs
+- [x] Cloud-init installs packages, configures firewall
 - [x] NimsForest binary download from configured URL
-- [x] Systemd service created and started
-- [ ] NATS cluster configuration (machines don't know about each other)
-- [ ] Forest resource monitoring
-- [ ] Auto-expansion
+- [x] NimsForest systemd service
+- [ ] **NATS server installation** ← Missing
+- [ ] **NATS cluster configuration** ← Missing
+- [ ] `morpheus grow` command
 
 ---
 
-## Task 1: Post-Provision Forest Join
+## Task 1: NATS Server Installation
 
-**Goal:** New machines automatically join the NATS cluster on boot.
+**Goal:** Each provisioned VM runs NATS server with clustering enabled.
 
-### 1.1 Pass cluster info to cloud-init
+### 1.1 Download NATS server in cloud-init
+
+**File:** `pkg/cloudinit/templates.go`
+
+Add to runcmd:
+```yaml
+# Download and install NATS server
+- |
+  NATS_VERSION="2.10.24"
+  curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" | tar xz
+  mv nats-server-v${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
+  chmod +x /usr/local/bin/nats-server
+```
+
+### 1.2 Create NATS systemd service
+
+```yaml
+- |
+  cat > /etc/systemd/system/nats.service << 'EOF'
+  [Unit]
+  Description=NATS Server
+  After=network.target
+
+  [Service]
+  Type=simple
+  ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
+  Restart=always
+  RestartSec=5
+
+  [Install]
+  WantedBy=multi-user.target
+  EOF
+```
+
+### 1.3 Generate NATS config with cluster routes
 
 **File:** `pkg/cloudinit/templates.go`
 
 Add to `TemplateData`:
 ```go
-// Cluster configuration
-ClusterNodes []string // IPs of existing nodes to connect to
-ClusterName  string   // Name of the NATS cluster
-IsFirstNode  bool     // True if this is the first node (becomes seed)
+// NATS cluster configuration
+ClusterNodes  []string // IPv6 addresses of other nodes
+ClusterName   string   // Cluster name (forest ID)
+IsFirstNode   bool     // First node is the seed
 ```
 
-**File:** `pkg/forest/provisioner.go`
-
-When provisioning:
-- First node: `IsFirstNode = true`, starts as seed
-- Subsequent nodes: Get IPs of existing nodes from registry
-
-### 1.2 Generate NATS config in cloud-init
-
-**File:** `pkg/cloudinit/templates.go`
-
-Add to runcmd section:
+Generate `/etc/nats/nats.conf`:
 ```yaml
-# Generate NATS config
 - |
-  cat > /etc/nimsforest/nats.conf << EOF
+  mkdir -p /etc/nats
+  cat > /etc/nats/nats.conf << 'EOF'
   port: 4222
+  http_port: 8222
+  
+  jetstream {
+    store_dir: /var/lib/nats/jetstream
+    max_mem: 1G
+    max_file: 10G
+  }
+  
   cluster {
     name: {{.ClusterName}}
     port: 6222
-    {{if .IsFirstNode}}
-    # Seed node - others connect to us
-    {{else}}
+    {{if not .IsFirstNode}}
     routes = [
       {{range .ClusterNodes}}
-      nats-route://{{.}}:6222
+      nats-route://[{{.}}]:6222
       {{end}}
     ]
     {{end}}
@@ -76,81 +134,72 @@ Add to runcmd section:
   EOF
 ```
 
-### 1.3 Update NimsForest systemd service
+### 1.4 Update provisioner to track and pass node IPs
 
-Pass the config file to nimsforest:
-```ini
-ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}} --nats-config /etc/nimsforest/nats.conf
+**File:** `pkg/forest/provisioner.go`
+
+```go
+// When provisioning node N:
+// 1. Get IPs of nodes 1..N-1 from registry
+// 2. Pass them as ClusterNodes
+// 3. First node has IsFirstNode=true
 ```
 
-### 1.4 Registry tracks node IPs
+### 1.5 Update NimsForest service to wait for NATS
 
-**File:** `pkg/forest/registry.go`
+```yaml
+- |
+  cat > /etc/systemd/system/nimsforest.service << 'EOF'
+  [Unit]
+  Description=NimsForest
+  After=nats.service
+  Requires=nats.service
 
-Ensure registry stores node IPs so subsequent nodes can connect:
-```go
-func (r *Registry) GetActiveNodeIPs(forestID string) []string
+  [Service]
+  Type=simple
+  User=ubuntu
+  Environment=NATS_URL=nats://localhost:4222
+  Environment=FOREST_ID={{.ForestID}}
+  ExecStart=/opt/nimsforest/bin/nimsforest
+  Restart=always
+  RestartSec=5
+
+  [Install]
+  WantedBy=multi-user.target
+  EOF
 ```
 
 ### Acceptance Criteria
-- [ ] First node starts as NATS seed
-- [ ] Subsequent nodes connect to existing cluster
+- [ ] NATS server installed on each VM
+- [ ] NATS starts before NimsForest
+- [ ] Multi-node forests form a NATS cluster
 - [ ] `nats server list` shows all nodes
-- [ ] Nodes reconnect automatically after restart
+- [ ] NimsForest connects to local NATS successfully
 
 ---
 
 ## Task 2: `morpheus grow` Command
 
-**Goal:** Interactive command to check forest health and expand if needed.
+**Goal:** Check forest health and expand capacity.
 
-### 2.1 Add NATS client to Morpheus
-
-**File:** `pkg/nats/client.go` (new)
-
-```go
-package nats
-
-type Client struct {
-    conn *nats.Conn
-}
-
-func NewClient(url string) (*Client, error)
-func (c *Client) GetClusterStats() (*ClusterStats, error)
-func (c *Client) Close()
-
-type ClusterStats struct {
-    Nodes       []NodeStats
-    TotalCPU    float64
-    TotalMemory float64
-    UsedCPU     float64
-    UsedMemory  float64
-}
-
-type NodeStats struct {
-    ID         string
-    IP         string
-    CPUPercent float64
-    MemPercent float64
-    Uptime     time.Duration
-}
-```
-
-### 2.2 Implement `morpheus grow` command
+### 2.1 Add `grow` command structure
 
 **File:** `cmd/morpheus/main.go`
 
 ```go
 case "grow":
     return runGrow(args[1:])
+```
 
-func runGrow(args []string) error {
-    // 1. Connect to forest NATS cluster
-    // 2. Query resource usage
-    // 3. Display current state
-    // 4. If above threshold, suggest expansion
-    // 5. Prompt for confirmation
-    // 6. Execute morpheus plant
+### 2.2 Connect to NATS cluster
+
+To check cluster health, Morpheus needs to connect to NATS monitoring endpoint.
+
+```go
+// Connect via HTTP to NATS monitoring port (8222)
+func getClusterStats(nodeIP string) (*ClusterStats, error) {
+    resp, err := http.Get(fmt.Sprintf("http://[%s]:8222/varz", nodeIP))
+    // Parse JSON response for CPU, memory, connections
 }
 ```
 
@@ -159,141 +208,107 @@ func runGrow(args []string) error {
 ```
 🌲 Forest: forest-1234567890
 
+NATS Cluster:
+  Nodes: 2/2 healthy
+  Connections: 45 active
+  Messages: 1.2M in, 3.4M out
+
 Resource Usage:
-  CPU:    72% ████████████████████░░░░░░░░ (3.6 / 5.0 cores)
-  Memory: 85% █████████████████████████░░░ (6.8 / 8.0 GB) ⚠️
+  CPU:    72% ████████████████████░░░░░░░░
+  Memory: 85% █████████████████████████░░░ ⚠️
 
-Nodes (2):
-  ID          IP              CPU    MEM    STATUS
-  node-1      2a01:4f8::1     65%    80%    active
-  node-2      2a01:4f8::2     78%    90%    active ⚠️
+Nodes:
+  ID              IP                  CPU    MEM    CONNS
+  node-1          2a01:4f8::1         65%    80%    23
+  node-2          2a01:4f8::2         78%    90%    22     ⚠️
 
-⚠️  Memory usage above 80% threshold
+⚠️  Memory above 80% on node-2
 
-Suggestion: Add 1 node to reduce load
-Estimated cost: ~€3/month
-
+Suggestion: Add 1 node
 Proceed? [y/N]: 
 ```
 
-### 2.4 Connect to forest
+### 2.4 Expansion flow
 
-Need to know which forest to query. Options:
-- `morpheus grow forest-123` - explicit forest ID
-- `morpheus grow` - if only one forest, use that
-- `morpheus grow` - prompt to select if multiple
+1. User confirms
+2. Morpheus provisions new node
+3. New node gets existing node IPs in `ClusterNodes`
+4. NATS automatically forms cluster
+5. NimsForest starts and connects
 
 ### Acceptance Criteria
-- [ ] `morpheus grow` connects to NATS cluster
-- [ ] Displays CPU/memory usage per node
-- [ ] Flags resources above 80%
-- [ ] Suggests expansion when needed
-- [ ] On confirm, provisions new node that joins cluster
+- [ ] `morpheus grow` shows cluster health
+- [ ] Flags nodes above threshold
+- [ ] On confirm, provisions new node
+- [ ] New node joins cluster automatically
 
 ---
 
 ## Task 3: `morpheus grow --auto`
 
-**Goal:** Non-interactive auto-expansion for automated/scheduled use.
+**Goal:** Non-interactive expansion for automation.
 
-### 3.1 Add --auto flag
-
-**File:** `cmd/morpheus/main.go`
+### 3.1 Add flags
 
 ```go
-func runGrow(args []string) error {
-    auto := hasFlag(args, "--auto")
-    threshold := getFlagValue(args, "--threshold", "80")
-    
-    if auto {
-        return runGrowAuto(forestID, threshold)
-    }
-    return runGrowInteractive(forestID)
-}
+--auto           No prompts
+--threshold N    Expansion threshold (default: 80)
+--output json    Machine-readable output
+```
 
+### 3.2 Auto-expansion logic
+
+```go
 func runGrowAuto(forestID string, threshold int) error {
     stats := getClusterStats(forestID)
     
-    if stats.UsedCPU > threshold || stats.UsedMemory > threshold {
-        fmt.Println("⚠️  Threshold exceeded, provisioning new node...")
+    if stats.MaxMemoryPercent > threshold || stats.MaxCPUPercent > threshold {
+        log.Println("Threshold exceeded, provisioning...")
         return provisionNode(forestID)
     }
     
-    fmt.Println("✅ Resource usage within limits")
+    log.Println("Within limits, no action needed")
     return nil
 }
 ```
 
-### 3.2 Logging for automation
+### 3.3 Safety limits
 
-When running with `--auto`, output should be:
-- Machine-parseable (JSON option: `--output json`)
-- Suitable for cron/systemd timer logs
-
-```bash
-# Cron example
-*/15 * * * * morpheus grow forest-123 --auto --threshold 80
-```
-
-### 3.3 Expansion limits
-
-Add safety limits:
 ```go
-type GrowConfig struct {
-    MaxNodes      int   // Max nodes to provision (default: 10)
-    CooldownMins  int   // Minutes between expansions (default: 15)
-    MaxExpandPer  int   // Max nodes to add per run (default: 1)
+type GrowthConfig struct {
+    MaxNodes        int  // Don't exceed this many nodes
+    CooldownMinutes int  // Wait between expansions
 }
 ```
 
 ### Acceptance Criteria
-- [ ] `morpheus grow --auto` runs without prompts
-- [ ] Respects threshold flag
-- [ ] Provisions node when threshold exceeded
-- [ ] Does nothing when within limits
-- [ ] Has cooldown to prevent rapid expansion
-- [ ] Outputs JSON with `--output json`
-
----
-
-## Task 4: Forest Self-Monitoring (NimsForest side)
-
-**Note:** This is implemented in NimsForest, not Morpheus.
-
-NimsForest should:
-1. Monitor its own resource usage
-2. Call Morpheus when expansion needed
-3. Track idle machines for potential teardown
-
-This could be via:
-- NimsForest calling `morpheus grow --auto` periodically
-- NimsForest calling a Morpheus HTTP API
-- NimsForest publishing to NATS, Morpheus subscribes
+- [ ] `morpheus grow --auto` works without prompts
+- [ ] Respects threshold
+- [ ] Has cooldown between expansions
+- [ ] JSON output available
 
 ---
 
 ## Implementation Order
 
 ```
-Phase 1: Cluster Join (Task 1)
-├── 1.1 Add cluster fields to TemplateData
-├── 1.2 Generate NATS config in cloud-init
-├── 1.3 Update systemd service
-└── 1.4 Registry tracks node IPs
+Phase 1: NATS Installation (Task 1)
+├── 1.1 Download NATS in cloud-init
+├── 1.2 Create NATS systemd service  
+├── 1.3 Generate cluster config
+├── 1.4 Pass node IPs from provisioner
+└── 1.5 NimsForest depends on NATS
 
-Phase 2: Interactive Grow (Task 2)
-├── 2.1 Add NATS client package
-├── 2.2 Implement grow command
+Phase 2: Grow Command (Task 2)
+├── 2.1 Add grow command
+├── 2.2 Query NATS monitoring API
 ├── 2.3 Display formatting
-└── 2.4 Forest selection
+└── 2.4 Expansion flow
 
-Phase 3: Auto Grow (Task 3)
-├── 3.1 Add --auto flag
-├── 3.2 JSON output mode
+Phase 3: Auto-Grow (Task 3)
+├── 3.1 Add flags
+├── 3.2 Auto logic
 └── 3.3 Safety limits
-
-Phase 4: Integration (Task 4 - NimsForest)
-└── Forest self-monitoring
 ```
 
 ---
@@ -306,63 +321,53 @@ Phase 4: Integration (Task 4 - NimsForest)
 integration:
   nimsforest_install: true
   nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"
+  
+  # NATS configuration
+  nats_install: true
+  nats_version: "2.10.24"
 
-# NEW: Growth/expansion settings
+# Growth settings  
 growth:
   enabled: true
-  threshold_cpu: 80      # Percentage
-  threshold_memory: 80   # Percentage
-  max_nodes: 10          # Maximum nodes per forest
-  cooldown_minutes: 15   # Min time between expansions
+  threshold_cpu: 80
+  threshold_memory: 80
+  max_nodes: 10
+  cooldown_minutes: 15
 ```
 
 ---
 
-## Dependencies
+## Files to Modify
 
-- `github.com/nats-io/nats.go` - NATS client for Go
+### Task 1 (NATS Installation)
+- [ ] `pkg/cloudinit/templates.go` - Add NATS download, config generation
+- [ ] `pkg/config/config.go` - Add NATS config options
+- [ ] `pkg/forest/provisioner.go` - Pass cluster node IPs
+- [ ] `pkg/forest/registry.go` - Track node IPs for clustering
 
----
-
-## Files to Modify/Create
-
-### Task 1
-- [ ] `pkg/cloudinit/templates.go` - Add cluster config to templates
-- [ ] `pkg/forest/provisioner.go` - Pass cluster info during provisioning
-- [ ] `pkg/forest/registry.go` - Add GetActiveNodeIPs method
-
-### Task 2
-- [ ] `pkg/nats/client.go` (new) - NATS client wrapper
-- [ ] `pkg/nats/stats.go` (new) - Cluster stats types
+### Task 2 (Grow Command)
 - [ ] `cmd/morpheus/main.go` - Add grow command
+- [ ] `pkg/nats/monitor.go` (new) - Query NATS monitoring API
 
-### Task 3
-- [ ] `cmd/morpheus/main.go` - Add --auto flag handling
-- [ ] `pkg/config/config.go` - Add growth config section
-
----
-
-## Testing
-
-### Task 1 Tests
-- Unit: Cloud-init generates valid NATS config
-- Integration: Two nodes can form cluster
-
-### Task 2 Tests
-- Unit: Stats display formatting
-- Unit: Threshold detection
-- Integration: grow command connects to real cluster
-
-### Task 3 Tests
-- Unit: Auto mode respects threshold
-- Unit: Cooldown prevents rapid expansion
-- Unit: JSON output is valid
+### Task 3 (Auto-Grow)
+- [ ] `cmd/morpheus/main.go` - Add flags
+- [ ] `pkg/config/config.go` - Add growth config
 
 ---
 
-## Notes
+## Key Insight: NATS Handles Clustering
 
-- All machines use IPv6 (Hetzner default)
-- NATS cluster port: 6222
-- NATS client port: 4222
-- Forest ID format: `forest-{timestamp}`
+NimsForest just does:
+```go
+nc, err := nats.Connect(os.Getenv("NATS_URL"))
+```
+
+All clustering is handled by NATS server. NimsForest instances on different VMs automatically share messages through the NATS cluster.
+
+**Morpheus just needs to:**
+1. Install NATS server
+2. Configure cluster routes between nodes
+3. Install NimsForest
+4. Point NimsForest at local NATS
+
+**NimsForest doesn't need to know about clustering at all.**

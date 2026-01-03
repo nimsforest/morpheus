@@ -2,35 +2,131 @@
 
 ## Current Sprint: Forest Automation
 
-### Task 1: Post-Provision Cluster Join
-**Status:** 🟡 In Progress  
-**Priority:** High  
-**Estimated:** 2-3 hours
+### Understanding
 
-Machines provisioned by `morpheus plant` should auto-join the NATS cluster.
+```
+VM runs:
+├── NATS Server (message broker, handles clustering)
+│   └── Port 4222 (clients), 6222 (cluster), 8222 (monitoring)
+│
+└── NimsForest (business logic)
+    └── Connects to localhost:4222
+```
+
+**NATS handles all clustering/discovery.** NimsForest just connects to local NATS.
+
+---
+
+### Task 1: NATS Server Installation
+**Status:** ⬜ Not Started  
+**Priority:** High  
+**Estimated:** 3-4 hours
+
+Each VM needs NATS server running before NimsForest can start.
 
 #### Subtasks
 
-- [ ] **1.1** Add cluster fields to `TemplateData` in `pkg/cloudinit/templates.go`
+- [ ] **1.1** Add NATS config to `pkg/config/config.go`
   ```go
-  ClusterNodes []string // IPs of existing nodes
-  ClusterName  string   // NATS cluster name  
-  IsFirstNode  bool     // True for seed node
+  type IntegrationConfig struct {
+      // ... existing fields ...
+      NATSInstall  bool   `yaml:"nats_install"`
+      NATSVersion  string `yaml:"nats_version"`  // e.g., "2.10.24"
+  }
   ```
 
-- [ ] **1.2** Update `pkg/forest/provisioner.go` to pass cluster info
-  - First node: `IsFirstNode = true`
-  - Later nodes: Get existing node IPs from registry
+- [ ] **1.2** Add cluster fields to `TemplateData` in `pkg/cloudinit/templates.go`
+  ```go
+  // NATS cluster configuration
+  NATSInstall   bool
+  NATSVersion   string
+  ClusterName   string   // Forest ID
+  ClusterNodes  []string // IPv6 addresses of existing nodes
+  IsFirstNode   bool     // First node has no routes
+  ```
 
-- [ ] **1.3** Add `GetActiveNodeIPs(forestID string) []string` to `pkg/forest/registry.go`
+- [ ] **1.3** Add NATS download to cloud-init template
+  ```yaml
+  # Download NATS server
+  - |
+    NATS_VERSION="{{.NATSVersion}}"
+    curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" | tar xz
+    mv nats-server-*/nats-server /usr/local/bin/
+    chmod +x /usr/local/bin/nats-server
+  ```
 
-- [ ] **1.4** Generate NATS config in cloud-init template
-  - Create `/etc/nimsforest/nats.conf` with cluster routes
-  - Seed node has no routes, others connect to seeds
+- [ ] **1.4** Generate NATS config with cluster routes
+  ```yaml
+  - |
+    mkdir -p /etc/nats /var/lib/nats/jetstream
+    cat > /etc/nats/nats.conf << 'EOF'
+    port: 4222
+    http_port: 8222
+    
+    jetstream {
+      store_dir: /var/lib/nats/jetstream
+      max_mem: 1G
+      max_file: 10G
+    }
+    
+    cluster {
+      name: {{.ClusterName}}
+      port: 6222
+      {{if not .IsFirstNode}}
+      routes = [
+        {{range .ClusterNodes}}
+        nats-route://[{{.}}]:6222
+        {{end}}
+      ]
+      {{end}}
+    }
+    EOF
+  ```
 
-- [ ] **1.5** Update systemd service to pass `--nats-config` flag
+- [ ] **1.5** Create NATS systemd service
+  ```yaml
+  - |
+    cat > /etc/systemd/system/nats.service << 'EOF'
+    [Unit]
+    Description=NATS Server
+    After=network.target
 
-- [ ] **1.6** Add tests for cluster config generation
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+    
+    systemctl daemon-reload
+    systemctl enable nats
+    systemctl start nats
+  ```
+
+- [ ] **1.6** Update NimsForest service to depend on NATS
+  ```yaml
+  [Unit]
+  Description=NimsForest
+  After=nats.service
+  Requires=nats.service
+
+  [Service]
+  Environment=NATS_URL=nats://localhost:4222
+  # ... rest of service ...
+  ```
+
+- [ ] **1.7** Update `pkg/forest/provisioner.go` to pass cluster info
+  - First node: `IsFirstNode = true`, empty `ClusterNodes`
+  - Subsequent nodes: Get existing node IPs from registry
+
+- [ ] **1.8** Add `GetActiveNodeIPs(forestID) []string` to registry
+
+- [ ] **1.9** Update `config.example.yaml` with NATS settings
+
+- [ ] **1.10** Add tests for NATS config generation
 
 ---
 
@@ -44,41 +140,60 @@ Interactive command to check forest health and expand.
 
 #### Subtasks
 
-- [ ] **2.1** Add NATS Go client dependency
-  ```bash
-  go get github.com/nats-io/nats.go
-  ```
-
-- [ ] **2.2** Create `pkg/nats/client.go` - NATS connection wrapper
+- [ ] **2.1** Create `pkg/nats/monitor.go` - Query NATS monitoring API
   ```go
-  func NewClient(url string) (*Client, error)
-  func (c *Client) GetClusterStats() (*ClusterStats, error)
-  ```
-
-- [ ] **2.3** Create `pkg/nats/stats.go` - Stats types
-  ```go
-  type ClusterStats struct {
-      Nodes       []NodeStats
-      TotalCPU    float64
-      UsedCPU     float64
-      TotalMemory float64
-      UsedMemory  float64
+  // NATS exposes stats at http://[ip]:8222/varz
+  func GetServerStats(nodeIP string) (*ServerStats, error)
+  
+  type ServerStats struct {
+      CPU        float64
+      Memory     int64
+      Connections int
+      InMsgs     int64
+      OutMsgs    int64
   }
   ```
 
-- [ ] **2.4** Add `grow` command to `cmd/morpheus/main.go`
-  - Parse forest ID from args or select if only one
-  - Connect to NATS cluster
-  - Query stats
-  - Display with progress bars
-  - Flag >80% usage
-  - Prompt for expansion
+- [ ] **2.2** Add `grow` command to `cmd/morpheus/main.go`
+  ```go
+  case "grow":
+      return runGrow(args[1:])
+  ```
 
-- [ ] **2.5** Implement expansion logic
-  - On confirm, call existing provisioning code
-  - New node should auto-join cluster (Task 1)
+- [ ] **2.3** Implement forest selection
+  - If one forest: use it
+  - If multiple: prompt or require `morpheus grow <forest-id>`
 
-- [ ] **2.6** Add tests for grow command
+- [ ] **2.4** Query all nodes in forest
+  ```go
+  nodes := registry.GetNodes(forestID)
+  for _, node := range nodes {
+      stats := nats.GetServerStats(node.IP)
+      // aggregate stats
+  }
+  ```
+
+- [ ] **2.5** Display with progress bars and warnings
+  ```
+  🌲 Forest: forest-1234567890
+
+  Resource Usage:
+    CPU:    72% ████████████████████░░░░░░░░
+    Memory: 85% █████████████████████████░░░ ⚠️
+
+  Nodes (2):
+    ID        IP              CPU    MEM    STATUS
+    node-1    2a01:4f8::1     65%    80%    healthy
+    node-2    2a01:4f8::2     78%    90%    warning ⚠️
+
+  ⚠️  Memory above 80% threshold
+
+  Add 1 node? [y/N]:
+  ```
+
+- [ ] **2.6** On confirm, provision new node with existing IPs as ClusterNodes
+
+- [ ] **2.7** Add tests
 
 ---
 
@@ -88,14 +203,16 @@ Interactive command to check forest health and expand.
 **Estimated:** 2-3 hours  
 **Depends on:** Task 2
 
-Non-interactive auto-expansion for cron/automation.
+Non-interactive mode for cron/automation.
 
 #### Subtasks
 
 - [ ] **3.1** Add flags to grow command
-  - `--auto` - No prompts, auto-expand if needed
-  - `--threshold N` - Custom threshold (default 80)
-  - `--output json` - Machine-readable output
+  ```
+  --auto           Run without prompts
+  --threshold N    Trigger at N% (default: 80)
+  --output json    Machine-readable output
+  ```
 
 - [ ] **3.2** Add growth config to `pkg/config/config.go`
   ```go
@@ -108,68 +225,66 @@ Non-interactive auto-expansion for cron/automation.
   }
   ```
 
-- [ ] **3.3** Implement cooldown tracking
-  - Store last expansion time in registry
-  - Prevent expansion if within cooldown
+- [ ] **3.3** Track last expansion time in registry
+  ```go
+  type Forest struct {
+      // ... existing ...
+      LastExpansion time.Time `json:"last_expansion,omitempty"`
+  }
+  ```
 
-- [ ] **3.4** Add JSON output mode
+- [ ] **3.4** Implement auto logic
+  ```go
+  if time.Since(forest.LastExpansion) < cooldown {
+      return "cooldown active"
+  }
+  if maxPercent > threshold {
+      provisionNode(forestID)
+  }
+  ```
 
-- [ ] **3.5** Update `config.example.yaml` with growth settings
+- [ ] **3.5** JSON output mode for scripting
 
-- [ ] **3.6** Add tests for auto mode
+- [ ] **3.6** Update config.example.yaml
+
+- [ ] **3.7** Add tests
 
 ---
 
-## Backlog
+## Quick Reference
 
-### `morpheus shrink`
-Tear down idle nodes. NimsForest reports idle nodes, Morpheus removes them.
+**NATS Ports:**
+- 4222 - Client connections (NimsForest connects here)
+- 6222 - Cluster routes (nodes connect to each other)
+- 8222 - HTTP monitoring API (morpheus queries this)
 
-### `morpheus status`
-Enhanced status showing cluster health, not just node list.
+**Key Files:**
+- `pkg/cloudinit/templates.go` - VM setup scripts
+- `pkg/forest/provisioner.go` - Orchestrates provisioning
+- `pkg/forest/registry.go` - Tracks forests/nodes
+- `cmd/morpheus/main.go` - CLI commands
 
-### Central Registry (Optional)
-For connected (non-airgapped) forests, sync to central registry.
+**Test:**
+```bash
+go test ./...
+go build ./...
+```
 
 ---
 
 ## Completed
 
 - [x] Basic provisioning (`morpheus plant cloud small/medium/large`)
-- [x] NimsForest auto-install via cloud-init
-- [x] Configurable download URL for NimsForest binary
-- [x] Systemd service creation
+- [x] NimsForest binary auto-install
+- [x] Configurable download URL
+- [x] NimsForest systemd service
 
 ---
 
 ## How to Pick Up a Task
 
-1. Check task status and dependencies
-2. Read the detailed roadmap: `docs/ROADMAP_FOREST_AUTOMATION.md`
-3. Mark task as 🟡 In Progress
-4. Complete subtasks in order
-5. Run tests: `go test ./...`
-6. Update this file with completion status
-
----
-
-## Quick Reference
-
-**Key Files:**
-- `pkg/cloudinit/templates.go` - Cloud-init scripts
-- `pkg/forest/provisioner.go` - Provisioning logic
-- `pkg/forest/registry.go` - Forest/node tracking
-- `cmd/morpheus/main.go` - CLI commands
-- `pkg/config/config.go` - Configuration
-
-**Test Commands:**
-```bash
-go test ./...           # All tests
-go test ./pkg/cloudinit # Cloud-init tests
-go build ./...          # Build check
-```
-
-**NATS Ports:**
-- 4222 - Client connections
-- 6222 - Cluster routing
-- 8222 - Monitoring
+1. Read task description and subtasks
+2. Check dependencies (e.g., Task 2 needs Task 1)
+3. Work through subtasks in order
+4. Run `go test ./...` after changes
+5. Update this file when done
