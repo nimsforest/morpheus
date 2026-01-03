@@ -82,17 +82,17 @@ func handlePlant() {
 		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (~5-7 min)   💰 ~€3-4/month")
+		fmt.Fprintln(os.Stderr, "  small  - 2 machines (~7-10 min)  💰 ~€6-8/month")
 		fmt.Fprintln(os.Stderr, "  medium - 3 machines (~15-20 min) 💰 ~€9-12/month")
 		fmt.Fprintln(os.Stderr, "  large  - 5 machines (~25-35 min) 💰 ~€15-20/month")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		if isTermux() {
-			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Quick! Create 1 machine")
+			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Create 2-machine cluster")
 			fmt.Fprintln(os.Stderr, "  morpheus plant medium       # Create 3-machine cluster")
 		} else {
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
-			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 1 machine locally (Docker)")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
+			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 2-machine cluster locally")
 			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium # Create 3-machine cluster")
 		}
 		os.Exit(1)
@@ -155,8 +155,8 @@ func handlePlant() {
 	if !isValidSize(size) {
 		fmt.Fprintf(os.Stderr, "❌ Invalid size: '%s'\n\n", size)
 		fmt.Fprintln(os.Stderr, "Valid sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (quick start, ~€3-4/mo)")
-		fmt.Fprintln(os.Stderr, "  medium - 3 machines (small cluster, ~€9-12/mo)")
+		fmt.Fprintln(os.Stderr, "  small  - 2 machines (minimal cluster, ~€6-8/mo)")
+		fmt.Fprintln(os.Stderr, "  medium - 3 machines (standard cluster, ~€9-12/mo)")
 		fmt.Fprintln(os.Stderr, "  large  - 5 machines (large cluster, ~€15-20/mo)")
 		fmt.Fprintln(os.Stderr, "")
 
@@ -792,11 +792,11 @@ func handleList() {
 		fmt.Println()
 		if isTermux() {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant small        # Quick start with 1 machine")
+			fmt.Println("  morpheus plant small        # Create 2-machine cluster")
 		} else {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant cloud small  # 1 machine on cloud")
-			fmt.Println("  morpheus plant local small  # 1 machine locally (Docker)")
+			fmt.Println("  morpheus plant cloud small  # 2-machine cluster on cloud")
+			fmt.Println("  morpheus plant local small  # 2-machine cluster locally (Docker)")
 		}
 		return
 	}
@@ -2064,16 +2064,17 @@ func truncateIP(ip string, maxLen int) string {
 }
 
 // getNodeCount returns the number of nodes for a given forest size
+// Minimum of 2 nodes ensures proper NATS clustering
 func getNodeCount(size string) int {
 	switch size {
 	case "small":
-		return 1
+		return 2 // Minimum for NATS clustering
 	case "medium":
 		return 3
 	case "large":
 		return 5
 	default:
-		return 1
+		return 2
 	}
 }
 
@@ -2490,8 +2491,8 @@ func printHelp() {
 
 	if isOnTermux {
 		fmt.Println("Quick Start (Termux):")
-		fmt.Println("  morpheus plant small        # Create 1 machine on Hetzner (~5-7 min)")
-		fmt.Println("  morpheus plant medium       # Create 3 machines (~15-20 min)")
+		fmt.Println("  morpheus plant small        # Create 2-machine cluster (~7-10 min)")
+		fmt.Println("  morpheus plant medium       # Create 3-machine cluster (~15-20 min)")
 		fmt.Println()
 	}
 
@@ -2502,7 +2503,7 @@ func printHelp() {
 	if isOnTermux {
 		fmt.Println("  plant <size>                Plant a forest (cloud mode)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 1 machine  (~5-7 min, €3-4/mo)")
+		fmt.Println("                                small  - 2 machines (~7-10 min, €6-8/mo)")
 		fmt.Println("                                medium - 3 machines (~15-20 min, €9-12/mo)")
 		fmt.Println("                                large  - 5 machines (~25-35 min, €15-20/mo)")
 	} else {
@@ -2511,7 +2512,7 @@ func printHelp() {
 		fmt.Println("                                cloud - Provision on Hetzner Cloud (requires API token)")
 		fmt.Println("                                local - Provision locally using Docker (free)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 1 machine  (~5-7 min)")
+		fmt.Println("                                small  - 2 machines (~7-10 min)")
 		fmt.Println("                                medium - 3 machines (~15-20 min)")
 		fmt.Println("                                large  - 5 machines (~25-35 min)")
 	}
@@ -2538,14 +2539,14 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	if isOnTermux {
-		fmt.Println("  morpheus plant small        # Quick! Create 1 machine")
+		fmt.Println("  morpheus plant small        # Create 2-machine cluster")
 		fmt.Println("  morpheus plant medium       # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all your forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
 	} else {
-		fmt.Println("  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
-		fmt.Println("  morpheus plant local small  # Create 1 machine locally (Docker)")
+		fmt.Println("  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
+		fmt.Println("  morpheus plant local small  # Create 2-machine cluster locally")
 		fmt.Println("  morpheus plant cloud medium # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")

@@ -441,16 +441,17 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, _ []*provid
 }
 
 // getNodeCount returns the number of nodes for a given forest size
+// Minimum of 2 nodes ensures proper NATS clustering
 func getNodeCount(size string) int {
 	switch size {
 	case "small":
-		return 1
+		return 2 // Minimum for NATS clustering
 	case "medium":
 		return 3
 	case "large":
 		return 5
 	default:
-		return 1
+		return 2
 	}
 }
 

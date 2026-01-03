@@ -50,7 +50,6 @@ write_files:
         "node_id": "{{.NodeID}}",
         "node_index": {{.NodeIndex}},
         "cluster_size": {{.NodeCount}},
-        "standalone": {{if eq .NodeCount 1}}true{{else}}false{{end}},
         "provisioner": "morpheus"
       }
     permissions: '0644'
@@ -126,7 +125,7 @@ runcmd:
       echo "{\"nodes\":{\"{{.ForestID}}\":[{\"id\":\"{{.NodeID}}\",\"ip\":\"$NODE_IP\",\"forest_id\":\"{{.ForestID}}\"}]}}" > /mnt/forest/registry.json
       {{end}}
       
-      # Create systemd service with appropriate cluster configuration
+      # Create systemd service for cluster mode
       cat > /etc/systemd/system/nimsforest.service <<'SERVICEEOF'
     [Unit]
     Description=NimsForest
@@ -141,13 +140,7 @@ runcmd:
     Environment=NATS_CLUSTER_NODE_INFO=/etc/nimsforest/node-info.json
     Environment=NATS_CLUSTER_REGISTRY=/mnt/forest/registry.json
     Environment=JETSTREAM_DIR=/var/lib/nimsforest/jetstream
-    {{if eq .NodeCount 1}}
-    # Single-node standalone mode
-    Environment=NATS_STANDALONE=true
-    {{else}}
-    # Multi-node cluster mode ({{.NodeCount}} nodes)
     Environment=NATS_CLUSTER_SIZE={{.NodeCount}}
-    {{end}}
     WorkingDirectory=/var/lib/nimsforest
 
     [Install]
