@@ -179,3 +179,136 @@ func TestCreateHTTPClient(t *testing.T) {
 		t.Errorf("Client timeout = %v, expected %v", client.Timeout, timeout)
 	}
 }
+
+func TestCheckIPv4Connectivity(t *testing.T) {
+	// Set a reasonable timeout for the test
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result := CheckIPv4Connectivity(ctx)
+
+	// The test should complete without panicking
+	// The result may be either success or failure depending on the environment
+
+	if result.Available {
+		t.Logf("IPv4 is available, detected address: %s", result.Address)
+
+		// If available, address should not be empty
+		if result.Address == "" {
+			t.Error("IPv4 reported as available but address is empty")
+		}
+
+		// Error should be nil when available
+		if result.Error != nil {
+			t.Errorf("IPv4 reported as available but error is not nil: %v", result.Error)
+		}
+
+		// Verify the address is a valid IPv4 address
+		if !isValidIPv4(result.Address) {
+			t.Errorf("Invalid IPv4 address format: %s", result.Address)
+		}
+	} else {
+		t.Logf("IPv4 is not available: %v", result.Error)
+
+		// If not available, address should be empty
+		if result.Address != "" {
+			t.Errorf("IPv4 reported as unavailable but address is not empty: %s", result.Address)
+		}
+
+		// Error should not be nil when unavailable
+		if result.Error == nil {
+			t.Error("IPv4 reported as unavailable but error is nil")
+		}
+	}
+}
+
+func TestIsValidIPv4(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{
+			name:     "Valid IPv4",
+			input:    "192.168.1.1",
+			expected: true,
+		},
+		{
+			name:     "Valid IPv4 all zeros",
+			input:    "0.0.0.0",
+			expected: true,
+		},
+		{
+			name:     "Valid IPv4 broadcast",
+			input:    "255.255.255.255",
+			expected: true,
+		},
+		{
+			name:     "Valid IPv4 public",
+			input:    "8.8.8.8",
+			expected: true,
+		},
+		{
+			name:     "Invalid IPv6",
+			input:    "2001:db8::1",
+			expected: false,
+		},
+		{
+			name:     "Invalid empty",
+			input:    "",
+			expected: false,
+		},
+		{
+			name:     "Invalid text",
+			input:    "not-an-ip",
+			expected: false,
+		},
+		{
+			name:     "Invalid partial IP",
+			input:    "192.168.1",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isValidIPv4(tt.input)
+			if result != tt.expected {
+				t.Errorf("isValidIPv4(%q) = %v, expected %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTrimWhitespaceWithIPv4(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "IPv4 no whitespace",
+			input:    "192.168.1.1",
+			expected: "192.168.1.1",
+		},
+		{
+			name:     "IPv4 with newline",
+			input:    "192.168.1.1\n",
+			expected: "192.168.1.1",
+		},
+		{
+			name:     "IPv4 with spaces",
+			input:    " 8.8.8.8 ",
+			expected: "8.8.8.8",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := trimWhitespace(tt.input)
+			if result != tt.expected {
+				t.Errorf("trimWhitespace(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

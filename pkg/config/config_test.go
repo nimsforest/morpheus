@@ -599,3 +599,58 @@ func TestIsRemoteRegistry(t *testing.T) {
 		})
 	}
 }
+
+func TestIPv4FallbackConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Test with IPv4 fallback enabled
+	configContent := `
+infrastructure:
+  provider: hetzner
+  enable_ipv4_fallback: true
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if !cfg.Infrastructure.EnableIPv4Fallback {
+		t.Error("Expected EnableIPv4Fallback to be true")
+	}
+}
+
+func TestIPv4FallbackConfigDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Test without IPv4 fallback specified (should default to false)
+	configContent := `
+infrastructure:
+  provider: hetzner
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Infrastructure.EnableIPv4Fallback {
+		t.Error("Expected EnableIPv4Fallback to default to false")
+	}
+}

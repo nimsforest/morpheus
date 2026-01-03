@@ -4,16 +4,16 @@ Morpheus uses IPv6-only by default. Hetzner charges extra for IPv4.
 
 ## Requirements
 
-**Your local network must have IPv6:**
+**Check your network connectivity:**
 ```bash
-# Test IPv6 connectivity using Morpheus (recommended, works on all platforms including Termux)
-morpheus check-ipv6
+# Test both IPv6 and IPv4 connectivity
+morpheus check network
 
-# Alternative: using curl (may not work on Termux due to certificate issues)
-curl -6 ifconfig.co
+# Or test IPv6 specifically
+morpheus check ipv6
 
-# Should return your IPv6 address
-# If it times out, you need to enable IPv6 on your network
+# Or test IPv4 specifically
+morpheus check ipv4
 ```
 
 ## Configuration
@@ -21,16 +21,35 @@ curl -6 ifconfig.co
 **Default (IPv6-only):**
 ```yaml
 infrastructure:
-  defaults:
-    prefer_ipv6: true
-    ipv6_only: true    # Default - no IPv4
+  provider: hetzner
+  # IPv6-only by default (no IPv4 allocated)
 ```
 
-## SSH with IPv6
+**With IPv4 Fallback:**
+```yaml
+infrastructure:
+  provider: hetzner
+  enable_ipv4_fallback: true  # Enable IPv4 addresses (costs extra)
+```
 
+When IPv4 fallback is enabled:
+- Servers get both IPv4 and IPv6 addresses
+- Morpheus tries IPv6 first, falls back to IPv4 if unreachable
+- Additional cost for IPv4 addresses on Hetzner
+
+## SSH Connections
+
+**IPv6:**
 ```bash
 ssh root@2001:db8::1
 ```
+
+**IPv4:**
+```bash
+ssh root@203.0.113.1
+```
+
+Morpheus will show you the appropriate IP addresses after provisioning.
 
 ## NATS with IPv6
 
@@ -51,9 +70,14 @@ cluster {
 
 ## Client Connections
 
-**Go:**
+**Go (IPv6):**
 ```go
 nc, err := nats.Connect("nats://[2001:db8::1]:4222")
+```
+
+**Go (IPv4):**
+```go
+nc, err := nats.Connect("nats://203.0.113.1:4222")
 ```
 
 **CLI:**
@@ -67,13 +91,24 @@ nats pub -s nats://[2001:db8::1]:4222 test "Hello"
 
 **If you don't have IPv6:**
 
-You cannot use Morpheus without IPv6. Options:
+Option 1: Enable IPv4 fallback (costs extra)
+```yaml
+infrastructure:
+  enable_ipv4_fallback: true
+```
+
+Option 2: Get IPv6 connectivity
 1. Enable IPv6 on your ISP/network
-2. Use IPv6 tunnel (e.g., Hurricane Electric)
+2. Use IPv6 tunnel (e.g., Hurricane Electric - free)
 3. Use a VPS with IPv6 to run Morpheus
 
-**Test Hetzner server IPv6:**
+**Test connectivity to Hetzner server:**
 ```bash
+# IPv6
 ping6 2001:db8::1
 ssh -6 root@2001:db8::1
+
+# IPv4 (if fallback enabled)
+ping 203.0.113.1
+ssh root@203.0.113.1
 ```
