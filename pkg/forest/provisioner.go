@@ -10,18 +10,20 @@ import (
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/registry"
 	"github.com/nimsforest/morpheus/pkg/sshutil"
 )
 
 // Provisioner handles forest provisioning
 type Provisioner struct {
 	provider provider.Provider
-	registry *Registry
+	registry registry.Registry
 	config   *config.Config
 }
 
 // NewProvisioner creates a new forest provisioner
-func NewProvisioner(p provider.Provider, r *Registry, cfg *config.Config) *Provisioner {
+// Accepts any registry that implements the registry.Registry interface
+func NewProvisioner(p provider.Provider, r registry.Registry, cfg *config.Config) *Provisioner {
 	return &Provisioner{
 		provider: p,
 		registry: r,
@@ -42,7 +44,7 @@ type ProvisionRequest struct {
 // Provision creates a new forest with the specified configuration
 func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error {
 	// Register forest
-	forest := &Forest{
+	forest := &registry.Forest{
 		ID:       req.ForestID,
 		Size:     req.Size,
 		Location: req.Location,
@@ -70,7 +72,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
 			// Register node immediately after server creation (before SSH verification)
 			// This ensures teardown can find and delete it even if interrupted
-			node := &Node{
+			node := &registry.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
 				Role:     string(req.Role),
@@ -121,6 +123,26 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 // The onCreated callback is called immediately after the server is created (before SSH verification)
 // to allow early registration for cleanup purposes
 func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
+	// Get existing node IPs for NATS cluster (if NATS is enabled)
+	var clusterNodeIPs []string
+	isFirstNode := index == 0
+
+	if p.config.Integration.NATSInstall {
+		// Try to get existing nodes from registry for cluster configuration
+		existingNodes, err := p.registry.GetNodes(req.ForestID)
+		if err == nil {
+			for _, node := range existingNodes {
+				if node.IP != "" && node.Status == "active" {
+					clusterNodeIPs = append(clusterNodeIPs, node.IP)
+				}
+			}
+		}
+		// If there are existing nodes, this isn't the first node
+		if len(clusterNodeIPs) > 0 {
+			isFirstNode = false
+		}
+	}
+
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
@@ -130,6 +152,17 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		CallbackURL:           p.config.Integration.NimsForestURL,
 		NimsForestInstall:     p.config.Integration.NimsForestInstall,
 		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
+		// NATS configuration
+		NATSInstall:  p.config.Integration.NATSInstall,
+		NATSVersion:  p.config.Integration.NATSVersion,
+		ClusterName:  req.ForestID,
+		ClusterNodes: clusterNodeIPs,
+		IsFirstNode:  isFirstNode,
+	}
+
+	// Set default NATS version if not specified
+	if cloudInitData.NATSInstall && cloudInitData.NATSVersion == "" {
+		cloudInitData.NATSVersion = "2.10.24"
 	}
 
 	userData, err := cloudinit.Generate(req.Role, cloudInitData)

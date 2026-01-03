@@ -14,7 +14,16 @@ type Config struct {
 	Infrastructure InfrastructureConfig `yaml:"infrastructure"`
 	Integration    IntegrationConfig    `yaml:"integration"`
 	Provisioning   ProvisioningConfig   `yaml:"provisioning"`
+	Registry       RegistryConfig       `yaml:"registry"`
 	Secrets        SecretsConfig        `yaml:"secrets"`
+}
+
+// RegistryConfig defines remote registry settings for multi-device access
+type RegistryConfig struct {
+	Type     string `yaml:"type"`     // "storagebox", "s3", "local", or "none"
+	URL      string `yaml:"url"`      // WebDAV URL for storagebox, or file path for local
+	Username string `yaml:"username"` // Authentication username
+	Password string `yaml:"password"` // Authentication password (or ${STORAGEBOX_PASSWORD} env var)
 }
 
 // ProvisioningConfig defines settings for the provisioning process
@@ -51,6 +60,10 @@ type IntegrationConfig struct {
 	// NimsForest auto-installation settings
 	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines
 	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (e.g., https://nimsforest.io/bin/nimsforest)
+
+	// NATS server settings
+	NATSInstall bool   `yaml:"nats_install"` // Auto-install NATS server on provisioned machines
+	NATSVersion string `yaml:"nats_version"` // NATS server version (e.g., "2.10.24")
 }
 
 // DefaultsConfig defines default server settings (DEPRECATED)
@@ -90,9 +103,20 @@ func LoadConfig(path string) (*Config, error) {
 		config.Secrets.HetznerAPIToken = token
 	}
 
+	// Expand environment variables in registry password
+	if strings.HasPrefix(config.Registry.Password, "${") && strings.HasSuffix(config.Registry.Password, "}") {
+		envVar := config.Registry.Password[2 : len(config.Registry.Password)-1]
+		config.Registry.Password = strings.TrimSpace(os.Getenv(envVar))
+	}
+	// Also check for STORAGEBOX_PASSWORD env var as override
+	if pass := strings.TrimSpace(os.Getenv("STORAGEBOX_PASSWORD")); pass != "" {
+		config.Registry.Password = pass
+	}
+
 	// Apply defaults
 	config.applyProvisioningDefaults()
 	config.applyInfrastructureDefaults()
+	config.applyRegistryDefaults()
 
 	return &config, nil
 }
@@ -195,4 +219,25 @@ func (c *Config) GetSSHKeyPath() string {
 		return c.Infrastructure.Defaults.SSHKeyPath
 	}
 	return ""
+}
+
+// applyRegistryDefaults sets default values for registry config
+func (c *Config) applyRegistryDefaults() {
+	// Default to local registry if not specified
+	if c.Registry.Type == "" {
+		c.Registry.Type = "local"
+	}
+}
+
+// IsRemoteRegistry returns true if the registry is configured to use remote storage
+func (c *Config) IsRemoteRegistry() bool {
+	return c.Registry.Type == "storagebox" || c.Registry.Type == "s3"
+}
+
+// GetRegistryType returns the registry type with fallback to "local"
+func (c *Config) GetRegistryType() string {
+	if c.Registry.Type == "" {
+		return "local"
+	}
+	return c.Registry.Type
 }
