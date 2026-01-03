@@ -2428,28 +2428,27 @@ func handleTestE2E() {
 		testsFailed++
 	}
 
-	// Step 7: Check NATS server is running (required)
+	// Step 7: Check NATS HTTP monitoring (required)
 	fmt.Println()
-	fmt.Println("📊 Step 7: Checking NATS server...")
+	fmt.Println("📊 Step 7: Checking NATS monitoring...")
 
-	// Check if NATS is listening (client port or cluster port)
-	output, err = runSSHToNode(nodeIP, "ss -tlnp 2>/dev/null | grep -E '(nimsforest|nats)' | head -5")
-	if err == nil && (strings.Contains(output, "nimsforest") || strings.Contains(output, "nats")) {
-		fmt.Println("   ✅ NATS server is listening")
+	// Check HTTP monitoring endpoint on port 8222
+	output, err = runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null")
+	if err == nil && strings.Contains(output, "server_id") {
+		fmt.Println("   ✅ NATS monitoring endpoint responding on :8222")
 		testsPassed++
-		// Show which ports are listening
-		lines := strings.Split(strings.TrimSpace(output), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "LISTEN") {
-				fmt.Printf("      %s\n", strings.TrimSpace(line))
-			}
+		
+		// Extract and show some stats
+		if strings.Contains(output, "\"connections\"") {
+			fmt.Println("      /varz endpoint available")
 		}
 	} else {
-		// Fallback: check if monitoring endpoint is available
-		output2, _ := runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null | head -c 100")
-		if strings.Contains(output2, "server_id") || strings.Contains(output2, "{") {
-			fmt.Println("   ✅ NATS monitoring endpoint responding")
-			testsPassed++
+		// Fallback: check if NATS is at least listening
+		output2, _ := runSSHToNode(nodeIP, "ss -tlnp 2>/dev/null | grep nimsforest | head -3")
+		if strings.Contains(output2, "nimsforest") {
+			fmt.Println("   ⚠️  NATS server running but HTTP monitoring not available on :8222")
+			fmt.Println("      (Update nimsforest binary to v0.1.1.2+ for monitoring)")
+			testsFailed++
 		} else {
 			fmt.Println("   ❌ NATS server not running")
 			testsFailed++
