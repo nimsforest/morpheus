@@ -41,7 +41,7 @@ packages:
   - cifs-utils
 
 write_files:
-  - path: /etc/morpheus/node-info.json
+  - path: /etc/nimsforest/node-info.json
     content: |
       {
         "forest_id": "{{.ForestID}}",
@@ -101,32 +101,46 @@ runcmd:
     echo "📦 Installing NimsForest..."
     if curl -fsSL -o /opt/nimsforest/bin/nimsforest "{{.NimsForestDownloadURL}}"; then
       chmod +x /opt/nimsforest/bin/nimsforest
+      ln -sf /opt/nimsforest/bin/nimsforest /usr/local/bin/forest
       echo "✅ NimsForest installed"
       
-      NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv6 2>/dev/null || hostname -I | awk '{print $1}')
+      # Get node IP - try IPv4 first (more reliable), then IPv6, then hostname
+      NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null | grep -v "not found" | head -1)
+      if [ -z "$NODE_IP" ]; then
+        NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv6 2>/dev/null | grep -v "not found" | head -1)
+      fi
+      if [ -z "$NODE_IP" ]; then
+        NODE_IP=$(hostname -I | awk '{print $1}')
+      fi
+      echo "Node IP: $NODE_IP"
       
-      cat > /etc/systemd/system/nimsforest.service << SERVICEEOF
-      [Unit]
-      Description=NimsForest
-      After=network-online.target{{if .StorageBoxHost}} mnt-forest.mount{{end}}
-      Wants=network-online.target
+      # Create local registry if no shared storage configured
+      {{if not .StorageBoxHost}}
+      mkdir -p /mnt/forest
+      echo "{\"nodes\":{\"{{.ForestID}}\":[{\"id\":\"{{.NodeID}}\",\"ip\":\"$NODE_IP\",\"forest_id\":\"{{.ForestID}}\"}]}}" > /mnt/forest/registry.json
+      {{end}}
       
-      [Service]
-      Type=simple
-      ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
-      Restart=always
-      RestartSec=5
-      Environment=FOREST_ID={{.ForestID}}
-      Environment=NODE_ID={{.NodeID}}
-      Environment=NODE_IP=${NODE_IP}
-      {{if .StorageBoxHost}}Environment=REGISTRY_PATH=/mnt/forest/registry.json{{end}}
-      WorkingDirectory=/var/lib/nimsforest
+      cat > /etc/systemd/system/nimsforest.service <<'SERVICEEOF'
+    [Unit]
+    Description=NimsForest
+    After=network-online.target{{if .StorageBoxHost}} mnt-forest.mount{{end}}
+    Wants=network-online.target
+
+    [Service]
+    Type=simple
+    ExecStart=/opt/nimsforest/bin/nimsforest start
+    Restart=always
+    RestartSec=5
+    Environment=NATS_CLUSTER_NODE_INFO=/etc/nimsforest/node-info.json
+    Environment=NATS_CLUSTER_REGISTRY=/mnt/forest/registry.json
+    Environment=JETSTREAM_DIR=/var/lib/nimsforest/jetstream
+    WorkingDirectory=/var/lib/nimsforest
+
+    [Install]
+    WantedBy=multi-user.target
+    SERVICEEOF
       
-      [Install]
-      WantedBy=multi-user.target
-      SERVICEEOF
-      
-      sed -i 's/^      //' /etc/systemd/system/nimsforest.service
+      sed -i 's/^    //' /etc/systemd/system/nimsforest.service
       systemctl daemon-reload
       systemctl enable nimsforest
       systemctl start nimsforest

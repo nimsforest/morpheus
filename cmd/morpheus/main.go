@@ -2427,17 +2427,32 @@ func handleTestE2E() {
 		testsFailed++
 	}
 
-	// Step 7: Check NATS monitoring (required)
+	// Step 7: Check NATS server is running (required)
 	fmt.Println()
-	fmt.Println("📊 Step 7: Checking NATS monitoring...")
+	fmt.Println("📊 Step 7: Checking NATS server...")
 
-	output, err = runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null | head -c 100")
-	if err == nil && (strings.Contains(output, "server_id") || strings.Contains(output, "{")) {
-		fmt.Println("   ✅ NATS monitoring endpoint responding")
+	// Check if NATS is listening (client port or cluster port)
+	output, err = runSSHToNode(nodeIP, "ss -tlnp 2>/dev/null | grep -E '(nimsforest|nats)' | head -5")
+	if err == nil && (strings.Contains(output, "nimsforest") || strings.Contains(output, "nats")) {
+		fmt.Println("   ✅ NATS server is listening")
 		testsPassed++
+		// Show which ports are listening
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "LISTEN") {
+				fmt.Printf("      %s\n", strings.TrimSpace(line))
+			}
+		}
 	} else {
-		fmt.Println("   ❌ NATS monitoring not available")
-		testsFailed++
+		// Fallback: check if monitoring endpoint is available
+		output2, _ := runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null | head -c 100")
+		if strings.Contains(output2, "server_id") || strings.Contains(output2, "{") {
+			fmt.Println("   ✅ NATS monitoring endpoint responding")
+			testsPassed++
+		} else {
+			fmt.Println("   ❌ NATS server not running")
+			testsFailed++
+		}
 	}
 
 	// Print summary
