@@ -123,25 +123,8 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 // The onCreated callback is called immediately after the server is created (before SSH verification)
 // to allow early registration for cleanup purposes
 func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
-	// Get existing node IPs for NATS cluster (if NATS is enabled)
-	var clusterNodeIPs []string
-	isFirstNode := index == 0
-
-	if p.config.Integration.NATSInstall {
-		// Try to get existing nodes from registry for cluster configuration
-		existingNodes, err := p.registry.GetNodes(req.ForestID)
-		if err == nil {
-			for _, node := range existingNodes {
-				if node.IP != "" && node.Status == "active" {
-					clusterNodeIPs = append(clusterNodeIPs, node.IP)
-				}
-			}
-		}
-		// If there are existing nodes, this isn't the first node
-		if len(clusterNodeIPs) > 0 {
-			isFirstNode = false
-		}
-	}
+	// Generate unique node ID for this node
+	nodeID := nodeName // e.g., "myforest-node-1"
 
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
@@ -152,17 +135,15 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		CallbackURL:           p.config.Integration.NimsForestURL,
 		NimsForestInstall:     p.config.Integration.NimsForestInstall,
 		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
-		// NATS configuration
-		NATSInstall:  p.config.Integration.NATSInstall,
-		NATSVersion:  p.config.Integration.NATSVersion,
-		ClusterName:  req.ForestID,
-		ClusterNodes: clusterNodeIPs,
-		IsFirstNode:  isFirstNode,
-	}
 
-	// Set default NATS version if not specified
-	if cloudInitData.NATSInstall && cloudInitData.NATSVersion == "" {
-		cloudInitData.NATSVersion = "2.10.24"
+		// Node identification (for embedded NATS peer discovery)
+		NodeID: nodeID,
+		// NodeIP is populated by cloud-init from instance metadata
+
+		// StorageBox mount for shared registry (enables NATS peer discovery)
+		StorageBoxHost:     p.config.Registry.StorageBoxHost,
+		StorageBoxUser:     p.config.Registry.Username,
+		StorageBoxPassword: p.config.Registry.Password,
 	}
 
 	userData, err := cloudinit.Generate(req.Role, cloudInitData)

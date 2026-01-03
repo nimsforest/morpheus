@@ -20,10 +20,11 @@ type Config struct {
 
 // RegistryConfig defines remote registry settings for multi-device access
 type RegistryConfig struct {
-	Type     string `yaml:"type"`     // "storagebox", "s3", "local", or "none"
-	URL      string `yaml:"url"`      // WebDAV URL for storagebox, or file path for local
-	Username string `yaml:"username"` // Authentication username
-	Password string `yaml:"password"` // Authentication password (or ${STORAGEBOX_PASSWORD} env var)
+	Type           string `yaml:"type"`            // "storagebox", "s3", "local", or "none"
+	URL            string `yaml:"url"`             // WebDAV URL for storagebox (CLI access), or file path for local
+	Username       string `yaml:"username"`        // Authentication username
+	Password       string `yaml:"password"`        // Authentication password (or ${STORAGEBOX_PASSWORD} env var)
+	StorageBoxHost string `yaml:"storagebox_host"` // CIFS host for nodes to mount: uXXXXX.your-storagebox.de
 }
 
 // ProvisioningConfig defines settings for the provisioning process
@@ -61,9 +62,10 @@ type IntegrationConfig struct {
 	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines
 	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (e.g., https://nimsforest.io/bin/nimsforest)
 
-	// NATS server settings
-	NATSInstall bool   `yaml:"nats_install"` // Auto-install NATS server on provisioned machines
-	NATSVersion string `yaml:"nats_version"` // NATS server version (e.g., "2.10.24")
+	// DEPRECATED: NimsForest now embeds NATS - these settings are ignored
+	// Kept for backward compatibility with existing configs
+	NATSInstall bool   `yaml:"nats_install"` // DEPRECATED: NimsForest embeds NATS now
+	NATSVersion string `yaml:"nats_version"` // DEPRECATED: NimsForest embeds NATS now
 }
 
 // DefaultsConfig defines default server settings (DEPRECATED)

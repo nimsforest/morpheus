@@ -26,6 +26,17 @@ provisioning:
   readiness_interval: "5s" # How often to check server readiness (default: 5s)
   ssh_port: 22             # SSH port for connectivity checks
 
+# Registry for multi-device forest management
+# Use "storagebox" for Hetzner StorageBox (enables NATS peer discovery via shared registry)
+registry:
+  type: local                                # "local", "storagebox", or "none"
+  # For StorageBox (enables shared registry for multi-node NATS clustering):
+  # type: storagebox
+  # url: https://uXXXXX.your-storagebox.de/morpheus/registry.json  # WebDAV URL for CLI access
+  # storagebox_host: uXXXXX.your-storagebox.de                      # CIFS host for node mounts
+  # username: uXXXXX                                                # StorageBox username
+  # password: ${STORAGEBOX_PASSWORD}                                # Set via env var
+
 # Secrets (can also be set via environment variables)
 secrets:
   hetzner_api_token: ""  # Or set via HETZNER_API_TOKEN environment variable
@@ -53,10 +64,18 @@ secrets:
 #   - Needs "Read & Write" permissions
 #   - Can be set here or via HETZNER_API_TOKEN environment variable
 #
+# StorageBox (for multi-node NATS clustering):
+#   - NimsForest uses embedded NATS for messaging between forest nodes
+#   - Nodes discover peers via shared registry mounted from StorageBox
+#   - The CLI uses WebDAV (https://), nodes use CIFS mount (//host/backup)
+#   - Create a StorageBox at: https://console.hetzner.cloud/ → Storage Boxes
+#   - Ports used: 4222 (client), 6222 (cluster), 8222 (monitoring)
+#
 # Cost:
 #   - small:  1 machine  ≈ €3-4/month   (perfect for testing)
 #   - medium: 3 machines ≈ €9-12/month  (small production)
 #   - large:  5 machines ≈ €15-20/month (larger deployment)
+#   - StorageBox: €3.29/month for 1TB (optional, enables multi-node)
 #   - Billed by the minute, can teardown anytime
 #
 # ─────────────────────────────────────────────────────────────────────────────

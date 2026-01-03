@@ -6,7 +6,7 @@
 ┌─────────────────┐
 │    Morpheus     │  Stateless CLI (phone/laptop)
 └────────┬────────┘
-         │ reads/writes
+         │ reads/writes via WebDAV
          ▼
 ┌─────────────────┐
 │ Hetzner         │  Registry = JSON file at /mnt/forest/registry.json
@@ -24,16 +24,18 @@
 
 ---
 
-## MVP Plan: Integration with Embedded NATS
+## MVP Tasks for NimsForest Integration
 
-### How It Works Now
+### How It Works
 
 ```
 Node-1 starts:
+  → Mounts /mnt/forest (StorageBox via CIFS)
   → Reads /mnt/forest/registry.json → no other nodes yet
   → Starts nimsforest with embedded NATS as cluster of 1
 
 Node-2 starts:
+  → Mounts /mnt/forest (StorageBox via CIFS)
   → Reads registry → sees node-1
   → Connects to node-1 via NATS gossip
   → Cluster is now 2 nodes
@@ -47,204 +49,35 @@ Node-N added:
 
 ---
 
-## Task 1: Update Cloud-Init for Embedded NATS
+## Task 1: Add StorageBox CIFS Host to Config
 **Status:** ⬜ Not Started  
 **Priority:** Critical  
-**Estimated:** 3-4 hours
+**Estimated:** 30 minutes  
+**Why:** Nodes need CIFS mount path, CLI uses WebDAV URL - these are different!
 
-Simplify cloud-init to work with nimsforest's embedded NATS.
-
-### 1.1 Remove separate NATS installation
-
-**File:** `pkg/cloudinit/templates.go`
-
-Remove all the NATS download/systemd sections. NimsForest binary now handles everything.
-
-### 1.2 Add StorageBox CIFS mount
-
-```yaml
-# Mount StorageBox for shared registry
-- |
-  mkdir -p /mnt/forest
-  echo "//{{.StorageBoxHost}}/backup /mnt/forest cifs user={{.StorageBoxUser}},pass={{.StorageBoxPassword}},uid=root,gid=root 0 0" >> /etc/fstab
-  mount /mnt/forest
-```
-
-### 1.3 Write node-info.json
-
-```yaml
-# Write node info for nimsforest
-- |
-  mkdir -p /etc/morpheus
-  cat > /etc/morpheus/node-info.json << 'EOF'
-  {
-    "forest_id": "{{.ForestID}}",
-    "node_id": "{{.NodeID}}"
-  }
-  EOF
-```
-
-### 1.4 Register node in shared registry
-
-```yaml
-# Add this node to registry (atomic read-modify-write)
-- |
-  REGISTRY=/mnt/forest/registry.json
-  NODE_INFO='{"id":"{{.NodeID}}","ip":"{{.NodeIP}}","forest_id":"{{.ForestID}}"}'
-  
-  # Create registry if missing
-  [ -f "$REGISTRY" ] || echo '{"nodes":{}}' > "$REGISTRY"
-  
-  # Use flock for atomic update
-  flock "$REGISTRY" python3 << 'PYEOF'
-  import json
-  with open('/mnt/forest/registry.json', 'r+') as f:
-      reg = json.load(f)
-      if '{{.ForestID}}' not in reg['nodes']:
-          reg['nodes']['{{.ForestID}}'] = []
-      # Add node if not exists
-      if not any(n['id'] == '{{.NodeID}}' for n in reg['nodes']['{{.ForestID}}']):
-          reg['nodes']['{{.ForestID}}'].append({"id": "{{.NodeID}}", "ip": "{{.NodeIP}}", "forest_id": "{{.ForestID}}"})
-      f.seek(0)
-      f.truncate()
-      json.dump(reg, f, indent=2)
-  PYEOF
-```
-
-### 1.5 Create JetStream directory
-
-```yaml
-- mkdir -p /var/lib/nimsforest/jetstream
-```
-
-### 1.6 Simplified NimsForest service
-
-```yaml
-- |
-  cat > /etc/systemd/system/nimsforest.service << 'EOF'
-  [Unit]
-  Description=NimsForest (with embedded NATS)
-  After=network-online.target mnt-forest.mount
-  
-  [Service]
-  ExecStart=/opt/nimsforest/bin/forest
-  Restart=always
-  RestartSec=5
-  WorkingDirectory=/var/lib/nimsforest
-  
-  [Install]
-  WantedBy=multi-user.target
-  EOF
-  
-  systemctl daemon-reload
-  systemctl enable nimsforest
-  systemctl start nimsforest
-```
-
-### 1.7 Update TemplateData struct
-
+### Current State
 ```go
-type TemplateData struct {
-    // Existing fields...
-    
-    // Node identification
-    ForestID string
-    NodeID   string
-    NodeIP   string
-    
-    // StorageBox mount (for shared registry)
-    StorageBoxHost     string  // uXXXXX.your-storagebox.de
-    StorageBoxUser     string  // uXXXXX
-    StorageBoxPassword string
-    
-    // Removed:
-    // - NATSInstall, NATSVersion (not needed anymore)
-    // - ClusterNodes, IsFirstNode (NATS gossip handles this)
+// pkg/config/config.go
+type RegistryConfig struct {
+    Type     string `yaml:"type"`     // "storagebox"
+    URL      string `yaml:"url"`      // WebDAV URL (for CLI)
+    Username string `yaml:"username"` // uXXXXX
+    Password string `yaml:"password"` // ${STORAGEBOX_PASSWORD}
 }
 ```
 
-### Acceptance Criteria
-- [ ] Cloud-init templates no longer install separate NATS
-- [ ] StorageBox mounted at /mnt/forest/ on each node
-- [ ] /etc/morpheus/node-info.json written correctly
-- [ ] Node registered in /mnt/forest/registry.json
-- [ ] NimsForest starts and forms cluster automatically
-
----
-
-## Task 2: Update Provisioner for Simplified Flow
-**Status:** ⬜ Not Started  
-**Priority:** High  
-**Estimated:** 2-3 hours
-
-### 2.1 Update provisioner to pass StorageBox creds
-
-**File:** `pkg/forest/provisioner.go`
-
-```go
-func (p *Provisioner) ProvisionNode(ctx context.Context, req ProvisionRequest) (*Node, error) {
-    // Generate node ID
-    nodeID := fmt.Sprintf("node-%s", generateID())
-    
-    // Get node's primary IPv6
-    nodeIP := req.PrimaryIPv6
-    
-    // Build cloud-init data
-    cloudInitData := cloudinit.TemplateData{
-        ForestID:           req.ForestID,
-        NodeID:             nodeID,
-        NodeIP:             nodeIP,
-        StorageBoxHost:     p.config.Registry.StorageBoxHost,
-        StorageBoxUser:     p.config.Registry.Username,
-        StorageBoxPassword: p.config.Registry.Password,
-        // NimsForest binary
-        NimsforestURL:      req.NimsforestURL,
-    }
-    
-    // No need to query existing cluster nodes anymore
-    // NATS gossip handles peer discovery from registry
-    
-    return p.provider.CreateServer(ctx, createReq)
-}
-```
-
-### 2.2 Remove NATS-specific cluster logic
-
-The provisioner no longer needs to:
-- Track which node is "first"
-- Pass list of existing cluster IPs
-- Configure NATS routes
-
-NimsForest handles all this internally by reading `/mnt/forest/registry.json`.
-
-### Acceptance Criteria
-- [ ] Provisioner passes StorageBox mount info
-- [ ] No NATS-specific configuration in provisioner
-- [ ] Each node gets unique NodeID
-
----
-
-## Task 3: Update Registry Config
-**Status:** ⬜ Not Started  
-**Priority:** High  
-**Estimated:** 1-2 hours
-
-### 3.1 Add StorageBox mount config
-
-**File:** `pkg/config/config.go`
-
+### Required Change
 ```go
 type RegistryConfig struct {
-    Type            string `yaml:"type"`             // "storagebox"
-    URL             string `yaml:"url"`              // WebDAV URL (for Morpheus access)
-    Username        string `yaml:"username"`         // uXXXXX
-    Password        string `yaml:"password"`
-    StorageBoxHost  string `yaml:"storagebox_host"`  // uXXXXX.your-storagebox.de (for CIFS mount)
+    Type           string `yaml:"type"`            // "storagebox"
+    URL            string `yaml:"url"`             // WebDAV URL (for CLI access)
+    Username       string `yaml:"username"`        // uXXXXX
+    Password       string `yaml:"password"`        // ${STORAGEBOX_PASSWORD}
+    StorageBoxHost string `yaml:"storagebox_host"` // CIFS host for nodes: uXXXXX.your-storagebox.de
 }
 ```
 
-### 3.2 Example config.yaml
-
+### Example config.yaml
 ```yaml
 registry:
   type: storagebox
@@ -255,106 +88,322 @@ registry:
 ```
 
 ### Acceptance Criteria
-- [ ] Config supports both WebDAV URL and CIFS host
-- [ ] Morpheus CLI uses WebDAV
-- [ ] Nodes use CIFS mount
+- [ ] StorageBoxHost field added to RegistryConfig
+- [ ] Config validation checks StorageBoxHost when type=storagebox
+- [ ] Example config updated
 
 ---
 
-## Task 4: Update `morpheus grow` for Embedded NATS
+## Task 2: Update Cloud-Init for Embedded NATS
 **Status:** ⬜ Not Started  
-**Priority:** Medium  
-**Estimated:** 2-3 hours
+**Priority:** Critical  
+**Estimated:** 2-3 hours  
+**Why:** Core change - nodes must mount shared registry and NimsForest handles NATS internally
 
-### 4.1 Query NATS monitoring from embedded server
+### 2.1 Add TemplateData fields for embedded NATS mode
 
-NimsForest exposes NATS monitoring on port 8222. The existing monitoring code should still work.
+**File:** `pkg/cloudinit/templates.go`
 
 ```go
-// pkg/nats/monitor.go - no changes needed
-// NATS HTTP monitoring at :8222 still available
+type TemplateData struct {
+    // Existing fields...
+    NodeRole    NodeRole
+    ForestID    string
+    SSHKeys     []string
+    
+    // NimsForest auto-installation (keep these)
+    NimsForestInstall     bool
+    NimsForestDownloadURL string
+    
+    // NEW: StorageBox mount for shared registry
+    StorageBoxHost     string  // uXXXXX.your-storagebox.de
+    StorageBoxUser     string  // uXXXXX
+    StorageBoxPassword string
+    
+    // NEW: Node identification for registry
+    NodeID string  // Unique node ID (generated by provisioner)
+    NodeIP string  // Node's public IP for peer discovery
+    
+    // DEPRECATED: Remove these (NATS gossip handles clustering now)
+    // NATSInstall  bool
+    // NATSVersion  string
+    // ClusterNodes []string
+    // IsFirstNode  bool
+}
 ```
 
-### 4.2 Update grow to read from shared registry
+### 2.2 Add StorageBox CIFS mount to cloud-init
+
+```yaml
+packages:
+  - cifs-utils  # ADD THIS for CIFS mount
+
+runcmd:
+  # Mount StorageBox for shared registry (BEFORE nimsforest starts)
+  - |
+    mkdir -p /mnt/forest
+    echo "//{{.StorageBoxHost}}/backup /mnt/forest cifs user={{.StorageBoxUser}},pass={{.StorageBoxPassword}},uid=root,gid=root,_netdev 0 0" >> /etc/fstab
+    mount /mnt/forest || echo "⚠️ Mount failed - will retry on reboot"
+```
+
+### 2.3 Register node in shared registry
+
+```yaml
+  # Add this node to shared registry (atomic with flock)
+  - |
+    REGISTRY=/mnt/forest/registry.json
+    
+    # Wait for mount to be available
+    for i in $(seq 1 30); do
+      [ -d /mnt/forest ] && break
+      sleep 2
+    done
+    
+    # Create registry if missing
+    [ -f "$REGISTRY" ] || echo '{"nodes":{}}' > "$REGISTRY"
+    
+    # Use flock for atomic update
+    flock "$REGISTRY" python3 << 'PYEOF'
+import json
+import sys
+
+forest_id = "{{.ForestID}}"
+node_id = "{{.NodeID}}"
+node_ip = "{{.NodeIP}}"
+
+try:
+    with open('/mnt/forest/registry.json', 'r+') as f:
+        reg = json.load(f)
+        if 'nodes' not in reg:
+            reg['nodes'] = {}
+        if forest_id not in reg['nodes']:
+            reg['nodes'][forest_id] = []
+        
+        # Add node if not exists
+        if not any(n.get('id') == node_id for n in reg['nodes'][forest_id]):
+            reg['nodes'][forest_id].append({
+                "id": node_id,
+                "ip": node_ip,
+                "forest_id": forest_id,
+                "status": "provisioning"
+            })
+        
+        f.seek(0)
+        f.truncate()
+        json.dump(reg, f, indent=2)
+    print(f"✅ Node {node_id} registered in shared registry")
+except Exception as e:
+    print(f"⚠️ Registry update failed: {e}", file=sys.stderr)
+PYEOF
+```
+
+### 2.4 Simplified NimsForest service (no NATS dependency)
+
+```yaml
+  {{if .NimsForestInstall}}
+  - |
+    # Create nimsforest systemd service
+    cat > /etc/systemd/system/nimsforest.service << 'EOF'
+    [Unit]
+    Description=NimsForest (with embedded NATS)
+    After=network-online.target mnt-forest.mount
+    Wants=network-online.target
+    
+    [Service]
+    Type=simple
+    User=root
+    ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+    Restart=always
+    RestartSec=5
+    Environment=FOREST_ID={{.ForestID}}
+    Environment=NODE_ID={{.NodeID}}
+    Environment=REGISTRY_PATH=/mnt/forest/registry.json
+    WorkingDirectory=/var/lib/nimsforest
+    
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+    
+    sed -i 's/^    //' /etc/systemd/system/nimsforest.service
+    systemctl daemon-reload
+    systemctl enable nimsforest
+    systemctl start nimsforest
+  {{end}}
+```
+
+### 2.5 Remove separate NATS installation
+
+Delete the entire `{{if .NATSInstall}}...{{end}}` block from templates. 
+NimsForest embeds NATS - no separate installation needed!
+
+### Acceptance Criteria
+- [ ] cifs-utils package installed
+- [ ] StorageBox mounted at /mnt/forest/
+- [ ] Node registered in /mnt/forest/registry.json with flock
+- [ ] NimsForest service depends on mnt-forest.mount (not nats.service)
+- [ ] No separate NATS installation in cloud-init
+- [ ] Environment variables set: FOREST_ID, NODE_ID, REGISTRY_PATH
+
+---
+
+## Task 3: Simplify Provisioner
+**Status:** ⬜ Not Started  
+**Priority:** High  
+**Estimated:** 1-2 hours  
+**Why:** Remove NATS cluster tracking - NimsForest handles peer discovery via shared registry
+
+### 3.1 Update provisioner to pass StorageBox and node info
+
+**File:** `pkg/forest/provisioner.go`
 
 ```go
-func runGrow(forestID string) error {
-    // Read registry via WebDAV (for CLI)
-    reg, _ := registry.Load()
-    nodes := reg.Nodes[forestID]
+func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
+    // Generate unique node ID
+    nodeID := fmt.Sprintf("%s-node-%d", req.ForestID, index+1)
     
-    // Query each node's NATS stats
-    for _, node := range nodes {
-        stats, _ := nats.GetServerStats(node.IP)
-        // Display stats...
+    // Build cloud-init data (SIMPLIFIED - no cluster tracking)
+    cloudInitData := cloudinit.TemplateData{
+        NodeRole:              req.Role,
+        ForestID:              req.ForestID,
+        NimsForestInstall:     p.config.Integration.NimsForestInstall,
+        NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
+        
+        // NEW: Node identification
+        NodeID: nodeID,
+        // NodeIP will be set after server creation (see below)
+        
+        // NEW: StorageBox mount credentials
+        StorageBoxHost:     p.config.Registry.StorageBoxHost,
+        StorageBoxUser:     p.config.Registry.Username,
+        StorageBoxPassword: p.config.Registry.Password,
+        
+        // REMOVED: These are no longer needed
+        // NATSInstall:  false,  // NimsForest embeds NATS
+        // NATSVersion:  "",
+        // ClusterNodes: nil,    // NATS gossip handles this
+        // IsFirstNode:  false,
     }
     
-    // Prompt for expansion if needed
-    if shouldExpand(stats) {
-        // Provision new node - it will auto-join via registry
-        provisionNode(forestID)
+    // ... rest of provisioning
+}
+```
+
+### 3.2 Remove NATS cluster logic
+
+Delete this entire block from `provisionNode`:
+```go
+// DELETE THIS BLOCK:
+if p.config.Integration.NATSInstall {
+    existingNodes, err := p.registry.GetNodes(req.ForestID)
+    if err == nil {
+        for _, node := range existingNodes {
+            if node.IP != "" && node.Status == "active" {
+                clusterNodeIPs = append(clusterNodeIPs, node.IP)
+            }
+        }
+    }
+    if len(clusterNodeIPs) > 0 {
+        isFirstNode = false
     }
 }
 ```
 
+### 3.3 Handle NodeIP (requires server to exist first)
+
+The NodeIP can only be known after server creation. Two options:
+
+**Option A: Two-phase cloud-init** (simpler)
+- Cloud-init fetches own IP from metadata service
+- Already done via: `INSTANCE_IP=$(curl -s http://169.254.169.254/...)`
+
+**Option B: Post-creation SSH** (more reliable)
+- Provisioner SSHs to node after creation to update registry
+- More complex but guaranteed correct IP
+
+**Recommendation:** Use Option A - the cloud-init already fetches instance IP.
+
 ### Acceptance Criteria
-- [ ] `morpheus grow` works with embedded NATS
-- [ ] Stats queried from :8222 on each node
-- [ ] New nodes auto-join cluster via registry
+- [ ] Provisioner passes StorageBox credentials to cloud-init
+- [ ] Provisioner generates unique NodeID
+- [ ] No NATS cluster node tracking in provisioner
+- [ ] NATSInstall config option removed or ignored
 
 ---
 
-## Task 5: Firewall Rules
+## Task 4: Update IntegrationConfig
 **Status:** ⬜ Not Started  
-**Priority:** High  
-**Estimated:** 1 hour
+**Priority:** Medium  
+**Estimated:** 30 minutes  
+**Why:** Clean up config to remove obsolete NATS settings
 
-### 5.1 Update firewall for embedded NATS ports
+### Required Changes
 
-| Port | Purpose | Required |
-|------|---------|----------|
-| 6222 | NATS cluster (between nodes) | Yes |
-| 4222 | NATS client (internal use) | Optional |
-| 8222 | NATS monitoring (for grow) | Optional |
-| 445  | CIFS (StorageBox mount) | Outbound only |
+**File:** `pkg/config/config.go`
 
-### 5.2 Cloud-init firewall rules
-
-```yaml
-- |
-  # Allow NATS cluster traffic between forest nodes
-  ufw allow 6222/tcp comment 'NATS cluster'
-  
-  # Optional: allow monitoring queries from Morpheus
-  ufw allow 8222/tcp comment 'NATS monitoring'
+```go
+type IntegrationConfig struct {
+    NimsForestURL         string `yaml:"nimsforest_url"`
+    RegistryURL           string `yaml:"registry_url"`
+    
+    // NimsForest auto-installation
+    NimsForestInstall     bool   `yaml:"nimsforest_install"`
+    NimsForestDownloadURL string `yaml:"nimsforest_download_url"`
+    
+    // DEPRECATED - Remove these (NimsForest embeds NATS now)
+    // NATSInstall bool   `yaml:"nats_install"`
+    // NATSVersion string `yaml:"nats_version"`
+}
 ```
 
 ### Acceptance Criteria
-- [ ] Nodes can communicate on port 6222
-- [ ] StorageBox mount works (outbound 445)
-- [ ] Monitoring accessible on 8222
+- [ ] NATSInstall removed from IntegrationConfig
+- [ ] NATSVersion removed from IntegrationConfig
+- [ ] Config migration notes added if needed
 
 ---
 
-## Quick Reference
+## Task 5: Firewall Rules Verification
+**Status:** ✅ Already Done  
+**Priority:** High  
+**Why:** Already in place in current templates
 
-**File Locations on Each Node:**
-- `/etc/morpheus/node-info.json` - Node identity (forest_id, node_id)
-- `/mnt/forest/registry.json` - Shared registry (peer discovery)
-- `/var/lib/nimsforest/jetstream/` - JetStream data
-- `/opt/nimsforest/bin/forest` - NimsForest binary
+### Current State (pkg/cloudinit/templates.go)
+```yaml
+- ufw allow 22/tcp comment 'SSH'
+- ufw allow 4222/tcp comment 'NATS client port'
+- ufw allow 6222/tcp comment 'NATS cluster port'
+- ufw allow 8222/tcp comment 'NATS monitoring port'
+- ufw allow 7777/tcp comment 'NATS leafnode port'
+```
 
-**What NimsForest Does on Startup:**
-1. Reads `/etc/morpheus/node-info.json` for forest_id
-2. Reads `/mnt/forest/registry.json` for peer IPs
-3. Starts embedded NATS with cluster config
-4. Connects to any discovered peer
-5. NATS gossip propagates cluster membership
+**No changes needed** - firewall rules are already correct for embedded NATS.
 
-**Ports:**
-- 6222 - NATS cluster (required for node-to-node)
-- 4222 - NATS client (localhost only by default)
-- 8222 - NATS monitoring (for `morpheus grow`)
+| Port | Purpose | Status |
+|------|---------|--------|
+| 6222 | NATS cluster (between nodes) | ✅ |
+| 4222 | NATS client (internal use) | ✅ |
+| 8222 | NATS monitoring (for grow) | ✅ |
+| 445  | CIFS (StorageBox mount) | ✅ Outbound only, no rule needed |
+
+---
+
+## Task 6: morpheus grow Verification
+**Status:** ✅ Should Work As-Is  
+**Priority:** Medium  
+**Why:** Embedded NATS exposes same monitoring endpoint
+
+### Current State (pkg/nats/monitor.go)
+```go
+// NATS exposes stats at http://[ip]:8222/varz
+url := fmt.Sprintf("http://[%s]:8222/varz", nodeIP)
+```
+
+**No changes needed** - embedded NATS still exposes monitoring on port 8222.
+
+### Verification Steps
+- [ ] Test `morpheus grow` with embedded NATS
+- [ ] Confirm /varz endpoint returns expected data
+- [ ] Confirm new nodes auto-join cluster
 
 ---
 
@@ -364,11 +413,28 @@ func runGrow(forestID string) error {
 - [x] NimsForest binary download
 - [x] NimsForest systemd service
 - [x] Configurable download URL
-- [x] StorageBox Registry (Task 1 from old plan) - WebDAV client with optimistic locking
+- [x] StorageBox Registry - WebDAV client with optimistic locking
 - [x] Registry config in config.go
 - [x] NATS monitoring code (`pkg/nats/monitor.go`)
 - [x] `morpheus grow` command - cluster health monitoring
 - [x] `morpheus grow --auto` - non-interactive mode with JSON output
+- [x] Firewall rules for NATS ports
+
+---
+
+## MVP Summary
+
+### Must Have (P0) - 4-5 hours total
+1. **Task 1:** Add StorageBoxHost to config (30 min)
+2. **Task 2:** Update cloud-init for embedded NATS (2-3 hrs)
+3. **Task 3:** Simplify provisioner (1-2 hrs)
+
+### Nice to Have (P1) - 30 min
+4. **Task 4:** Clean up IntegrationConfig
+
+### Already Done
+5. **Task 5:** Firewall rules ✅
+6. **Task 6:** morpheus grow ✅
 
 ---
 
@@ -380,20 +446,23 @@ func runGrow(forestID string) error {
 ```
 Morpheus provisions:
   1. NATS binary download
-  2. NATS config generation
+  2. NATS config generation (with cluster routes)
   3. NATS systemd service
   4. NimsForest config pointing to localhost:4222
   5. NimsForest systemd service (depends on nats.service)
+
+  Complexity: Morpheus tracks cluster membership for NATS routes
 ```
 
 **After (Embedded NATS):**
 ```
 Morpheus provisions:
   1. StorageBox CIFS mount
-  2. Write /etc/morpheus/node-info.json
-  3. Register in /mnt/forest/registry.json
-  4. NimsForest binary download
-  5. NimsForest systemd service (handles everything)
+  2. Register in /mnt/forest/registry.json
+  3. NimsForest binary download
+  4. NimsForest systemd service (depends on mnt-forest.mount)
+
+  Complexity: NimsForest handles all NATS clustering internally
 ```
 
 ### Simplified Architecture Benefits
@@ -406,25 +475,37 @@ Morpheus provisions:
 
 ---
 
-## Future Improvements
+## Quick Reference
 
-### Task 6: True Local Mode (No Docker)
+**File Locations on Each Node:**
+- `/etc/morpheus/node-info.json` - Node identity (forest_id, node_id)
+- `/mnt/forest/registry.json` - Shared registry (peer discovery)
+- `/var/lib/nimsforest/` - NimsForest data (including embedded JetStream)
+- `/opt/nimsforest/bin/nimsforest` - NimsForest binary (with embedded NATS)
+
+**What NimsForest Does on Startup:**
+1. Reads `FOREST_ID` and `NODE_ID` from environment
+2. Reads `REGISTRY_PATH` (/mnt/forest/registry.json) for peer IPs
+3. Starts embedded NATS with auto-configured cluster settings
+4. Connects to any discovered peer via NATS gossip
+5. NATS gossip propagates cluster membership automatically
+
+**Ports:**
+- 6222 - NATS cluster (required for node-to-node)
+- 4222 - NATS client (localhost only by default)
+- 8222 - NATS monitoring (for `morpheus grow`)
+
+---
+
+## Future Improvements (Post-MVP)
+
+### Task 7: True Local Mode (No Docker)
 **Status:** ⬜ Not Started  
-**Priority:** Medium  
-**Estimated:** 2-3 hours
+**Priority:** Low  
 
 Now simpler with embedded NATS - just run the NimsForest binary directly.
 
-```go
-func (p *NativeProvider) CreateServer(ctx context.Context, req CreateServerRequest) (*Server, error) {
-    // 1. Download NimsForest binary (includes NATS)
-    // 2. Write local node-info.json
-    // 3. Create local registry.json
-    // 4. Start NimsForest as background process
-}
-```
-
-### Task 7: Health Checks
+### Task 8: Health Checks
 **Status:** ⬜ Not Started  
 **Priority:** Low  
 
