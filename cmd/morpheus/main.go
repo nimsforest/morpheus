@@ -2123,8 +2123,8 @@ func handleTest() {
 		fmt.Fprintln(os.Stderr, "  3. Plants a test forest (small)")
 		fmt.Fprintln(os.Stderr, "  4. Verifies SSH connectivity to provisioned node")
 		fmt.Fprintln(os.Stderr, "  5. Checks cloud-init completion")
-		fmt.Fprintln(os.Stderr, "  6. Verifies NimsForest installation (if configured)")
-		fmt.Fprintln(os.Stderr, "  7. Checks NATS monitoring (if available)")
+		fmt.Fprintln(os.Stderr, "  6. Verifies NimsForest installation (required)")
+		fmt.Fprintln(os.Stderr, "  7. Checks NATS monitoring (required)")
 		fmt.Fprintln(os.Stderr, "  8. Tears down test forest")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
@@ -2419,14 +2419,15 @@ func handleTestE2E() {
 		if strings.Contains(output, "active") && !strings.Contains(output, "not-active") {
 			fmt.Println("   ✅ NimsForest service is running")
 		} else {
-			fmt.Println("   ⚠️  NimsForest service not active (may need configuration)")
+			fmt.Println("   ❌ NimsForest service not active")
+			testsFailed++
 		}
 	} else {
-		fmt.Println("   ⚠️  NimsForest binary not found (may not be configured)")
-		// Not a hard failure - nimsforest installation is optional
+		fmt.Println("   ❌ NimsForest binary not found")
+		testsFailed++
 	}
 
-	// Step 7: Check NATS monitoring (if available)
+	// Step 7: Check NATS monitoring (required)
 	fmt.Println()
 	fmt.Println("📊 Step 7: Checking NATS monitoring...")
 
@@ -2435,8 +2436,8 @@ func handleTestE2E() {
 		fmt.Println("   ✅ NATS monitoring endpoint responding")
 		testsPassed++
 	} else {
-		fmt.Println("   ⚠️  NATS monitoring not available (may need embedded NATS)")
-		// Not a hard failure
+		fmt.Println("   ❌ NATS monitoring not available")
+		testsFailed++
 	}
 
 	// Print summary
