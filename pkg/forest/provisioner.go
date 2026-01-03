@@ -134,6 +134,9 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	// Generate unique node ID for this node
 	nodeID := nodeName // e.g., "myforest-node-1"
 
+	// Determine total node count for cluster configuration
+	nodeCount := getNodeCount(req.Size)
+
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
@@ -144,7 +147,9 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
 
 		// Node identification (for embedded NATS peer discovery)
-		NodeID: nodeID,
+		NodeID:    nodeID,
+		NodeIndex: index,
+		NodeCount: nodeCount, // 1=standalone, 3+=cluster mode
 
 		// StorageBox mount for shared registry (enables NATS peer discovery)
 		StorageBoxHost:     p.config.Registry.StorageBoxHost,
@@ -436,16 +441,17 @@ func (p *Provisioner) rollback(ctx context.Context, forestID string, _ []*provid
 }
 
 // getNodeCount returns the number of nodes for a given forest size
+// Minimum of 2 nodes ensures proper NATS clustering
 func getNodeCount(size string) int {
 	switch size {
 	case "small":
-		return 1
+		return 2 // Minimum for NATS clustering
 	case "medium":
 		return 3
 	case "large":
 		return 5
 	default:
-		return 1
+		return 2
 	}
 }
 

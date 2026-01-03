@@ -82,17 +82,17 @@ func handlePlant() {
 		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (~5-7 min)   💰 ~€3-4/month")
+		fmt.Fprintln(os.Stderr, "  small  - 2 machines (~7-10 min)  💰 ~€6-8/month")
 		fmt.Fprintln(os.Stderr, "  medium - 3 machines (~15-20 min) 💰 ~€9-12/month")
 		fmt.Fprintln(os.Stderr, "  large  - 5 machines (~25-35 min) 💰 ~€15-20/month")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		if isTermux() {
-			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Quick! Create 1 machine")
+			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Create 2-machine cluster")
 			fmt.Fprintln(os.Stderr, "  morpheus plant medium       # Create 3-machine cluster")
 		} else {
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
-			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 1 machine locally (Docker)")
+			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
+			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 2-machine cluster locally")
 			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium # Create 3-machine cluster")
 		}
 		os.Exit(1)
@@ -155,8 +155,8 @@ func handlePlant() {
 	if !isValidSize(size) {
 		fmt.Fprintf(os.Stderr, "❌ Invalid size: '%s'\n\n", size)
 		fmt.Fprintln(os.Stderr, "Valid sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 1 machine  (quick start, ~€3-4/mo)")
-		fmt.Fprintln(os.Stderr, "  medium - 3 machines (small cluster, ~€9-12/mo)")
+		fmt.Fprintln(os.Stderr, "  small  - 2 machines (minimal cluster, ~€6-8/mo)")
+		fmt.Fprintln(os.Stderr, "  medium - 3 machines (standard cluster, ~€9-12/mo)")
 		fmt.Fprintln(os.Stderr, "  large  - 5 machines (large cluster, ~€15-20/mo)")
 		fmt.Fprintln(os.Stderr, "")
 
@@ -792,11 +792,11 @@ func handleList() {
 		fmt.Println()
 		if isTermux() {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant small        # Quick start with 1 machine")
+			fmt.Println("  morpheus plant small        # Create 2-machine cluster")
 		} else {
 			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant cloud small  # 1 machine on cloud")
-			fmt.Println("  morpheus plant local small  # 1 machine locally (Docker)")
+			fmt.Println("  morpheus plant cloud small  # 2-machine cluster on cloud")
+			fmt.Println("  morpheus plant local small  # 2-machine cluster locally (Docker)")
 		}
 		return
 	}
@@ -2064,16 +2064,17 @@ func truncateIP(ip string, maxLen int) string {
 }
 
 // getNodeCount returns the number of nodes for a given forest size
+// Minimum of 2 nodes ensures proper NATS clustering
 func getNodeCount(size string) int {
 	switch size {
 	case "small":
-		return 1
+		return 2 // Minimum for NATS clustering
 	case "medium":
 		return 3
 	case "large":
 		return 5
 	default:
-		return 1
+		return 2
 	}
 }
 
@@ -2123,8 +2124,8 @@ func handleTest() {
 		fmt.Fprintln(os.Stderr, "  3. Plants a test forest (small)")
 		fmt.Fprintln(os.Stderr, "  4. Verifies SSH connectivity to provisioned node")
 		fmt.Fprintln(os.Stderr, "  5. Checks cloud-init completion")
-		fmt.Fprintln(os.Stderr, "  6. Verifies NimsForest installation (if configured)")
-		fmt.Fprintln(os.Stderr, "  7. Checks NATS monitoring (if available)")
+		fmt.Fprintln(os.Stderr, "  6. Verifies NimsForest installation (required)")
+		fmt.Fprintln(os.Stderr, "  7. Checks NATS monitoring (required)")
 		fmt.Fprintln(os.Stderr, "  8. Tears down test forest")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
@@ -2419,24 +2420,39 @@ func handleTestE2E() {
 		if strings.Contains(output, "active") && !strings.Contains(output, "not-active") {
 			fmt.Println("   ✅ NimsForest service is running")
 		} else {
-			fmt.Println("   ⚠️  NimsForest service not active (may need configuration)")
+			fmt.Println("   ❌ NimsForest service not active")
+			testsFailed++
 		}
 	} else {
-		fmt.Println("   ⚠️  NimsForest binary not found (may not be configured)")
-		// Not a hard failure - nimsforest installation is optional
+		fmt.Println("   ❌ NimsForest binary not found")
+		testsFailed++
 	}
 
-	// Step 7: Check NATS monitoring (if available)
+	// Step 7: Check NATS HTTP monitoring (required)
 	fmt.Println()
 	fmt.Println("📊 Step 7: Checking NATS monitoring...")
 
-	output, err = runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null | head -c 100")
-	if err == nil && (strings.Contains(output, "server_id") || strings.Contains(output, "{")) {
-		fmt.Println("   ✅ NATS monitoring endpoint responding")
+	// Check HTTP monitoring endpoint on port 8222
+	output, err = runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null")
+	if err == nil && strings.Contains(output, "server_id") {
+		fmt.Println("   ✅ NATS monitoring endpoint responding on :8222")
 		testsPassed++
+		
+		// Extract and show some stats
+		if strings.Contains(output, "\"connections\"") {
+			fmt.Println("      /varz endpoint available")
+		}
 	} else {
-		fmt.Println("   ⚠️  NATS monitoring not available (may need embedded NATS)")
-		// Not a hard failure
+		// Fallback: check if NATS is at least listening
+		output2, _ := runSSHToNode(nodeIP, "ss -tlnp 2>/dev/null | grep nimsforest | head -3")
+		if strings.Contains(output2, "nimsforest") {
+			fmt.Println("   ⚠️  NATS server running but HTTP monitoring not available on :8222")
+			fmt.Println("      (Update nimsforest binary to v0.1.1.2+ for monitoring)")
+			testsFailed++
+		} else {
+			fmt.Println("   ❌ NATS server not running")
+			testsFailed++
+		}
 	}
 
 	// Print summary
@@ -2474,8 +2490,8 @@ func printHelp() {
 
 	if isOnTermux {
 		fmt.Println("Quick Start (Termux):")
-		fmt.Println("  morpheus plant small        # Create 1 machine on Hetzner (~5-7 min)")
-		fmt.Println("  morpheus plant medium       # Create 3 machines (~15-20 min)")
+		fmt.Println("  morpheus plant small        # Create 2-machine cluster (~7-10 min)")
+		fmt.Println("  morpheus plant medium       # Create 3-machine cluster (~15-20 min)")
 		fmt.Println()
 	}
 
@@ -2486,7 +2502,7 @@ func printHelp() {
 	if isOnTermux {
 		fmt.Println("  plant <size>                Plant a forest (cloud mode)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 1 machine  (~5-7 min, €3-4/mo)")
+		fmt.Println("                                small  - 2 machines (~7-10 min, €6-8/mo)")
 		fmt.Println("                                medium - 3 machines (~15-20 min, €9-12/mo)")
 		fmt.Println("                                large  - 5 machines (~25-35 min, €15-20/mo)")
 	} else {
@@ -2495,7 +2511,7 @@ func printHelp() {
 		fmt.Println("                                cloud - Provision on Hetzner Cloud (requires API token)")
 		fmt.Println("                                local - Provision locally using Docker (free)")
 		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 1 machine  (~5-7 min)")
+		fmt.Println("                                small  - 2 machines (~7-10 min)")
 		fmt.Println("                                medium - 3 machines (~15-20 min)")
 		fmt.Println("                                large  - 5 machines (~25-35 min)")
 	}
@@ -2522,14 +2538,14 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	if isOnTermux {
-		fmt.Println("  morpheus plant small        # Quick! Create 1 machine")
+		fmt.Println("  morpheus plant small        # Create 2-machine cluster")
 		fmt.Println("  morpheus plant medium       # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all your forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
 		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
 	} else {
-		fmt.Println("  morpheus plant cloud small  # Create 1 machine on Hetzner Cloud")
-		fmt.Println("  morpheus plant local small  # Create 1 machine locally (Docker)")
+		fmt.Println("  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
+		fmt.Println("  morpheus plant local small  # Create 2-machine cluster locally")
 		fmt.Println("  morpheus plant cloud medium # Create 3-machine cluster")
 		fmt.Println("  morpheus list               # View all forests")
 		fmt.Println("  morpheus status forest-123  # Check forest details")
