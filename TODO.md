@@ -480,3 +480,50 @@ Store in registry:
 - [x] NimsForest binary download
 - [x] NimsForest systemd service
 - [x] Configurable download URL
+- [x] StorageBox Registry (Task 1) - WebDAV client with optimistic locking
+- [x] Registry config in config.go
+- [x] NATS Server Installation (Task 2) - cloud-init templates for NATS
+- [x] `morpheus grow` command (Task 3) - cluster health monitoring
+- [x] `morpheus grow --auto` (Task 4) - non-interactive mode with JSON output
+
+---
+
+## Future Improvements
+
+### Task 5: True Local Mode (No Docker)
+**Status:** ⬜ Not Started  
+**Priority:** Medium  
+**Estimated:** 3-4 hours
+
+The current "local" provider uses Docker containers to simulate cloud VMs. This should be revisited to support true local mode that runs NATS and NimsForest binaries directly on the local machine without requiring Docker.
+
+#### Goals:
+- Download and run NATS binary directly (no Docker)
+- Download and run NimsForest binary directly
+- Store state in local registry file
+- Support `morpheus plant local` without Docker dependency
+- Useful for development, testing, and single-machine deployments
+
+#### Implementation Ideas:
+```go
+// pkg/provider/native/native.go
+type NativeProvider struct {
+    binDir    string  // ~/.morpheus/bin/
+    dataDir   string  // ~/.morpheus/data/
+    processes map[string]*os.Process
+}
+
+func (p *NativeProvider) CreateServer(ctx context.Context, req CreateServerRequest) (*Server, error) {
+    // 1. Download NATS binary if not present
+    // 2. Download NimsForest binary if not present  
+    // 3. Start NATS as background process
+    // 4. Start NimsForest as background process
+    // 5. Return "server" representing local processes
+}
+```
+
+#### Acceptance Criteria:
+- [ ] `morpheus plant local small` works without Docker
+- [ ] NATS runs as local process, accessible on localhost:4222
+- [ ] `morpheus grow` can monitor local NATS instance
+- [ ] `morpheus teardown` stops local processes cleanly

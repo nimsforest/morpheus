@@ -416,3 +416,186 @@ func TestProvisioningConfigGetDurations(t *testing.T) {
 		})
 	}
 }
+
+func TestRegistryConfigDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Config without registry section - should get defaults
+	configContent := `
+infrastructure:
+  provider: hetzner
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Check default registry type
+	if cfg.Registry.Type != "local" {
+		t.Errorf("Expected default registry type 'local', got '%s'", cfg.Registry.Type)
+	}
+
+	if cfg.GetRegistryType() != "local" {
+		t.Errorf("Expected GetRegistryType() 'local', got '%s'", cfg.GetRegistryType())
+	}
+
+	if cfg.IsRemoteRegistry() {
+		t.Error("Expected IsRemoteRegistry() false for local registry")
+	}
+}
+
+func TestRegistryConfigStorageBox(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+infrastructure:
+  provider: hetzner
+
+registry:
+  type: storagebox
+  url: "https://u12345.your-storagebox.de/morpheus/registry.json"
+  username: "u12345"
+  password: "mypassword"
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Registry.Type != "storagebox" {
+		t.Errorf("Expected registry type 'storagebox', got '%s'", cfg.Registry.Type)
+	}
+
+	if cfg.Registry.URL != "https://u12345.your-storagebox.de/morpheus/registry.json" {
+		t.Errorf("Unexpected registry URL: %s", cfg.Registry.URL)
+	}
+
+	if cfg.Registry.Username != "u12345" {
+		t.Errorf("Expected username 'u12345', got '%s'", cfg.Registry.Username)
+	}
+
+	if cfg.Registry.Password != "mypassword" {
+		t.Errorf("Expected password 'mypassword', got '%s'", cfg.Registry.Password)
+	}
+
+	if !cfg.IsRemoteRegistry() {
+		t.Error("Expected IsRemoteRegistry() true for storagebox registry")
+	}
+}
+
+func TestRegistryConfigPasswordEnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+infrastructure:
+  provider: hetzner
+
+registry:
+  type: storagebox
+  url: "https://u12345.your-storagebox.de/morpheus/registry.json"
+  username: "u12345"
+  password: "${MY_STORAGEBOX_PASS}"
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set environment variable
+	os.Setenv("MY_STORAGEBOX_PASS", "env-password")
+	defer os.Unsetenv("MY_STORAGEBOX_PASS")
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Registry.Password != "env-password" {
+		t.Errorf("Expected password from env 'env-password', got '%s'", cfg.Registry.Password)
+	}
+}
+
+func TestRegistryConfigStorageBoxPasswordEnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+infrastructure:
+  provider: hetzner
+
+registry:
+  type: storagebox
+  url: "https://u12345.your-storagebox.de/morpheus/registry.json"
+  username: "u12345"
+  password: "config-password"
+
+secrets:
+  hetzner_api_token: test-token
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	// Set STORAGEBOX_PASSWORD env var - should override config value
+	os.Setenv("STORAGEBOX_PASSWORD", "override-password")
+	defer os.Unsetenv("STORAGEBOX_PASSWORD")
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Registry.Password != "override-password" {
+		t.Errorf("Expected password from STORAGEBOX_PASSWORD env 'override-password', got '%s'", cfg.Registry.Password)
+	}
+}
+
+func TestIsRemoteRegistry(t *testing.T) {
+	tests := []struct {
+		name     string
+		regType  string
+		expected bool
+	}{
+		{"storagebox", "storagebox", true},
+		{"s3", "s3", true},
+		{"local", "local", false},
+		{"none", "none", false},
+		{"empty", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				Registry: RegistryConfig{
+					Type: tt.regType,
+				},
+			}
+			if got := cfg.IsRemoteRegistry(); got != tt.expected {
+				t.Errorf("IsRemoteRegistry() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}

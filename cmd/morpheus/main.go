@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -13,9 +14,11 @@ import (
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/forest"
 	"github.com/nimsforest/morpheus/pkg/httputil"
+	"github.com/nimsforest/morpheus/pkg/nats"
 	"github.com/nimsforest/morpheus/pkg/provider"
 	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
 	"github.com/nimsforest/morpheus/pkg/provider/local"
+	"github.com/nimsforest/morpheus/pkg/registry"
 	"github.com/nimsforest/morpheus/pkg/sshutil"
 	"github.com/nimsforest/morpheus/pkg/updater"
 )
@@ -40,6 +43,8 @@ func main() {
 		handleStatus()
 	case "teardown":
 		handleTeardown()
+	case "grow":
+		handleGrow()
 	case "version":
 		fmt.Printf("morpheus version %s\n", version)
 	case "update":
@@ -218,7 +223,7 @@ func handlePlant() {
 
 	// Create registry
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	registry, err := registry.NewLocalRegistry(registryPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create registry: %s\n", err)
 		os.Exit(1)
@@ -768,7 +773,7 @@ func getLocalConfig() *config.Config {
 
 func handleList() {
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	registry, err := registry.NewLocalRegistry(registryPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
 		os.Exit(1)
@@ -826,7 +831,7 @@ func handleStatus() {
 	forestID := os.Args[2]
 
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	registry, err := registry.NewLocalRegistry(registryPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
 		os.Exit(1)
@@ -923,7 +928,7 @@ func handleTeardown() {
 
 	// First, get the forest info to determine the provider
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	registry, err := registry.NewLocalRegistry(registryPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create registry: %s\n", err)
 		os.Exit(1)
@@ -1011,6 +1016,346 @@ func handleTeardown() {
 	fmt.Println("💰 Resources have been removed and billing stopped")
 	fmt.Println()
 	fmt.Println("💡 View your remaining forests: morpheus list")
+}
+
+func handleGrow() {
+	// Parse arguments
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "Usage: morpheus grow <forest-id> [--auto] [--threshold N]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Check forest health and optionally add nodes.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Options:")
+		fmt.Fprintln(os.Stderr, "  --auto         Non-interactive mode (auto-expand if needed)")
+		fmt.Fprintln(os.Stderr, "  --threshold N  Resource threshold percentage (default: 80)")
+		fmt.Fprintln(os.Stderr, "  --json         Output in JSON format")
+		os.Exit(1)
+	}
+
+	forestID := os.Args[2]
+
+	// Parse optional flags
+	autoMode := false
+	jsonOutput := false
+	threshold := 80.0
+
+	for i := 3; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--auto":
+			autoMode = true
+		case "--json":
+			jsonOutput = true
+		case "--threshold":
+			if i+1 < len(os.Args) {
+				i++
+				fmt.Sscanf(os.Args[i], "%f", &threshold)
+			}
+		}
+	}
+
+	// Load registry
+	registryPath := getRegistryPath()
+	reg, err := registry.NewLocalRegistry(registryPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Get forest info
+	forestInfo, err := reg.GetForest(forestID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Forest not found: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Get nodes
+	nodes, err := reg.GetNodes(forestID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get nodes: %s\n", err)
+		os.Exit(1)
+	}
+
+	if len(nodes) == 0 {
+		fmt.Fprintln(os.Stderr, "No nodes found in forest")
+		os.Exit(1)
+	}
+
+	// Create NATS monitor
+	monitor := nats.NewMonitor()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Collect node IPs
+	var nodeIPs []string
+	for _, node := range nodes {
+		if node.IP != "" {
+			nodeIPs = append(nodeIPs, node.IP)
+		}
+	}
+
+	if !jsonOutput {
+		fmt.Printf("\n🌲 Forest: %s\n", forestID)
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+	}
+
+	// Check each node's NATS stats
+	var totalCPU float64
+	var totalMem int64
+	var totalConns int
+	var reachableNodes int
+	var nodeStats []*nodeHealthInfo
+
+	for _, node := range nodes {
+		if node.IP == "" {
+			continue
+		}
+
+		status := monitor.CheckNodeHealth(ctx, node.IP)
+		info := &nodeHealthInfo{
+			NodeID:    node.ID,
+			IP:        node.IP,
+			Reachable: status.Healthy,
+		}
+
+		if status.Healthy {
+			reachableNodes++
+			info.CPU = status.CPUPercent
+			info.MemMB = status.MemMB
+			info.Connections = status.Connections
+			totalCPU += status.CPUPercent
+			totalMem += status.Stats.Mem
+			totalConns += status.Connections
+		} else {
+			info.Error = status.Error
+		}
+
+		nodeStats = append(nodeStats, info)
+	}
+
+	// Calculate averages
+	avgCPU := 0.0
+	avgMem := 0.0
+	if reachableNodes > 0 {
+		avgCPU = totalCPU / float64(reachableNodes)
+		avgMem = float64(totalMem) / float64(reachableNodes) / (1024 * 1024) // Convert to MB
+	}
+
+	// JSON output
+	if jsonOutput {
+		output := map[string]interface{}{
+			"forest_id":       forestID,
+			"total_nodes":     len(nodes),
+			"reachable_nodes": reachableNodes,
+			"total_connections": totalConns,
+			"avg_cpu_percent": avgCPU,
+			"avg_mem_mb":      avgMem,
+			"cpu_high":        avgCPU > threshold,
+			"threshold":       threshold,
+			"nodes":           nodeStats,
+		}
+		jsonData, _ := json.MarshalIndent(output, "", "  ")
+		fmt.Println(string(jsonData))
+		return
+	}
+
+	// Display cluster info
+	fmt.Printf("📊 NATS Cluster: %d node%s, %d connection%s\n",
+		reachableNodes, plural(reachableNodes),
+		totalConns, plural(totalConns))
+	fmt.Println()
+
+	// Display resource usage with progress bars
+	fmt.Printf("Resource Usage:\n")
+	fmt.Printf("  CPU:    %5.1f%% %s\n", avgCPU, progressBar(avgCPU, threshold))
+	fmt.Printf("  Memory: %5.0f MB avg\n", avgMem)
+	fmt.Println()
+
+	// Display node table
+	fmt.Println("Nodes:")
+	fmt.Println("  NODE          IP                      CPU      MEM      CONNS  STATUS")
+	fmt.Println("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	for _, info := range nodeStats {
+		if info.Reachable {
+			warning := ""
+			if info.CPU > threshold {
+				warning = " ⚠️"
+			}
+			fmt.Printf("  %-13s %-23s %5.1f%%   %5dMB   %5d  ✅%s\n",
+				truncateID(info.NodeID, 13),
+				truncateIP(info.IP, 23),
+				info.CPU,
+				info.MemMB,
+				info.Connections,
+				warning)
+		} else {
+			fmt.Printf("  %-13s %-23s    -        -       -  ❌ unreachable\n",
+				truncateID(info.NodeID, 13),
+				truncateIP(info.IP, 23))
+		}
+	}
+	fmt.Println()
+
+	// Show warnings
+	needsExpansion := avgCPU > threshold
+	if needsExpansion {
+		fmt.Printf("⚠️  Average CPU above %.0f%% threshold\n", threshold)
+		fmt.Println()
+	}
+
+	// Auto mode or interactive
+	if autoMode {
+		if needsExpansion {
+			fmt.Println("🌱 Auto-expanding cluster...")
+			expandCluster(forestID, forestInfo, reg, nodes)
+		} else {
+			fmt.Println("✅ Cluster resources within threshold. No expansion needed.")
+		}
+		return
+	}
+
+	// Interactive mode
+	if needsExpansion {
+		fmt.Print("Add 1 node to cluster? [y/N]: ")
+		var response string
+		fmt.Scanln(&response)
+		if response == "y" || response == "Y" || response == "yes" {
+			expandCluster(forestID, forestInfo, reg, nodes)
+		} else {
+			fmt.Println("\n✅ No changes made.")
+		}
+	} else {
+		fmt.Println("✅ Cluster resources within threshold.")
+		fmt.Println("   Use 'morpheus grow <forest-id> --threshold N' to set a different threshold.")
+	}
+}
+
+// nodeHealthInfo holds health info for display
+type nodeHealthInfo struct {
+	NodeID      string `json:"node_id"`
+	IP          string `json:"ip"`
+	Reachable   bool   `json:"reachable"`
+	CPU         float64 `json:"cpu_percent,omitempty"`
+	MemMB       int64   `json:"mem_mb,omitempty"`
+	Connections int     `json:"connections,omitempty"`
+	Error       string  `json:"error,omitempty"`
+}
+
+// progressBar creates a simple ASCII progress bar
+func progressBar(value, threshold float64) string {
+	width := 24
+	filled := int(value / 100.0 * float64(width))
+	if filled > width {
+		filled = width
+	}
+
+	bar := ""
+	for i := 0; i < width; i++ {
+		if i < filled {
+			bar += "█"
+		} else {
+			bar += "░"
+		}
+	}
+
+	warning := ""
+	if value > threshold {
+		warning = " ⚠️"
+	}
+	return bar + warning
+}
+
+// truncateID truncates a node ID to maxLen characters
+func truncateID(id string, maxLen int) string {
+	if len(id) <= maxLen {
+		return id
+	}
+	return id[:maxLen-3] + "..."
+}
+
+// expandCluster adds a new node to the cluster
+func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Registry, existingNodes []*registry.Node) {
+	fmt.Println()
+	fmt.Println("🌱 Expanding cluster...")
+
+	// Load config
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
+		return
+	}
+
+	// Create provider
+	var prov provider.Provider
+	switch forestInfo.Provider {
+	case "hetzner":
+		prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
+			return
+		}
+	case "local":
+		prov, err = local.NewProvider()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
+			return
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", forestInfo.Provider)
+		return
+	}
+
+	// Create provisioner
+	provisioner := forest.NewProvisioner(prov, reg, cfg)
+
+	// Determine server type based on existing nodes (if available) or profile
+	profile := provider.GetProfileForSize(forestInfo.Size)
+	serverType := ""
+	location := forestInfo.Location
+
+	if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+		ctx := context.Background()
+		selectedType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, []string{location})
+		if err == nil {
+			serverType = selectedType
+			if len(availableLocations) > 0 {
+				location = availableLocations[0]
+			}
+		}
+	}
+
+	if serverType == "" {
+		// Fallback to legacy config
+		if cfg.Infrastructure.Defaults != nil && cfg.Infrastructure.Defaults.ServerType != "" {
+			serverType = cfg.Infrastructure.Defaults.ServerType
+		} else {
+			fmt.Fprintln(os.Stderr, "Could not determine server type")
+			return
+		}
+	}
+
+	// Create provision request
+	req := forest.ProvisionRequest{
+		ForestID:   forestID,
+		Size:       forestInfo.Size,
+		Location:   location,
+		Role:       cloudinit.RoleEdge,
+		ServerType: serverType,
+		Image:      "ubuntu-24.04",
+	}
+
+	ctx := context.Background()
+	if err := provisioner.Provision(ctx, req); err != nil {
+		fmt.Fprintf(os.Stderr, "\n❌ Expansion failed: %s\n", err)
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("✅ Cluster expanded successfully!")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Printf("💡 View updated cluster: morpheus status %s\n", forestID)
 }
 
 func loadConfig() (*config.Config, error) {
@@ -1434,13 +1779,13 @@ func runSSHCheck(exitOnResult bool) bool {
 
 	// 3. Check SSH connectivity to existing servers (if any)
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	reg, err := registry.NewLocalRegistry(registryPath)
 	if err == nil {
-		forests := registry.ListForests()
-		var activeNodes []*forest.Node
+		forests := reg.ListForests()
+		var activeNodes []*registry.Node
 		for _, f := range forests {
 			if f.Status == "active" {
-				nodes, err := registry.GetNodes(f.ID)
+				nodes, err := reg.GetNodes(f.ID)
 				if err == nil {
 					activeNodes = append(activeNodes, nodes...)
 				}
@@ -1529,7 +1874,7 @@ func classifyNetError(err error) string {
 // updated and servers will be reprovisioned with new host keys.
 func clearKnownHostsForActiveServers() {
 	registryPath := getRegistryPath()
-	registry, err := forest.NewRegistry(registryPath)
+	registry, err := registry.NewLocalRegistry(registryPath)
 	if err != nil {
 		return // Silently fail if registry can't be loaded
 	}
@@ -1681,6 +2026,11 @@ func printHelp() {
 	}
 	fmt.Println("  list                        List all forests")
 	fmt.Println("  status <forest-id>          Show detailed forest status")
+	fmt.Println("  grow <forest-id>            Check cluster health and optionally expand")
+	fmt.Println("                              Options:")
+	fmt.Println("                                --auto        Non-interactive mode")
+	fmt.Println("                                --threshold N Resource threshold (default: 80)")
+	fmt.Println("                                --json        Output in JSON format")
 	fmt.Println("  teardown <forest-id>        Delete a forest and all its resources")
 	fmt.Println("  version                     Show version information")
 	fmt.Println("  update                      Check for updates and install if available")
