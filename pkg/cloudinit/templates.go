@@ -170,22 +170,25 @@ runcmd:
   # Create NATS systemd service
   - |
     cat > /etc/systemd/system/nats.service << 'NATSSERVICEEOF'
-[Unit]
-Description=NATS Server
-After=network.target
+    [Unit]
+    Description=NATS Server
+    After=network.target
 
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
-Restart=always
-RestartSec=5
-User=ubuntu
-Group=ubuntu
-LimitNOFILE=65536
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
+    Restart=always
+    RestartSec=5
+    User=ubuntu
+    Group=ubuntu
+    LimitNOFILE=65536
 
-[Install]
-WantedBy=multi-user.target
-NATSSERVICEEOF
+    [Install]
+    WantedBy=multi-user.target
+    NATSSERVICEEOF
+    
+    # Remove leading spaces from the service file
+    sed -i 's/^    //' /etc/systemd/system/nats.service
     
     systemctl daemon-reload
     systemctl enable nats
@@ -205,28 +208,29 @@ NATSSERVICEEOF
       echo "✅ NimsForest installed"
       
       cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
-[Unit]
-Description=NimsForest Service
-After=network.target{{if .NATSInstall}} nats.service{{end}}
-Wants=network-online.target
-{{if .NATSInstall}}Requires=nats.service{{end}}
+      [Unit]
+      Description=NimsForest Service
+      After=network.target{{if .NATSInstall}} nats.service{{end}}
+      Wants=network-online.target
+      {{if .NATSInstall}}Requires=nats.service{{end}}
 
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
-Restart=always
-RestartSec=5
-Environment=FOREST_ID={{.ForestID}}
-Environment=NODE_ROLE={{.NodeRole}}
-{{if .NATSInstall}}Environment=NATS_URL=nats://localhost:4222{{end}}
-WorkingDirectory=/var/lib/nimsforest
+      [Service]
+      Type=simple
+      User=ubuntu
+      Group=ubuntu
+      ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+      Restart=always
+      RestartSec=5
+      Environment=FOREST_ID={{.ForestID}}
+      Environment=NODE_ROLE={{.NodeRole}}
+      {{if .NATSInstall}}Environment=NATS_URL=nats://localhost:4222{{end}}
+      WorkingDirectory=/var/lib/nimsforest
 
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
-
+      [Install]
+      WantedBy=multi-user.target
+      SERVICEEOF
+      
+      sed -i 's/^      //' /etc/systemd/system/nimsforest.service
       systemctl daemon-reload
       systemctl enable nimsforest
       systemctl start nimsforest
@@ -329,26 +333,27 @@ runcmd:
       echo "✅ NimsForest installed"
       
       cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
-[Unit]
-Description=NimsForest Service
-After=network.target
-Wants=network-online.target
+      [Unit]
+      Description=NimsForest Service
+      After=network.target
+      Wants=network-online.target
 
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
-Restart=always
-RestartSec=5
-Environment=FOREST_ID={{.ForestID}}
-Environment=NODE_ROLE={{.NodeRole}}
-WorkingDirectory=/var/lib/nimsforest
+      [Service]
+      Type=simple
+      User=ubuntu
+      Group=ubuntu
+      ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+      Restart=always
+      RestartSec=5
+      Environment=FOREST_ID={{.ForestID}}
+      Environment=NODE_ROLE={{.NodeRole}}
+      WorkingDirectory=/var/lib/nimsforest
 
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+      [Install]
+      WantedBy=multi-user.target
+      SERVICEEOF
 
+      sed -i 's/^      //' /etc/systemd/system/nimsforest.service
       systemctl daemon-reload
       systemctl enable nimsforest
       systemctl start nimsforest
@@ -463,26 +468,27 @@ runcmd:
       echo "✅ NimsForest installed"
       
       cat > /etc/systemd/system/nimsforest.service << 'SERVICEEOF'
-[Unit]
-Description=NimsForest Service
-After=network.target
-Wants=network-online.target
+      [Unit]
+      Description=NimsForest Service
+      After=network.target
+      Wants=network-online.target
 
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
-Restart=always
-RestartSec=5
-Environment=FOREST_ID={{.ForestID}}
-Environment=NODE_ROLE={{.NodeRole}}
-WorkingDirectory=/var/lib/nimsforest
+      [Service]
+      Type=simple
+      User=ubuntu
+      Group=ubuntu
+      ExecStart=/opt/nimsforest/bin/nimsforest start --forest-id {{.ForestID}}
+      Restart=always
+      RestartSec=5
+      Environment=FOREST_ID={{.ForestID}}
+      Environment=NODE_ROLE={{.NodeRole}}
+      WorkingDirectory=/var/lib/nimsforest
 
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+      [Install]
+      WantedBy=multi-user.target
+      SERVICEEOF
 
+      sed -i 's/^      //' /etc/systemd/system/nimsforest.service
       systemctl daemon-reload
       systemctl enable nimsforest
       systemctl start nimsforest
