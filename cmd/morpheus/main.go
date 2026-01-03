@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nimsforest/morpheus/pkg/cloudinit"
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/forest"
 	"github.com/nimsforest/morpheus/pkg/httputil"
@@ -284,7 +283,6 @@ func handlePlant() {
 		ForestID:   forestID,
 		Size:       size,
 		Location:   location,
-		Role:       cloudinit.RoleEdge, // Default role
 		ServerType: serverType,
 		Image:      image,
 	}
@@ -873,16 +871,15 @@ func handleStatus() {
 	if len(nodes) > 0 {
 		fmt.Printf("\n🖥️  Machines (%d):\n", len(nodes))
 		fmt.Println()
-		fmt.Println("   ID        ROLE   IPV6 ADDRESS        LOCATION  STATUS")
-		fmt.Println("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("   ID                IPV6 ADDRESS        LOCATION  STATUS")
+		fmt.Println("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		for _, node := range nodes {
 			nodeStatusIcon := "✅"
 			if node.Status != "active" {
 				nodeStatusIcon = "⏳"
 			}
-			fmt.Printf("   %-9s %-6s %-19s %-9s %s %s\n",
+			fmt.Printf("   %-17s %-19s %-9s %s %s\n",
 				node.ID,
-				node.Role,
 				truncateIP(node.IP, 19),
 				node.Location,
 				nodeStatusIcon,
@@ -1342,7 +1339,6 @@ func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Re
 		ForestID:   forestID,
 		Size:       forestInfo.Size,
 		Location:   location,
-		Role:       cloudinit.RoleEdge,
 		ServerType: serverType,
 		Image:      "ubuntu-24.04",
 	}

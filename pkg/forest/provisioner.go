@@ -36,7 +36,6 @@ type ProvisionRequest struct {
 	ForestID   string
 	Size       string // small, medium, large
 	Location   string
-	Role       cloudinit.NodeRole
 	ServerType string // Provider-specific server type
 	Image      string // OS image to use
 }
@@ -75,7 +74,6 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			node := &registry.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
-				Role:     string(req.Role),
 				IP:       s.PublicIPv6,
 				Location: s.Location,
 				Status:   "provisioning", // Will be updated to "active" after SSH verification
@@ -123,49 +121,28 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 // The onCreated callback is called immediately after the server is created (before SSH verification)
 // to allow early registration for cleanup purposes
 func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
-	// Get existing node IPs for NATS cluster (if NATS is enabled)
-	var clusterNodeIPs []string
-	isFirstNode := index == 0
-
-	if p.config.Integration.NATSInstall {
-		// Try to get existing nodes from registry for cluster configuration
-		existingNodes, err := p.registry.GetNodes(req.ForestID)
-		if err == nil {
-			for _, node := range existingNodes {
-				if node.IP != "" && node.Status == "active" {
-					clusterNodeIPs = append(clusterNodeIPs, node.IP)
-				}
-			}
-		}
-		// If there are existing nodes, this isn't the first node
-		if len(clusterNodeIPs) > 0 {
-			isFirstNode = false
-		}
-	}
+	// Generate unique node ID for this node
+	nodeID := nodeName // e.g., "myforest-node-1"
 
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
-		NodeRole:              req.Role,
 		ForestID:              req.ForestID,
 		RegistryURL:           p.config.Integration.RegistryURL,
 		CallbackURL:           p.config.Integration.NimsForestURL,
 		NimsForestInstall:     p.config.Integration.NimsForestInstall,
 		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
-		// NATS configuration
-		NATSInstall:  p.config.Integration.NATSInstall,
-		NATSVersion:  p.config.Integration.NATSVersion,
-		ClusterName:  req.ForestID,
-		ClusterNodes: clusterNodeIPs,
-		IsFirstNode:  isFirstNode,
+
+		// Node identification (for embedded NATS peer discovery)
+		NodeID: nodeID,
+
+		// StorageBox mount for shared registry (enables NATS peer discovery)
+		StorageBoxHost:     p.config.Registry.StorageBoxHost,
+		StorageBoxUser:     p.config.Registry.Username,
+		StorageBoxPassword: p.config.Registry.Password,
 	}
 
-	// Set default NATS version if not specified
-	if cloudInitData.NATSInstall && cloudInitData.NATSVersion == "" {
-		cloudInitData.NATSVersion = "2.10.24"
-	}
-
-	userData, err := cloudinit.Generate(req.Role, cloudInitData)
+	userData, err := cloudinit.Generate(cloudInitData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate cloud-init: %w", err)
 	}
@@ -205,7 +182,6 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		Labels: map[string]string{
 			"managed-by": "morpheus",
 			"forest-id":  req.ForestID,
-			"role":       string(req.Role),
 		},
 	}
 
