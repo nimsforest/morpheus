@@ -134,6 +134,9 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	// Generate unique node ID for this node
 	nodeID := nodeName // e.g., "myforest-node-1"
 
+	// Determine total node count for cluster configuration
+	nodeCount := getNodeCount(req.Size)
+
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
@@ -144,7 +147,9 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		NimsForestDownloadURL: p.config.Integration.NimsForestDownloadURL,
 
 		// Node identification (for embedded NATS peer discovery)
-		NodeID: nodeID,
+		NodeID:    nodeID,
+		NodeIndex: index,
+		NodeCount: nodeCount, // 1=standalone, 3+=cluster mode
 
 		// StorageBox mount for shared registry (enables NATS peer discovery)
 		StorageBoxHost:     p.config.Registry.StorageBoxHost,
