@@ -53,7 +53,6 @@ packages:
   - jq
   - systemd
   - cifs-utils
-  - python3
 
 write_files:
   - path: /etc/morpheus/node-info.json
@@ -128,6 +127,8 @@ runcmd:
   - |
     echo "📝 Registering node in shared registry..."
     REGISTRY=/mnt/forest/registry.json
+    FOREST_ID="{{.ForestID}}"
+    NODE_ID="{{.NodeID}}"
     
     # Get node IP from metadata or hostname
     NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv6 2>/dev/null || hostname -I | awk '{print $1}')
@@ -141,41 +142,18 @@ runcmd:
     # Create registry if missing
     [ -f "$REGISTRY" ] || echo '{"nodes":{}}' > "$REGISTRY"
     
-    # Use flock for atomic update
-    flock "$REGISTRY" python3 << PYEOF
-import json
-import sys
-
-forest_id = "{{.ForestID}}"
-node_id = "{{.NodeID}}"
-node_ip = "${NODE_IP}"
-
-try:
-    with open('/mnt/forest/registry.json', 'r+') as f:
-        reg = json.load(f)
-        if 'nodes' not in reg:
-            reg['nodes'] = {}
-        if forest_id not in reg['nodes']:
-            reg['nodes'][forest_id] = []
-        
-        # Add node if not exists
-        if not any(n.get('id') == node_id for n in reg['nodes'][forest_id]):
-            reg['nodes'][forest_id].append({
-                "id": node_id,
-                "ip": node_ip,
-                "forest_id": forest_id,
-                "status": "provisioning"
-            })
-            print(f"✅ Node {node_id} registered in shared registry (IP: {node_ip})")
-        else:
-            print(f"ℹ️  Node {node_id} already in registry")
-        
-        f.seek(0)
-        f.truncate()
-        json.dump(reg, f, indent=2)
-except Exception as e:
-    print(f"⚠️  Registry update failed: {e}", file=sys.stderr)
-PYEOF
+    # Use flock for atomic update with jq
+    flock "$REGISTRY" sh -c '
+      TEMP=$(mktemp)
+      # Check if node already exists
+      if jq -e ".nodes[\"'"$FOREST_ID"'\"] | map(select(.id == \"'"$NODE_ID"'\")) | length > 0" "$REGISTRY" >/dev/null 2>&1; then
+        echo "ℹ️  Node '"$NODE_ID"' already in registry"
+      else
+        # Add node to registry
+        jq ".nodes[\"'"$FOREST_ID"'\"] //= [] | .nodes[\"'"$FOREST_ID"'\"] += [{\"id\": \"'"$NODE_ID"'\", \"ip\": \"'"$NODE_IP"'\", \"forest_id\": \"'"$FOREST_ID"'\", \"status\": \"provisioning\"}]" "$REGISTRY" > "$TEMP" && mv "$TEMP" "$REGISTRY"
+        echo "✅ Node '"$NODE_ID"' registered (IP: '"$NODE_IP"')"
+      fi
+    '
   {{end}}
   
   {{if .NimsForestInstall}}
@@ -280,7 +258,6 @@ packages:
   - jq
   - systemd
   - cifs-utils
-  - python3
 
 write_files:
   - path: /etc/morpheus/node-info.json
@@ -327,6 +304,8 @@ runcmd:
   - |
     echo "📝 Registering node in shared registry..."
     REGISTRY=/mnt/forest/registry.json
+    FOREST_ID="{{.ForestID}}"
+    NODE_ID="{{.NodeID}}"
     NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv6 2>/dev/null || hostname -I | awk '{print $1}')
     
     for i in $(seq 1 15); do
@@ -336,27 +315,15 @@ runcmd:
     
     [ -f "$REGISTRY" ] || echo '{"nodes":{}}' > "$REGISTRY"
     
-    flock "$REGISTRY" python3 << PYEOF
-import json
-forest_id = "{{.ForestID}}"
-node_id = "{{.NodeID}}"
-node_ip = "${NODE_IP}"
-try:
-    with open('/mnt/forest/registry.json', 'r+') as f:
-        reg = json.load(f)
-        if 'nodes' not in reg:
-            reg['nodes'] = {}
-        if forest_id not in reg['nodes']:
-            reg['nodes'][forest_id] = []
-        if not any(n.get('id') == node_id for n in reg['nodes'][forest_id]):
-            reg['nodes'][forest_id].append({"id": node_id, "ip": node_ip, "forest_id": forest_id, "status": "provisioning"})
-            print(f"✅ Node {node_id} registered")
-        f.seek(0)
-        f.truncate()
-        json.dump(reg, f, indent=2)
-except Exception as e:
-    print(f"⚠️  Registry update failed: {e}")
-PYEOF
+    flock "$REGISTRY" sh -c '
+      TEMP=$(mktemp)
+      if jq -e ".nodes[\"'"$FOREST_ID"'\"] | map(select(.id == \"'"$NODE_ID"'\")) | length > 0" "$REGISTRY" >/dev/null 2>&1; then
+        echo "ℹ️  Node '"$NODE_ID"' already in registry"
+      else
+        jq ".nodes[\"'"$FOREST_ID"'\"] //= [] | .nodes[\"'"$FOREST_ID"'\"] += [{\"id\": \"'"$NODE_ID"'\", \"ip\": \"'"$NODE_IP"'\", \"forest_id\": \"'"$FOREST_ID"'\", \"status\": \"provisioning\"}]" "$REGISTRY" > "$TEMP" && mv "$TEMP" "$REGISTRY"
+        echo "✅ Node '"$NODE_ID"' registered (IP: '"$NODE_IP"')"
+      fi
+    '
   {{end}}
   
   {{if .NimsForestInstall}}
@@ -461,7 +428,6 @@ packages:
   - ufw
   - jq
   - cifs-utils
-  - python3
 
 write_files:
   - path: /etc/morpheus/node-info.json
@@ -519,6 +485,8 @@ runcmd:
   - |
     echo "📝 Registering node in shared registry..."
     REGISTRY=/mnt/forest/registry.json
+    FOREST_ID="{{.ForestID}}"
+    NODE_ID="{{.NodeID}}"
     NODE_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv6 2>/dev/null || hostname -I | awk '{print $1}')
     
     for i in $(seq 1 15); do
@@ -528,27 +496,15 @@ runcmd:
     
     [ -f "$REGISTRY" ] || echo '{"nodes":{}}' > "$REGISTRY"
     
-    flock "$REGISTRY" python3 << PYEOF
-import json
-forest_id = "{{.ForestID}}"
-node_id = "{{.NodeID}}"
-node_ip = "${NODE_IP}"
-try:
-    with open('/mnt/forest/registry.json', 'r+') as f:
-        reg = json.load(f)
-        if 'nodes' not in reg:
-            reg['nodes'] = {}
-        if forest_id not in reg['nodes']:
-            reg['nodes'][forest_id] = []
-        if not any(n.get('id') == node_id for n in reg['nodes'][forest_id]):
-            reg['nodes'][forest_id].append({"id": node_id, "ip": node_ip, "forest_id": forest_id, "status": "provisioning", "storage_path": "/mnt/nimsforest-storage"})
-            print(f"✅ Node {node_id} registered")
-        f.seek(0)
-        f.truncate()
-        json.dump(reg, f, indent=2)
-except Exception as e:
-    print(f"⚠️  Registry update failed: {e}")
-PYEOF
+    flock "$REGISTRY" sh -c '
+      TEMP=$(mktemp)
+      if jq -e ".nodes[\"'"$FOREST_ID"'\"] | map(select(.id == \"'"$NODE_ID"'\")) | length > 0" "$REGISTRY" >/dev/null 2>&1; then
+        echo "ℹ️  Node '"$NODE_ID"' already in registry"
+      else
+        jq ".nodes[\"'"$FOREST_ID"'\"] //= [] | .nodes[\"'"$FOREST_ID"'\"] += [{\"id\": \"'"$NODE_ID"'\", \"ip\": \"'"$NODE_IP"'\", \"forest_id\": \"'"$FOREST_ID"'\", \"status\": \"provisioning\", \"storage_path\": \"/mnt/nimsforest-storage\"}]" "$REGISTRY" > "$TEMP" && mv "$TEMP" "$REGISTRY"
+        echo "✅ Node '"$NODE_ID"' registered (IP: '"$NODE_IP"')"
+      fi
+    '
   {{end}}
   
   {{if .NimsForestInstall}}
