@@ -23,8 +23,8 @@ type TemplateData struct {
 	CallbackURL string // Optional: NimsForest callback URL for bootstrap trigger
 	SSHKeys     []string
 
-	// NimsForest auto-installation
-	NimsForestInstall     bool   // Auto-install NimsForest (with embedded NATS)
+	// NimsForest auto-installation (with embedded NATS)
+	NimsForestInstall     bool   // Auto-install NimsForest
 	NimsForestDownloadURL string // URL to download binary (e.g., "https://nimsforest.io/bin/nimsforest")
 
 	// Node identification (for embedded NATS peer discovery)
@@ -35,13 +35,6 @@ type TemplateData struct {
 	StorageBoxHost     string // CIFS host: uXXXXX.your-storagebox.de
 	StorageBoxUser     string // StorageBox username: uXXXXX
 	StorageBoxPassword string // StorageBox password
-
-	// DEPRECATED: NimsForest now embeds NATS - these are kept for backward compatibility
-	NATSInstall  bool     // DEPRECATED: NimsForest embeds NATS now
-	NATSVersion  string   // DEPRECATED: NimsForest embeds NATS now
-	ClusterName  string   // DEPRECATED: NimsForest embeds NATS now
-	ClusterNodes []string // DEPRECATED: NimsForest embeds NATS now
-	IsFirstNode  bool     // DEPRECATED: NimsForest embeds NATS now
 }
 
 // EdgeNodeTemplate is the cloud-init script for edge nodes
