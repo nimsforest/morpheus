@@ -317,14 +317,105 @@ func isValidIPv6(addr string) bool {
 	return ip.To4() == nil && ip.To16() != nil
 }
 
+// isValidIPv4 checks if a string is a valid IPv4 address
+func isValidIPv4(addr string) bool {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return false
+	}
+	// Check if it's IPv4
+	return ip.To4() != nil
+}
+
 // trimWhitespace removes whitespace, newlines, and control characters from a string
 func trimWhitespace(s string) string {
 	var result []rune
 	for _, r := range s {
 		// Only keep printable non-space characters
-		if r > 32 && r < 127 || r == ':' {
+		if r > 32 && r < 127 || r == ':' || r == '.' {
 			result = append(result, r)
 		}
 	}
 	return string(result)
+}
+
+// IPv4CheckResult contains the results of an IPv4 connectivity check
+type IPv4CheckResult struct {
+	Available bool   // Whether IPv4 is available
+	Address   string // The detected IPv4 address (if available)
+	Error     error  // Any error encountered during the check
+}
+
+// CheckIPv4Connectivity checks if IPv4 connectivity is available by attempting
+// to connect to an IPv4-only service.
+//
+// It uses multiple fallback services to ensure reliability:
+// - icanhazip.com (IPv4 endpoint)
+// - api.ipify.org (IPv4-only service)
+// - v4.ident.me (IPv4-only service)
+func CheckIPv4Connectivity(ctx context.Context) IPv4CheckResult {
+	// Services that return your public IP address (IPv4-only endpoints)
+	services := []string{
+		"https://ipv4.icanhazip.com",
+		"https://api.ipify.org",
+		"https://v4.ident.me",
+	}
+
+	// Create HTTP client with proper TLS and DNS configuration
+	client := CreateHTTPClient(10 * time.Second)
+
+	var lastErr error
+	for _, serviceURL := range services {
+		// Create request
+		req, err := http.NewRequestWithContext(ctx, "GET", serviceURL, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request for %s: %w", serviceURL, err)
+			continue
+		}
+
+		// Set user agent
+		req.Header.Set("User-Agent", "Morpheus-IPv4-Check/1.0")
+
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to connect to %s: %w", serviceURL, err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("service %s returned status %d", serviceURL, resp.StatusCode)
+			continue
+		}
+
+		// Read the response (should be the IPv4 address)
+		body := make([]byte, 256)
+		n, err := resp.Body.Read(body)
+		if err != nil && err.Error() != "EOF" {
+			lastErr = fmt.Errorf("failed to read response from %s: %w", serviceURL, err)
+			continue
+		}
+
+		ipv4Address := string(body[:n])
+		ipv4Address = trimWhitespace(ipv4Address)
+
+		// Validate that we got an IPv4 address
+		if isValidIPv4(ipv4Address) {
+			return IPv4CheckResult{
+				Available: true,
+				Address:   ipv4Address,
+				Error:     nil,
+			}
+		}
+
+		lastErr = fmt.Errorf("service %s returned invalid IPv4 address: %s", serviceURL, ipv4Address)
+	}
+
+	// All services failed
+	return IPv4CheckResult{
+		Available: false,
+		Address:   "",
+		Error:     fmt.Errorf("IPv4 connectivity check failed for all services: %w", lastErr),
+	}
 }

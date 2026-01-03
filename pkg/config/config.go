@@ -42,6 +42,11 @@ type InfrastructureConfig struct {
 	Provider string    `yaml:"provider"`
 	SSH      SSHConfig `yaml:"ssh"`
 
+	// IPv4 fallback configuration
+	// By default, Morpheus uses IPv6-only to save costs (IPv4 costs extra on Hetzner)
+	// Enable IPv4 fallback if your network doesn't have IPv6 connectivity
+	EnableIPv4Fallback bool `yaml:"enable_ipv4_fallback"`
+
 	// DEPRECATED: Legacy fields for backward compatibility
 	Defaults  *DefaultServerConfig `yaml:"defaults,omitempty"`
 	Locations []string             `yaml:"locations,omitempty"`
@@ -135,7 +140,9 @@ func (c *Config) applyProvisioningDefaults() {
 // applyInfrastructureDefaults sets default values for infrastructure config
 func (c *Config) applyInfrastructureDefaults() {
 	// IPv6-only by default (IPv4 costs extra on Hetzner)
-	// No configuration needed - always uses IPv6
+	// EnableIPv4Fallback defaults to false - set to true if your network lacks IPv6
+	// When enabled, servers are provisioned with both IPv4 and IPv6,
+	// and connections will try IPv6 first, falling back to IPv4 if needed
 
 	// Migrate from legacy config format
 	if c.Infrastructure.Defaults != nil {

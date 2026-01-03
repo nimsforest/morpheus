@@ -48,6 +48,9 @@ type CreateServerRequest struct {
 	SSHKeys    []string
 	UserData   string
 	Labels     map[string]string
+	// EnableIPv4 enables IPv4 in addition to IPv6
+	// By default, servers are IPv6-only to save costs (IPv4 costs extra on Hetzner)
+	EnableIPv4 bool
 }
 
 // Server represents a provisioned server
@@ -60,6 +63,34 @@ type Server struct {
 	State      ServerState
 	Labels     map[string]string
 	CreatedAt  string
+}
+
+// GetPreferredIP returns the preferred IP address for connectivity.
+// It prefers IPv6 over IPv4, falling back to IPv4 if IPv6 is not available.
+func (s *Server) GetPreferredIP() string {
+	if s.PublicIPv6 != "" {
+		return s.PublicIPv6
+	}
+	return s.PublicIPv4
+}
+
+// GetFallbackIP returns the fallback IP address (IPv4 if IPv6 is preferred).
+// Returns empty string if no fallback is available.
+func (s *Server) GetFallbackIP() string {
+	if s.PublicIPv6 != "" && s.PublicIPv4 != "" {
+		return s.PublicIPv4
+	}
+	return ""
+}
+
+// HasIPv4 returns true if the server has an IPv4 address
+func (s *Server) HasIPv4() bool {
+	return s.PublicIPv4 != ""
+}
+
+// HasIPv6 returns true if the server has an IPv6 address
+func (s *Server) HasIPv6() bool {
+	return s.PublicIPv6 != ""
 }
 
 // ServerState represents the current state of a server

@@ -318,7 +318,12 @@ func handlePlant() {
 	if deploymentType == "cloud" {
 		estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
 		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimatedCost)
-		fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
+		if cfg.Infrastructure.EnableIPv4Fallback {
+			fmt.Printf("   (IPv4+IPv6, billed by minute, can teardown anytime)\n")
+			fmt.Printf("   ⚠️  IPv4 enabled - additional charges apply per IPv4 address\n\n")
+		} else {
+			fmt.Printf("   (IPv6-only, billed by minute, can teardown anytime)\n\n")
+		}
 	}
 
 	fmt.Println("🚀 Starting provisioning...")
@@ -871,16 +876,16 @@ func handleStatus() {
 	if len(nodes) > 0 {
 		fmt.Printf("\n🖥️  Machines (%d):\n", len(nodes))
 		fmt.Println()
-		fmt.Println("   ID                IPV6 ADDRESS        LOCATION  STATUS")
-		fmt.Println("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("   ID                IP ADDRESS               LOCATION  STATUS")
+		fmt.Println("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		for _, node := range nodes {
 			nodeStatusIcon := "✅"
 			if node.Status != "active" {
 				nodeStatusIcon = "⏳"
 			}
-			fmt.Printf("   %-17s %-19s %-9s %s %s\n",
+			fmt.Printf("   %-17s %-24s %-9s %s %s\n",
 				node.ID,
-				truncateIP(node.IP, 19),
+				truncateIP(node.IP, 24),
 				node.Location,
 				nodeStatusIcon,
 				node.Status,
@@ -1501,6 +1506,10 @@ func handleCheck() {
 	switch subcommand {
 	case "ipv6":
 		runIPv6Check(true)
+	case "ipv4":
+		runIPv4Check(true)
+	case "network":
+		runNetworkCheck(true)
 	case "ssh":
 		runSSHCheck(true)
 	case "":
@@ -1509,7 +1518,7 @@ func handleCheck() {
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
 
-		ipv6Ok := runIPv6Check(false)
+		ipv6Ok, ipv4Ok := runNetworkCheck(false)
 		fmt.Println()
 		sshOk := runSSHCheck(false)
 
@@ -1517,16 +1526,24 @@ func handleCheck() {
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		if ipv6Ok && sshOk {
 			fmt.Println("✅ All checks passed! You're ready to use Morpheus.")
+		} else if ipv4Ok && sshOk {
+			fmt.Println("⚠️  IPv6 not available, but IPv4 works.")
+			fmt.Println("   Enable IPv4 fallback in config.yaml:")
+			fmt.Println("     infrastructure:")
+			fmt.Println("       enable_ipv4_fallback: true")
+			fmt.Println("   Note: IPv4 costs extra on Hetzner.")
 		} else {
 			fmt.Println("⚠️  Some checks failed. Please review the issues above.")
 			os.Exit(1)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown check: %s\n\n", subcommand)
-		fmt.Fprintln(os.Stderr, "Usage: morpheus check [ipv6|ssh]")
-		fmt.Fprintln(os.Stderr, "  morpheus check       Run all checks")
-		fmt.Fprintln(os.Stderr, "  morpheus check ipv6  Check IPv6 connectivity")
-		fmt.Fprintln(os.Stderr, "  morpheus check ssh   Check SSH key setup")
+		fmt.Fprintln(os.Stderr, "Usage: morpheus check [ipv6|ipv4|network|ssh]")
+		fmt.Fprintln(os.Stderr, "  morpheus check         Run all checks")
+		fmt.Fprintln(os.Stderr, "  morpheus check ipv6    Check IPv6 connectivity")
+		fmt.Fprintln(os.Stderr, "  morpheus check ipv4    Check IPv4 connectivity")
+		fmt.Fprintln(os.Stderr, "  morpheus check network Check both IPv6 and IPv4")
+		fmt.Fprintln(os.Stderr, "  morpheus check ssh     Check SSH key setup")
 		os.Exit(1)
 	}
 }
@@ -1554,16 +1571,116 @@ func runIPv6Check(exitOnResult bool) bool {
 			fmt.Printf("   Error: %s\n", result.Error)
 		}
 		fmt.Println()
-		fmt.Println("   Morpheus requires IPv6 to connect to provisioned servers.")
+		fmt.Println("   Morpheus uses IPv6 by default to connect to provisioned servers.")
 		fmt.Println("   Options:")
 		fmt.Println("     • Enable IPv6 on your ISP/router")
 		fmt.Println("     • Use an IPv6 tunnel (e.g., Hurricane Electric)")
 		fmt.Println("     • Use a VPS with IPv6 connectivity")
+		fmt.Println("     • Enable IPv4 fallback in config.yaml (costs extra)")
 		if exitOnResult {
 			os.Exit(1)
 		}
 		return false
 	}
+}
+
+// runIPv4Check checks IPv4 connectivity and returns true if successful
+func runIPv4Check(exitOnResult bool) bool {
+	fmt.Println("📡 IPv4 Connectivity")
+	fmt.Println("   Checking connection to IPv4 services...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result := httputil.CheckIPv4Connectivity(ctx)
+
+	if result.Available {
+		fmt.Println("   ✅ IPv4 is available")
+		fmt.Printf("   Your IPv4 address: %s\n", result.Address)
+		if exitOnResult {
+			os.Exit(0)
+		}
+		return true
+	} else {
+		fmt.Println("   ❌ IPv4 is NOT available")
+		if result.Error != nil {
+			fmt.Printf("   Error: %s\n", result.Error)
+		}
+		if exitOnResult {
+			os.Exit(1)
+		}
+		return false
+	}
+}
+
+// runNetworkCheck checks both IPv6 and IPv4 connectivity
+// Returns (ipv6Ok, ipv4Ok)
+func runNetworkCheck(exitOnResult bool) (bool, bool) {
+	fmt.Println("📡 Network Connectivity")
+	fmt.Println()
+
+	// Check IPv6
+	fmt.Println("   Checking IPv6...")
+	ctx6, cancel6 := context.WithTimeout(context.Background(), 10*time.Second)
+	result6 := httputil.CheckIPv6Connectivity(ctx6)
+	cancel6()
+
+	ipv6Ok := false
+	if result6.Available {
+		fmt.Println("   ✅ IPv6 is available")
+		fmt.Printf("      Your IPv6 address: %s\n", result6.Address)
+		ipv6Ok = true
+	} else {
+		fmt.Println("   ❌ IPv6 is NOT available")
+	}
+
+	fmt.Println()
+
+	// Check IPv4
+	fmt.Println("   Checking IPv4...")
+	ctx4, cancel4 := context.WithTimeout(context.Background(), 10*time.Second)
+	result4 := httputil.CheckIPv4Connectivity(ctx4)
+	cancel4()
+
+	ipv4Ok := false
+	if result4.Available {
+		fmt.Println("   ✅ IPv4 is available")
+		fmt.Printf("      Your IPv4 address: %s\n", result4.Address)
+		ipv4Ok = true
+	} else {
+		fmt.Println("   ❌ IPv4 is NOT available")
+	}
+
+	fmt.Println()
+
+	// Summary and recommendations
+	if ipv6Ok && ipv4Ok {
+		fmt.Println("   ✅ Both IPv6 and IPv4 are available")
+		fmt.Println("      Morpheus will use IPv6 by default (recommended, saves costs)")
+	} else if ipv6Ok {
+		fmt.Println("   ✅ IPv6 available - Morpheus will work with default settings")
+	} else if ipv4Ok {
+		fmt.Println("   ⚠️  Only IPv4 available")
+		fmt.Println("      To use Morpheus, enable IPv4 fallback in config.yaml:")
+		fmt.Println("        infrastructure:")
+		fmt.Println("          enable_ipv4_fallback: true")
+		fmt.Println("      Note: IPv4 costs extra on Hetzner Cloud")
+	} else {
+		fmt.Println("   ❌ No network connectivity")
+		fmt.Println("      Please check your internet connection")
+	}
+
+	if exitOnResult {
+		if ipv6Ok {
+			os.Exit(0)
+		} else if ipv4Ok {
+			os.Exit(0) // IPv4 available, user can enable fallback
+		} else {
+			os.Exit(1)
+		}
+	}
+
+	return ipv6Ok, ipv4Ok
 }
 
 // runSSHCheck checks SSH key configuration and returns true if successful
@@ -2466,8 +2583,10 @@ func printHelp() {
 	fmt.Println("  version                     Show version information")
 	fmt.Println("  update                      Check for updates and install if available")
 	fmt.Println("  check-update                Check for updates without installing")
-	fmt.Println("  check                       Run all diagnostics (IPv6, SSH)")
+	fmt.Println("  check                       Run all diagnostics (network, SSH)")
 	fmt.Println("  check ipv6                  Check IPv6 connectivity")
+	fmt.Println("  check ipv4                  Check IPv4 connectivity")
+	fmt.Println("  check network               Check both IPv6 and IPv4")
 	fmt.Println("  check ssh                   Check SSH key setup")
 	fmt.Println("  check-ipv6                  (deprecated) Use 'check ipv6' instead")
 	fmt.Println("  test e2e                    Run fully automated E2E test suite (~15-20 min)")

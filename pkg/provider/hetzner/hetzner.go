@@ -178,7 +178,8 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 		sshKeys = append(sshKeys, key)
 	}
 
-	// Create server with IPv6 only (no IPv4 to save costs)
+	// Create server with IPv6 only by default (no IPv4 to save costs)
+	// If EnableIPv4 is set, provision with both IPv4 and IPv6 for fallback support
 	createOpts := hcloud.ServerCreateOpts{
 		Name:             req.Name,
 		ServerType:       serverType,
@@ -189,7 +190,7 @@ func (p *Provider) CreateServer(ctx context.Context, req provider.CreateServerRe
 		Labels:           req.Labels,
 		StartAfterCreate: hcloud.Ptr(true),
 		PublicNet: &hcloud.ServerCreatePublicNet{
-			EnableIPv4: false,
+			EnableIPv4: req.EnableIPv4,
 			EnableIPv6: true,
 		},
 	}

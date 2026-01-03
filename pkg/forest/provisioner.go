@@ -71,10 +71,12 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
 			// Register node immediately after server creation (before SSH verification)
 			// This ensures teardown can find and delete it even if interrupted
+			// Use preferred IP (IPv6 if available, IPv4 as fallback)
+			nodeIP := s.GetPreferredIP()
 			node := &registry.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
-				IP:       s.PublicIPv6,
+				IP:       nodeIP,
 				Location: s.Location,
 				Status:   "provisioning", // Will be updated to "active" after SSH verification
 				Metadata: s.Labels,
@@ -101,7 +103,14 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			fmt.Printf("   ⚠️  Warning: failed to update node status: %s\n", err)
 		}
 
-		fmt.Printf("   ✅ Machine %d ready (IPv6: %s)\n", i+1, server.PublicIPv6)
+		// Display IP address info
+		if server.PublicIPv6 != "" && server.PublicIPv4 != "" {
+			fmt.Printf("   ✅ Machine %d ready (IPv6: %s, IPv4: %s)\n", i+1, server.PublicIPv6, server.PublicIPv4)
+		} else if server.PublicIPv6 != "" {
+			fmt.Printf("   ✅ Machine %d ready (IPv6: %s)\n", i+1, server.PublicIPv6)
+		} else {
+			fmt.Printf("   ✅ Machine %d ready (IPv4: %s)\n", i+1, server.PublicIPv4)
+		}
 	}
 
 	// Update forest status and location
@@ -183,6 +192,7 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 			"managed-by": "morpheus",
 			"forest-id":  req.ForestID,
 		},
+		EnableIPv4: p.config.Infrastructure.EnableIPv4Fallback,
 	}
 
 	server, err := p.provider.CreateServer(ctx, createReq)
@@ -230,21 +240,38 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 // This checks SSH connectivity as an indicator that cloud-init has progressed
 // far enough for the server to be usable
 func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
-	// IPv6-only
-	if server.PublicIPv6 == "" {
-		return fmt.Errorf("server has no IPv6 address")
+	// Check that we have at least one IP address
+	if server.PublicIPv6 == "" && server.PublicIPv4 == "" {
+		return fmt.Errorf("server has no IP address")
 	}
 
 	timeout := p.config.Provisioning.GetReadinessTimeout()
 	interval := p.config.Provisioning.GetReadinessInterval()
 	sshPort := p.config.Provisioning.SSHPort
 
+	// Try IPv6 first if available, fall back to IPv4 if configured
+	primaryIP := server.PublicIPv6
+	fallbackIP := ""
+	
+	if primaryIP == "" {
+		// No IPv6, use IPv4 as primary
+		primaryIP = server.PublicIPv4
+	} else if p.config.Infrastructure.EnableIPv4Fallback && server.PublicIPv4 != "" {
+		// IPv6 available, but IPv4 fallback is enabled
+		fallbackIP = server.PublicIPv4
+	}
+
 	// Format address for TCP connection (IPv6 needs brackets with port)
-	addr := sshutil.FormatSSHAddress(server.PublicIPv6, sshPort)
+	primaryAddr := sshutil.FormatSSHAddress(primaryIP, sshPort)
+	fallbackAddr := ""
+	if fallbackIP != "" {
+		fallbackAddr = sshutil.FormatSSHAddress(fallbackIP, sshPort)
+	}
 
 	deadline := time.Now().Add(timeout)
 	attempts := 0
 	lastStatus := ""
+	usingFallback := false
 
 	for time.Now().Before(deadline) {
 		select {
@@ -255,16 +282,46 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 
 		attempts++
 
-		// Check SSH port connectivity
+		// Check SSH port connectivity on primary address
+		addr := primaryAddr
+		if usingFallback && fallbackAddr != "" {
+			addr = fallbackAddr
+		}
+
 		status, err := p.checkSSHConnectivityWithStatus(addr)
 		if err == nil {
 			fmt.Printf("\n")
+			if usingFallback {
+				fmt.Printf("      ⚠️  Connected via IPv4 fallback\n")
+			}
 			return nil
+		}
+
+		// If primary (IPv6) fails with network unreachable/no route and we have fallback, try IPv4
+		if !usingFallback && fallbackAddr != "" {
+			if status == "network unreachable" || status == "no route" || status == "timeout" {
+				// Quick check if IPv4 is reachable
+				fallbackStatus, fallbackErr := p.checkSSHConnectivityWithStatus(fallbackAddr)
+				if fallbackErr == nil {
+					fmt.Printf("\n")
+					fmt.Printf("      ⚠️  IPv6 unreachable, using IPv4 fallback\n")
+					return nil
+				}
+				// If IPv4 seems more promising (port closed = server exists), switch to it
+				if fallbackStatus == "port closed" || fallbackStatus == "connecting" {
+					fmt.Printf("      ⚠️  IPv6 %s, trying IPv4 fallback...\n", status)
+					usingFallback = true
+				}
+			}
 		}
 
 		// Only print status when it changes, or every 5 attempts to show progress
 		if status != lastStatus || attempts%5 == 0 {
-			fmt.Printf("      SSH check attempt %d: %s\n", attempts, status)
+			ipLabel := "IPv6"
+			if usingFallback {
+				ipLabel = "IPv4"
+			}
+			fmt.Printf("      SSH check attempt %d (%s): %s\n", attempts, ipLabel, status)
 			lastStatus = status
 		}
 
