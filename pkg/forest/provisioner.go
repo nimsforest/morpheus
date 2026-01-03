@@ -71,12 +71,13 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
 			// Register node immediately after server creation (before SSH verification)
 			// This ensures teardown can find and delete it even if interrupted
-			// Use preferred IP (IPv6 if available, IPv4 as fallback)
-			nodeIP := s.GetPreferredIP()
+			// Store both IPv4 and IPv6 addresses for flexible connectivity
 			node := &registry.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
-				IP:       nodeIP,
+				IP:       s.GetPreferredIP(), // Primary IP (IPv6 preferred)
+				IPv6:     s.PublicIPv6,
+				IPv4:     s.PublicIPv4,
 				Location: s.Location,
 				Status:   "provisioning", // Will be updated to "active" after SSH verification
 				Metadata: s.Labels,

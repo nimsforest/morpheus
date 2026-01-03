@@ -2352,18 +2352,13 @@ func handleTestE2E() {
 	}
 
 	node := nodes[0]
-	nodeIP := node.IP
 
-	// If we're using IPv4 fallback and have no IPv6, get the server's IPv4 address
-	if !hasIPv6 && hasIPv4 {
-		// Get server info from Hetzner to get IPv4 address
-		server, err := hetznerProv.GetServer(ctx, node.ID)
-		if err == nil && server.PublicIPv4 != "" {
-			nodeIP = server.PublicIPv4
-			fmt.Printf("   📍 Node IP: %s (IPv4 fallback)\n", nodeIP)
-		} else {
-			fmt.Printf("   📍 Node IP: %s (IPv6)\n", node.IP)
-		}
+	// Use the appropriate IP based on connectivity
+	nodeIP := node.GetPreferredIP(hasIPv6)
+	if hasIPv6 && node.IPv6 != "" {
+		fmt.Printf("   📍 Node IP: %s (IPv6)\n", nodeIP)
+	} else if node.IPv4 != "" {
+		fmt.Printf("   📍 Node IP: %s (IPv4)\n", nodeIP)
 	} else {
 		fmt.Printf("   📍 Node IP: %s\n", nodeIP)
 	}
