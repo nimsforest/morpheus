@@ -1,373 +1,393 @@
 # Morpheus Forest Automation Roadmap
 
-## Overview
+## Core Principle
 
-Morpheus provisions "land" (VMs) that run:
-1. **NATS Server** - Message broker with built-in clustering
-2. **NimsForest** - Event-driven business logic that connects to NATS
-
-NimsForest doesn't handle discovery or clustering - NATS does that natively.
-
-## Architecture
+**Morpheus is stateless.** All state lives in a remote registry (Hetzner StorageBox).
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         MORPHEUS (CLI)                           │
-│                    Runs on: Termux / Laptop                      │
-│                                                                  │
-│   morpheus plant cloud small  → Creates VM + installs software   │
-│   morpheus grow               → Checks health, adds nodes        │
-│   morpheus teardown           → Removes VMs                      │
-└──────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ provisions
-                                   ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                        VM (Hetzner VPS)                          │
-│                                                                  │
-│  ┌─────────────────────┐    ┌─────────────────────────────────┐  │
-│  │    NATS Server      │    │         NimsForest              │  │
-│  │                     │    │                                 │  │
-│  │  • Port 4222 client │◄───│  Connects to localhost:4222     │  │
-│  │  • Port 6222 cluster│    │  Runs Trees, Nims, etc.         │  │
-│  │  • Routes to peers  │    │                                 │  │
-│  └─────────────────────┘    └─────────────────────────────────┘  │
-│                                                                  │
-│  systemd: nats.service       systemd: nimsforest.service         │
-└──────────────────────────────────────────────────────────────────┘
-                                   │
-                                   │ NATS cluster routes (port 6222)
-                                   ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                        VM 2, VM 3, ...                           │
-│                    (Same setup, clustered)                       │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────┐
+│    Morpheus     │  Stateless CLI
+│   (any device)  │  No local state
+└────────┬────────┘
+         │
+         ▼ reads/writes via WebDAV
+┌─────────────────────────────────────┐
+│       Hetzner StorageBox            │
+│                                     │
+│  /morpheus/registry.json            │
+│  {                                  │
+│    "forests": {...},                │
+│    "nodes": {...}                   │
+│  }                                  │
+└─────────────────────────────────────┘
+         ▲
+         │ NATS cluster routes from registry
+         │
+┌────────┴────────┬─────────────────┐
+│                 │                 │
+▼                 ▼                 ▼
+┌─────────┐  ┌─────────┐  ┌─────────┐
+│  VM 1   │  │  VM 2   │  │  VM 3   │
+│  NATS   │◄─┤  NATS   │◄─┤  NATS   │  Cluster
+│ Forest  │  │ Forest  │  │ Forest  │
+└─────────┘  └─────────┘  └─────────┘
 ```
-
-## Current State
-
-- [x] `morpheus plant cloud small/medium/large` - provisions VMs
-- [x] Cloud-init installs packages, configures firewall
-- [x] NimsForest binary download from configured URL
-- [x] NimsForest systemd service
-- [ ] **NATS server installation** ← Missing
-- [ ] **NATS cluster configuration** ← Missing
-- [ ] `morpheus grow` command
 
 ---
 
-## Task 1: NATS Server Installation
+## Task 1: StorageBox Registry
 
-**Goal:** Each provisioned VM runs NATS server with clustering enabled.
+### Why StorageBox?
 
-### 1.1 Download NATS server in cloud-init
+- **Simple**: Just a JSON file via WebDAV
+- **Cheap**: ~€3/month for 100GB
+- **No server**: No service to run/maintain
+- **Hetzner native**: Same provider as VMs
+- **Safe enough**: WebDAV supports ETags for optimistic locking
 
-**File:** `pkg/cloudinit/templates.go`
+### Registry File Format
 
-Add to runcmd:
-```yaml
-# Download and install NATS server
-- |
-  NATS_VERSION="2.10.24"
-  curl -fsSL "https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz" | tar xz
-  mv nats-server-v${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
-  chmod +x /usr/local/bin/nats-server
-```
-
-### 1.2 Create NATS systemd service
-
-```yaml
-- |
-  cat > /etc/systemd/system/nats.service << 'EOF'
-  [Unit]
-  Description=NATS Server
-  After=network.target
-
-  [Service]
-  Type=simple
-  ExecStart=/usr/local/bin/nats-server -c /etc/nats/nats.conf
-  Restart=always
-  RestartSec=5
-
-  [Install]
-  WantedBy=multi-user.target
-  EOF
-```
-
-### 1.3 Generate NATS config with cluster routes
-
-**File:** `pkg/cloudinit/templates.go`
-
-Add to `TemplateData`:
-```go
-// NATS cluster configuration
-ClusterNodes  []string // IPv6 addresses of other nodes
-ClusterName   string   // Cluster name (forest ID)
-IsFirstNode   bool     // First node is the seed
-```
-
-Generate `/etc/nats/nats.conf`:
-```yaml
-- |
-  mkdir -p /etc/nats
-  cat > /etc/nats/nats.conf << 'EOF'
-  port: 4222
-  http_port: 8222
-  
-  jetstream {
-    store_dir: /var/lib/nats/jetstream
-    max_mem: 1G
-    max_file: 10G
-  }
-  
-  cluster {
-    name: {{.ClusterName}}
-    port: 6222
-    {{if not .IsFirstNode}}
-    routes = [
-      {{range .ClusterNodes}}
-      nats-route://[{{.}}]:6222
-      {{end}}
+```json
+{
+  "version": 1,
+  "updated_at": "2025-01-02T10:00:00Z",
+  "forests": {
+    "forest-1234567890": {
+      "id": "forest-1234567890",
+      "provider": "hetzner",
+      "location": "fsn1",
+      "size": "small",
+      "status": "active",
+      "created_at": "2025-01-02T10:00:00Z",
+      "last_expansion": null
+    }
+  },
+  "nodes": {
+    "forest-1234567890": [
+      {
+        "id": "12345678",
+        "ip": "2a01:4f8:c012:abc::1",
+        "role": "edge",
+        "status": "active",
+        "created_at": "2025-01-02T10:00:05Z"
+      }
     ]
-    {{end}}
   }
-  EOF
-```
-
-### 1.4 Update provisioner to track and pass node IPs
-
-**File:** `pkg/forest/provisioner.go`
-
-```go
-// When provisioning node N:
-// 1. Get IPs of nodes 1..N-1 from registry
-// 2. Pass them as ClusterNodes
-// 3. First node has IsFirstNode=true
-```
-
-### 1.5 Update NimsForest service to wait for NATS
-
-```yaml
-- |
-  cat > /etc/systemd/system/nimsforest.service << 'EOF'
-  [Unit]
-  Description=NimsForest
-  After=nats.service
-  Requires=nats.service
-
-  [Service]
-  Type=simple
-  User=ubuntu
-  Environment=NATS_URL=nats://localhost:4222
-  Environment=FOREST_ID={{.ForestID}}
-  ExecStart=/opt/nimsforest/bin/nimsforest
-  Restart=always
-  RestartSec=5
-
-  [Install]
-  WantedBy=multi-user.target
-  EOF
-```
-
-### Acceptance Criteria
-- [ ] NATS server installed on each VM
-- [ ] NATS starts before NimsForest
-- [ ] Multi-node forests form a NATS cluster
-- [ ] `nats server list` shows all nodes
-- [ ] NimsForest connects to local NATS successfully
-
----
-
-## Task 2: `morpheus grow` Command
-
-**Goal:** Check forest health and expand capacity.
-
-### 2.1 Add `grow` command structure
-
-**File:** `cmd/morpheus/main.go`
-
-```go
-case "grow":
-    return runGrow(args[1:])
-```
-
-### 2.2 Connect to NATS cluster
-
-To check cluster health, Morpheus needs to connect to NATS monitoring endpoint.
-
-```go
-// Connect via HTTP to NATS monitoring port (8222)
-func getClusterStats(nodeIP string) (*ClusterStats, error) {
-    resp, err := http.Get(fmt.Sprintf("http://[%s]:8222/varz", nodeIP))
-    // Parse JSON response for CPU, memory, connections
 }
 ```
 
-### 2.3 Display format
+### Auto-Setup Flow
+
+```
+$ morpheus plant cloud small
+
+🌲 No registry configured.
+
+Morpheus needs a place to store forest state.
+This allows running morpheus from any device.
+
+Options:
+  1. Create new Hetzner StorageBox (~€3/month)
+  2. Use existing StorageBox
+  3. Skip (local-only, single device)
+
+Choice [1]: 1
+
+Creating StorageBox... ✓
+  Name: morpheus-registry
+  URL:  https://u123456.your-storagebox.de
+
+Initializing registry... ✓
+
+Saving to config... ✓
+  ~/.morpheus/config.yaml updated
+
+Continuing with provisioning...
+```
+
+### Concurrency Safety
+
+WebDAV supports ETags for optimistic locking:
+
+```go
+// Read
+resp := GET /registry.json
+etag := resp.Header("ETag")  // e.g., "abc123"
+data := parse(resp.Body)
+
+// Modify
+data.Forests["new"] = forest
+
+// Write with lock
+req := PUT /registry.json
+req.Header("If-Match", etag)  // Only if unchanged
+resp := send(req)
+
+if resp.Status == 412 {  // Precondition Failed
+    // Someone else modified - retry from read
+    retry()
+}
+```
+
+### Files to Create
+
+```
+pkg/registry/
+├── storagebox.go   # WebDAV client with ETag support
+├── types.go        # RegistryData, Forest, Node structs
+├── setup.go        # Auto-create StorageBox via Robot API
+└── registry_test.go
+```
+
+---
+
+## Task 2: NATS Server Installation
+
+### Each VM Runs
+
+1. **NATS Server** - Message broker
+2. **NimsForest** - Business logic (connects to local NATS)
+
+### Cluster Formation
+
+```
+Node 1 (first):
+  - NATS starts as seed
+  - No routes configured
+  - Other nodes connect to it
+
+Node 2+ (subsequent):
+  - Gets Node 1's IP from registry
+  - NATS config has route to Node 1
+  - Joins cluster automatically
+```
+
+### NATS Config Template
+
+```conf
+# /etc/nats/nats.conf
+port: 4222
+http_port: 8222
+
+jetstream {
+  store_dir: /var/lib/nats/jetstream
+  max_mem: 1G
+  max_file: 10G
+}
+
+cluster {
+  name: {{.ForestID}}
+  port: 6222
+  
+  {{if not .IsFirstNode}}
+  routes = [
+    {{range .ClusterNodes}}
+    nats-route://[{{.}}]:6222
+    {{end}}
+  ]
+  {{end}}
+}
+```
+
+### Service Dependencies
+
+```
+nats.service        (starts first)
+       │
+       ▼
+nimsforest.service  (After=nats.service)
+       │
+       └─► NATS_URL=nats://localhost:4222
+```
+
+---
+
+## Task 3: `morpheus grow`
+
+### What It Does
+
+1. Reads forest info from registry
+2. Queries each node's NATS monitoring endpoint
+3. Displays resource usage
+4. Suggests expansion if above threshold
+5. On confirm, provisions new node
+
+### NATS Monitoring API
+
+NATS exposes stats at `http://[ip]:8222/varz`:
+
+```json
+{
+  "cpu": 12.5,
+  "mem": 536870912,
+  "connections": 45,
+  "in_msgs": 1234567,
+  "out_msgs": 2345678,
+  "slow_consumers": 0
+}
+```
+
+### Display
 
 ```
 🌲 Forest: forest-1234567890
+   Provider: hetzner (fsn1)
+   Created: 2 days ago
 
 NATS Cluster:
-  Nodes: 2/2 healthy
-  Connections: 45 active
-  Messages: 1.2M in, 3.4M out
+   Nodes: 2 connected
+   Messages: 1.2M in / 3.4M out
 
-Resource Usage:
-  CPU:    72% ████████████████████░░░░░░░░
-  Memory: 85% █████████████████████████░░░ ⚠️
+Resources:
+   CPU:    45% ████████████░░░░░░░░░░░░░
+   Memory: 82% ████████████████████░░░░░ ⚠️
 
-Nodes:
-  ID              IP                  CPU    MEM    CONNS
-  node-1          2a01:4f8::1         65%    80%    23
-  node-2          2a01:4f8::2         78%    90%    22     ⚠️
+   NODE        IP                CPU    MEM    STATUS
+   node-1      2a01:4f8::1       40%    78%    healthy
+   node-2      2a01:4f8::2       50%    86%    warning
 
-⚠️  Memory above 80% on node-2
+⚠️  Memory usage above 80% threshold
 
-Suggestion: Add 1 node
-Proceed? [y/N]: 
+Recommendation: Add 1 node (~€3/month)
+
+Proceed? [y/N]: y
+
+Provisioning node-3...
+  Creating server... ✓
+  Waiting for boot... ✓
+  Joining cluster... ✓
+
+✅ Node added. Cluster now has 3 nodes.
 ```
-
-### 2.4 Expansion flow
-
-1. User confirms
-2. Morpheus provisions new node
-3. New node gets existing node IPs in `ClusterNodes`
-4. NATS automatically forms cluster
-5. NimsForest starts and connects
-
-### Acceptance Criteria
-- [ ] `morpheus grow` shows cluster health
-- [ ] Flags nodes above threshold
-- [ ] On confirm, provisions new node
-- [ ] New node joins cluster automatically
 
 ---
 
-## Task 3: `morpheus grow --auto`
+## Task 4: `morpheus grow --auto`
 
-**Goal:** Non-interactive expansion for automation.
+### Usage
 
-### 3.1 Add flags
+```bash
+# One-time check
+morpheus grow forest-123 --auto
 
-```go
---auto           No prompts
---threshold N    Expansion threshold (default: 80)
---output json    Machine-readable output
+# Cron job (every 15 min)
+*/15 * * * * morpheus grow --auto --threshold 80
 ```
 
-### 3.2 Auto-expansion logic
+### Flags
 
-```go
-func runGrowAuto(forestID string, threshold int) error {
-    stats := getClusterStats(forestID)
-    
-    if stats.MaxMemoryPercent > threshold || stats.MaxCPUPercent > threshold {
-        log.Println("Threshold exceeded, provisioning...")
-        return provisionNode(forestID)
-    }
-    
-    log.Println("Within limits, no action needed")
-    return nil
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--auto` | No prompts, auto-expand | false |
+| `--threshold N` | Expand when above N% | 80 |
+| `--output json` | Machine-readable | false |
+| `--dry-run` | Show what would happen | false |
+
+### Safety
+
+```yaml
+# config.yaml
+growth:
+  max_nodes: 10           # Never exceed this
+  cooldown_minutes: 15    # Wait between expansions
+  max_per_run: 1          # Add at most 1 node per run
+```
+
+### JSON Output
+
+```json
+{
+  "forest_id": "forest-123",
+  "status": "expanded",
+  "reason": "memory_above_threshold",
+  "metrics": {
+    "cpu_percent": 45,
+    "memory_percent": 82
+  },
+  "action": {
+    "type": "provision_node",
+    "node_id": "node-3"
+  }
 }
 ```
-
-### 3.3 Safety limits
-
-```go
-type GrowthConfig struct {
-    MaxNodes        int  // Don't exceed this many nodes
-    CooldownMinutes int  // Wait between expansions
-}
-```
-
-### Acceptance Criteria
-- [ ] `morpheus grow --auto` works without prompts
-- [ ] Respects threshold
-- [ ] Has cooldown between expansions
-- [ ] JSON output available
 
 ---
 
 ## Implementation Order
 
 ```
-Phase 1: NATS Installation (Task 1)
-├── 1.1 Download NATS in cloud-init
-├── 1.2 Create NATS systemd service  
-├── 1.3 Generate cluster config
-├── 1.4 Pass node IPs from provisioner
-└── 1.5 NimsForest depends on NATS
+Week 1: Registry (Task 1)
+├── Day 1-2: StorageBox client (WebDAV + ETag)
+├── Day 3: Auto-create via Robot API
+├── Day 4: Interactive setup flow
+└── Day 5: Migrate all commands to use registry
 
-Phase 2: Grow Command (Task 2)
-├── 2.1 Add grow command
-├── 2.2 Query NATS monitoring API
-├── 2.3 Display formatting
-└── 2.4 Expansion flow
+Week 2: NATS + Clustering (Task 2)
+├── Day 1-2: Cloud-init templates for NATS
+├── Day 3: Cluster config generation
+└── Day 4-5: Testing multi-node clusters
 
-Phase 3: Auto-Grow (Task 3)
-├── 3.1 Add flags
-├── 3.2 Auto logic
-└── 3.3 Safety limits
+Week 3: Grow Command (Task 3 + 4)
+├── Day 1-2: NATS monitoring client
+├── Day 3: Interactive grow command
+├── Day 4: Auto mode + flags
+└── Day 5: Testing + documentation
 ```
 
 ---
 
-## Config Changes
-
-**File:** `config.example.yaml`
+## Config Reference
 
 ```yaml
+# ~/.morpheus/config.yaml
+
+infrastructure:
+  provider: hetzner
+
+registry:
+  type: storagebox                    # storagebox | s3 | none
+  url: "https://u123456.your-storagebox.de/morpheus/registry.json"
+  username: "u123456"
+  password: "${STORAGEBOX_PASSWORD}"  # From environment
+
 integration:
   nimsforest_install: true
   nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"
-  
-  # NATS configuration
   nats_install: true
   nats_version: "2.10.24"
 
-# Growth settings  
 growth:
   enabled: true
   threshold_cpu: 80
   threshold_memory: 80
   max_nodes: 10
   cooldown_minutes: 15
+
+secrets:
+  hetzner_api_token: "${HETZNER_API_TOKEN}"
 ```
 
 ---
 
-## Files to Modify
+## API Reference
 
-### Task 1 (NATS Installation)
-- [ ] `pkg/cloudinit/templates.go` - Add NATS download, config generation
-- [ ] `pkg/config/config.go` - Add NATS config options
-- [ ] `pkg/forest/provisioner.go` - Pass cluster node IPs
-- [ ] `pkg/forest/registry.go` - Track node IPs for clustering
+### Hetzner Cloud API
+- Base: `https://api.hetzner.cloud/v1`
+- Used for: VMs, firewalls, SSH keys
+- Auth: Bearer token
 
-### Task 2 (Grow Command)
-- [ ] `cmd/morpheus/main.go` - Add grow command
-- [ ] `pkg/nats/monitor.go` (new) - Query NATS monitoring API
+### Hetzner Robot API
+- Base: `https://robot-ws.your-server.de`
+- Used for: StorageBox management
+- Auth: Basic auth (separate credentials)
 
-### Task 3 (Auto-Grow)
-- [ ] `cmd/morpheus/main.go` - Add flags
-- [ ] `pkg/config/config.go` - Add growth config
+### StorageBox WebDAV
+- URL: `https://u{userid}.your-storagebox.de/`
+- Auth: Basic auth
+- Supports: PUT, GET, DELETE, PROPFIND
+- ETags: Yes (for optimistic locking)
 
----
-
-## Key Insight: NATS Handles Clustering
-
-NimsForest just does:
-```go
-nc, err := nats.Connect(os.Getenv("NATS_URL"))
-```
-
-All clustering is handled by NATS server. NimsForest instances on different VMs automatically share messages through the NATS cluster.
-
-**Morpheus just needs to:**
-1. Install NATS server
-2. Configure cluster routes between nodes
-3. Install NimsForest
-4. Point NimsForest at local NATS
-
-**NimsForest doesn't need to know about clustering at all.**
+### NATS Monitoring
+- URL: `http://[node-ip]:8222/varz`
+- Auth: None (internal network only)
+- Returns: JSON with server stats
