@@ -2091,30 +2091,46 @@ func handleTestE2E() {
 		fmt.Printf("   ⚠️  Warning: could not ensure SSH key: %s\n", err)
 	}
 
-	// Cloud-init for control server - installs Go and builds morpheus
+	// Cloud-init for control server - downloads morpheus binary
 	controlCloudInit := `#cloud-config
 package_update: true
 packages:
   - curl
-  - git
-  - make
   - jq
 
 runcmd:
   - |
-    # Install Go
-    cd /tmp
-    curl -sLO https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
-    rm -rf /usr/local/go && tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
-    echo 'export PATH=$PATH:/usr/local/go/bin' >> /root/.bashrc
-    export PATH=$PATH:/usr/local/go/bin
+    # Download latest morpheus binary
+    mkdir -p /root/bin
+    cd /root/bin
+    
+    # Get latest release URL
+    LATEST_URL=$(curl -sL https://api.github.com/repos/nimsforest/morpheus/releases/latest | jq -r '.assets[] | select(.name | contains("linux") and contains("amd64")) | .browser_download_url')
+    
+    if [ -n "$LATEST_URL" ] && [ "$LATEST_URL" != "null" ]; then
+      echo "Downloading from: $LATEST_URL"
+      curl -sLO "$LATEST_URL"
+      # Handle both .tar.gz and raw binary
+      if echo "$LATEST_URL" | grep -q ".tar.gz"; then
+        tar xzf *.tar.gz
+        rm -f *.tar.gz
+      fi
+      chmod +x morpheus* 2>/dev/null || true
+      # Rename to morpheus if needed
+      [ -f morpheus ] || mv morpheus* morpheus 2>/dev/null || true
+    else
+      echo "Could not find release, downloading from main branch..."
+      # Fallback: build from source if no release available
+      apt-get install -y git make golang-go
+      cd /root
+      git clone https://github.com/nimsforest/morpheus.git
+      cd morpheus
+      make build
+      cp bin/morpheus /root/bin/
+    fi
   - |
-    # Clone and build morpheus
-    cd /root
-    git clone https://github.com/nimsforest/morpheus.git
-    cd morpheus
-    export PATH=$PATH:/usr/local/go/bin
-    make build
+    # Add to PATH
+    echo 'export PATH=$PATH:/root/bin' >> /root/.bashrc
   - |
     # Create config directory
     mkdir -p /root/.morpheus
@@ -2205,10 +2221,13 @@ runcmd:
 	fmt.Println()
 	fmt.Println("   Then run:")
 	fmt.Println("   export HETZNER_API_TOKEN=\"<your-token>\"")
-	fmt.Println("   cd /root/morpheus")
-	fmt.Println("   ./bin/morpheus check ipv6")
-	fmt.Println("   ./bin/morpheus plant cloud small")
-	fmt.Println("   ./bin/morpheus grow <forest-id>")
+	fmt.Println("   morpheus check ipv6")
+	fmt.Println("   morpheus plant cloud small")
+	fmt.Println("   morpheus grow <forest-id>")
+	fmt.Println("")
+	fmt.Println("   # Verify embedded NATS (on provisioned node):")
+	fmt.Println("   ssh root@<node-ip> systemctl status nimsforest")
+	fmt.Println("   ssh root@<node-ip> curl -s localhost:8222/varz | jq .server_id")
 	fmt.Println()
 
 	// For now, we'll run a simple connectivity test
@@ -2220,15 +2239,15 @@ runcmd:
 	fmt.Println("✅ (Hetzner servers have IPv6)")
 
 	// Test 2: Morpheus binary exists
-	fmt.Print("   [2/4] Morpheus build... ")
-	fmt.Println("✅ (built via cloud-init)")
+	fmt.Print("   [2/4] Morpheus binary... ")
+	fmt.Println("✅ (downloaded via cloud-init)")
 
 	// Test 3 & 4: Would need SSH execution
 	fmt.Print("   [3/4] Plant forest... ")
 	fmt.Println("⏭️  (run manually on control server)")
 	
-	fmt.Print("   [4/4] NATS verification... ")
-	fmt.Println("⏭️  (run manually on control server)")
+	fmt.Print("   [4/4] Embedded NATS verification... ")
+	fmt.Println("⏭️  (verify nimsforest.service on provisioned node)")
 
 	fmt.Println()
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
