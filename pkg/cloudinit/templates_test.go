@@ -5,219 +5,113 @@ import (
 	"testing"
 )
 
-func TestGenerateEdgeNode(t *testing.T) {
+func TestGenerate(t *testing.T) {
 	data := TemplateData{
-		NodeRole:    RoleEdge,
-		ForestID:    "test-forest",
-		RegistryURL: "http://registry.example.com",
-		CallbackURL: "http://nimsforest.example.com",
-	}
-
-	script, err := Generate(RoleEdge, data)
-	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
-	}
-
-	// Check for cloud-config header
-	if !strings.HasPrefix(script, "#cloud-config") {
-		t.Error("Script should start with #cloud-config")
-	}
-
-	// Check for forest ID
-	if !strings.Contains(script, "test-forest") {
-		t.Error("Script should contain forest ID")
-	}
-
-	// Check for firewall configuration (Morpheus responsibility)
-	if !strings.Contains(script, "ufw") {
-		t.Error("Script should contain UFW firewall configuration")
-	}
-
-	// Check for NATS ports in firewall (infrastructure preparation)
-	if !strings.Contains(script, "4222") {
-		t.Error("Script should configure NATS client port in firewall")
-	}
-
-	// Check for callback URL (NimsForest integration)
-	if !strings.Contains(script, "nimsforest.example.com") {
-		t.Error("Script should contain NimsForest callback URL")
-	}
-
-	// Check for morpheus metadata file
-	if !strings.Contains(script, "/etc/morpheus/node-info.json") {
-		t.Error("Script should create Morpheus metadata file")
-	}
-
-	// Check that NATS installation is NOT in Morpheus template
-	if strings.Contains(script, "nats-server-v2") || strings.Contains(script, "nats-server.tar.gz") {
-		t.Error("Script should NOT install NATS (that's NimsForest's responsibility)")
-	}
-}
-
-func TestGenerateComputeNode(t *testing.T) {
-	data := TemplateData{
-		NodeRole:    RoleCompute,
-		ForestID:    "test-forest",
-		RegistryURL: "http://registry.example.com",
-	}
-
-	script, err := Generate(RoleCompute, data)
-	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
-	}
-
-	// Check for cloud-config header
-	if !strings.HasPrefix(script, "#cloud-config") {
-		t.Error("Script should start with #cloud-config")
-	}
-
-	// Check for directory creation (not Docker)
-	if !strings.Contains(script, "/opt/nimsforest/bin") {
-		t.Error("Script should create /opt/nimsforest/bin directory")
-	}
-
-	// Check for forest ID
-	if !strings.Contains(script, "test-forest") {
-		t.Error("Script should contain forest ID")
-	}
-}
-
-func TestGenerateStorageNode(t *testing.T) {
-	data := TemplateData{
-		NodeRole:    RoleStorage,
-		ForestID:    "test-forest",
-		RegistryURL: "http://registry.example.com",
-	}
-
-	script, err := Generate(RoleStorage, data)
-	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
-	}
-
-	// Check for cloud-config header
-	if !strings.HasPrefix(script, "#cloud-config") {
-		t.Error("Script should start with #cloud-config")
-	}
-
-	// Check for NFS installation
-	if !strings.Contains(script, "nfs") {
-		t.Error("Script should contain NFS server installation")
-	}
-
-	// Check for forest ID
-	if !strings.Contains(script, "test-forest") {
-		t.Error("Script should contain forest ID")
-	}
-}
-
-func TestGenerateInvalidRole(t *testing.T) {
-	data := TemplateData{
-		NodeRole:    NodeRole("invalid"),
-		ForestID:    "test-forest",
-		RegistryURL: "http://registry.example.com",
-	}
-
-	_, err := Generate(data.NodeRole, data)
-	if err == nil {
-		t.Error("Expected error for invalid node role")
-	}
-}
-
-func TestGenerateWithoutCallbacks(t *testing.T) {
-	data := TemplateData{
-		NodeRole:    RoleEdge,
-		ForestID:    "test-forest",
-		RegistryURL: "", // No registry
-		CallbackURL: "", // No callback
-	}
-
-	script, err := Generate(RoleEdge, data)
-	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
-	}
-
-	// Should still generate valid script
-	if !strings.HasPrefix(script, "#cloud-config") {
-		t.Error("Script should start with #cloud-config")
-	}
-
-	// Should still have basic infrastructure setup
-	if !strings.Contains(script, "ufw") {
-		t.Error("Script should configure firewall even without callbacks")
-	}
-}
-
-func TestNodeRoleConstants(t *testing.T) {
-	if RoleEdge != "edge" {
-		t.Errorf("Expected RoleEdge to be 'edge', got '%s'", RoleEdge)
-	}
-	if RoleCompute != "compute" {
-		t.Errorf("Expected RoleCompute to be 'compute', got '%s'", RoleCompute)
-	}
-	if RoleStorage != "storage" {
-		t.Errorf("Expected RoleStorage to be 'storage', got '%s'", RoleStorage)
-	}
-}
-
-func TestGenerateWithNimsForestInstall(t *testing.T) {
-	data := TemplateData{
-		NodeRole:              RoleEdge,
 		ForestID:              "test-forest",
 		NimsForestInstall:     true,
-		NimsForestDownloadURL: "https://nimsforest.io/bin/nimsforest",
+		NimsForestDownloadURL: "https://example.com/nimsforest",
 	}
 
-	script, err := Generate(RoleEdge, data)
+	script, err := Generate(data)
 	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
+		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Check for NimsForest download URL
-	if !strings.Contains(script, "https://nimsforest.io/bin/nimsforest") {
-		t.Error("Script should contain NimsForest download URL")
+	// Check required components
+	checks := []string{
+		"#cloud-config",
+		"package_update: true",
+		"ufw allow 22/tcp",
+		"ufw allow 4222/tcp",
+		"ufw allow 6222/tcp",
+		"ufw allow 8222/tcp",
+		"/opt/nimsforest/bin",
+		"test-forest",
+		"https://example.com/nimsforest",
+		"nimsforest.service",
 	}
 
-	// Check for binary download
-	if !strings.Contains(script, "/opt/nimsforest/bin/nimsforest") {
-		t.Error("Script should download NimsForest to /opt/nimsforest/bin/")
-	}
-
-	// Check for systemd service
-	if !strings.Contains(script, "nimsforest.service") {
-		t.Error("Script should create systemd service for NimsForest")
-	}
-
-	// Check for service start
-	if !strings.Contains(script, "systemctl start nimsforest") {
-		t.Error("Script should start NimsForest service")
-	}
-
-	// Check forest ID is passed to service
-	if !strings.Contains(script, "FOREST_ID=test-forest") {
-		t.Error("Script should pass forest ID to NimsForest service")
+	for _, check := range checks {
+		if !strings.Contains(script, check) {
+			t.Errorf("Generated script missing expected content: %s", check)
+		}
 	}
 }
 
-func TestGenerateWithoutNimsForestInstall(t *testing.T) {
+func TestGenerateWithStorageBox(t *testing.T) {
 	data := TemplateData{
-		NodeRole:          RoleEdge,
+		ForestID:              "test-forest",
+		NodeID:                "test-node-1",
+		NimsForestInstall:     true,
+		NimsForestDownloadURL: "https://example.com/nimsforest",
+		StorageBoxHost:        "u12345.your-storagebox.de",
+		StorageBoxUser:        "u12345",
+		StorageBoxPassword:    "secret",
+	}
+
+	script, err := Generate(data)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	// Check StorageBox mount
+	checks := []string{
+		"/mnt/forest",
+		"u12345.your-storagebox.de",
+		"cifs",
+		"registry.json",
+		"jq",
+		"REGISTRY_PATH=/mnt/forest/registry.json",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(script, check) {
+			t.Errorf("Generated script missing expected content: %s", check)
+		}
+	}
+}
+
+func TestGenerateWithoutNimsForest(t *testing.T) {
+	data := TemplateData{
 		ForestID:          "test-forest",
 		NimsForestInstall: false,
-		CallbackURL:       "http://callback.example.com",
 	}
 
-	script, err := Generate(RoleEdge, data)
+	script, err := Generate(data)
 	if err != nil {
-		t.Fatalf("Failed to generate cloud-init script: %v", err)
+		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// Should NOT contain NimsForest download logic
+	// Should NOT contain NimsForest installation
 	if strings.Contains(script, "Installing NimsForest") {
-		t.Error("Script should NOT download NimsForest when install is disabled")
+		t.Error("Script should not contain NimsForest installation when disabled")
 	}
 
-	// Should still have callback logic
-	if !strings.Contains(script, "callback.example.com") {
-		t.Error("Script should contain callback URL when NimsForest install is disabled")
+	// Should still have basic setup
+	if !strings.Contains(script, "#cloud-config") {
+		t.Error("Script should still be valid cloud-config")
+	}
+}
+
+func TestGenerateWithoutStorageBox(t *testing.T) {
+	data := TemplateData{
+		ForestID:              "test-forest",
+		NimsForestInstall:     true,
+		NimsForestDownloadURL: "https://example.com/nimsforest",
+	}
+
+	script, err := Generate(data)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	// Should NOT contain StorageBox mount when not configured
+	if strings.Contains(script, "Mounting StorageBox") {
+		t.Error("Script should not contain StorageBox mount when not configured")
+	}
+
+	// Should NOT have REGISTRY_PATH when no StorageBox
+	if strings.Contains(script, "REGISTRY_PATH=") {
+		t.Error("Script should not set REGISTRY_PATH when StorageBox not configured")
 	}
 }

@@ -39,7 +39,6 @@ type Node struct {
 	ID        string            `json:"id"`
 	ForestID  string            `json:"forest_id"`
 	IP        string            `json:"ip"`
-	Role      string            `json:"role"` // edge, compute, storage
 	Location  string            `json:"location"`
 	Status    string            `json:"status"`
 	Metadata  map[string]string `json:"metadata,omitempty"`

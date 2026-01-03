@@ -1,26 +1,26 @@
 # Morpheus TODO
 
-## Architecture (Embedded NATS)
+## Architecture
 
 ```
 ┌─────────────────┐
-│    Morpheus     │  Stateless CLI (phone/laptop)
+│    Morpheus     │  CLI (phone/laptop)
 └────────┬────────┘
-         │ reads/writes via WebDAV
+         │ WebDAV
          ▼
 ┌─────────────────┐
-│ Hetzner         │  Registry = JSON file at /mnt/forest/registry.json
+│ Hetzner         │  Shared registry at /mnt/forest/registry.json
 │ StorageBox      │  Mounted via CIFS on each node
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ Hetzner VMs     │  Each runs NimsForest with EMBEDDED NATS
-│ (the forest)    │  Self-discovers peers via shared registry
+│ Forest Nodes    │  Each runs NimsForest with embedded NATS
+│ (Hetzner VMs)   │  Peers discover each other via shared registry
 └─────────────────┘
 ```
 
-NimsForest embeds NATS server directly. No separate NATS installation needed.
+All nodes are identical - they run NimsForest with embedded NATS. StorageBox provides shared storage.
 
 ---
 
@@ -29,82 +29,62 @@ NimsForest embeds NATS server directly. No separate NATS installation needed.
 ```
 Node-1 starts:
   → Mounts /mnt/forest (StorageBox via CIFS)
-  → Reads /mnt/forest/registry.json → no other nodes yet
-  → Starts nimsforest with embedded NATS as cluster of 1
+  → Registers in /mnt/forest/registry.json
+  → Starts NimsForest with embedded NATS (cluster of 1)
 
 Node-2 starts:
-  → Mounts /mnt/forest (StorageBox via CIFS)
-  → Reads registry → sees node-1
-  → Connects to node-1 via NATS gossip
-  → Cluster is now 2 nodes
+  → Mounts /mnt/forest
+  → Registers in registry, sees node-1
+  → Starts NimsForest, joins cluster via NATS gossip
 
-Node-N added:
-  → Reads registry → finds at least one peer
-  → NATS gossip propagates membership automatically
+Node-N:
+  → Same pattern - NATS gossip handles membership
 ```
-
-A new node only needs ONE existing peer. NATS gossip handles the rest.
 
 ---
 
 ## Completed
 
-- [x] Basic `morpheus plant cloud small/medium/large`
-- [x] NimsForest binary download
-- [x] NimsForest systemd service
-- [x] Configurable download URL
-- [x] StorageBox Registry - WebDAV client with optimistic locking
-- [x] Registry config with StorageBoxHost for CIFS mount
-- [x] NATS monitoring code (`pkg/nats/monitor.go`)
-- [x] `morpheus grow` command - cluster health monitoring
-- [x] `morpheus grow --auto` - non-interactive mode with JSON output
-- [x] Firewall rules for NATS ports
-- [x] Cloud-init mounts StorageBox at /mnt/forest
-- [x] Cloud-init registers node in shared registry (using jq)
-- [x] NimsForest service depends on mnt-forest.mount
-- [x] Environment variables: FOREST_ID, NODE_ID, NODE_ROLE, NODE_IP, REGISTRY_PATH
+- [x] `morpheus plant cloud small/medium/large`
+- [x] NimsForest binary download and systemd service
+- [x] StorageBox Registry (WebDAV + CIFS mount)
+- [x] NATS monitoring (`pkg/nats/monitor.go`)
+- [x] `morpheus grow` - cluster health monitoring
+- [x] Cloud-init mounts StorageBox, registers node (using jq)
+- [x] Environment variables: FOREST_ID, NODE_ID, NODE_IP, REGISTRY_PATH
 
 ---
 
 ## Quick Reference
 
-**File Locations on Each Node:**
-- `/etc/morpheus/node-info.json` - Node identity (forest_id, node_id)
-- `/mnt/forest/registry.json` - Shared registry (peer discovery)
-- `/var/lib/nimsforest/` - NimsForest data (including embedded JetStream)
-- `/opt/nimsforest/bin/nimsforest` - NimsForest binary (with embedded NATS)
+**Node Files:**
+- `/etc/morpheus/node-info.json` - Node identity
+- `/mnt/forest/registry.json` - Shared peer registry
+- `/opt/nimsforest/bin/nimsforest` - NimsForest binary
 
-**What NimsForest Does on Startup:**
-1. Reads `FOREST_ID` and `NODE_ID` from environment
-2. Reads `REGISTRY_PATH` (/mnt/forest/registry.json) for peer IPs
-3. Starts embedded NATS with auto-configured cluster settings
-4. Connects to any discovered peer via NATS gossip
-5. NATS gossip propagates cluster membership automatically
+**NimsForest Startup:**
+1. Reads FOREST_ID, NODE_ID from environment
+2. Reads REGISTRY_PATH for peer IPs
+3. Starts embedded NATS, joins cluster via gossip
 
 **Ports:**
-- 6222 - NATS cluster (required for node-to-node)
-- 4222 - NATS client (localhost only by default)
-- 8222 - NATS monitoring (for `morpheus grow`)
+- 4222 - NATS client
+- 6222 - NATS cluster
+- 8222 - NATS monitoring
 
-**Config Example:**
+**Config:**
 ```yaml
 registry:
   type: storagebox
-  url: https://uXXXXX.your-storagebox.de/morpheus/registry.json  # WebDAV for CLI
-  storagebox_host: uXXXXX.your-storagebox.de                      # CIFS for nodes
+  url: https://uXXXXX.your-storagebox.de/morpheus/registry.json
+  storagebox_host: uXXXXX.your-storagebox.de
   username: uXXXXX
   password: ${STORAGEBOX_PASSWORD}
 ```
 
 ---
 
-## Future Improvements
+## Future
 
-### True Local Mode (No Docker)
-Now simpler with embedded NATS - just run the NimsForest binary directly.
-
-### Health Checks
-Add health endpoint that Morpheus can query:
-- Is NimsForest running?
-- Is embedded NATS healthy?
-- Are peers reachable?
+- Local mode (run NimsForest directly without cloud)
+- Health checks endpoint

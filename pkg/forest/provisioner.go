@@ -36,7 +36,6 @@ type ProvisionRequest struct {
 	ForestID   string
 	Size       string // small, medium, large
 	Location   string
-	Role       cloudinit.NodeRole
 	ServerType string // Provider-specific server type
 	Image      string // OS image to use
 }
@@ -75,7 +74,6 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 			node := &registry.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
-				Role:     string(req.Role),
 				IP:       s.PublicIPv6,
 				Location: s.Location,
 				Status:   "provisioning", // Will be updated to "active" after SSH verification
@@ -129,7 +127,6 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
 	cloudInitData := cloudinit.TemplateData{
-		NodeRole:              req.Role,
 		ForestID:              req.ForestID,
 		RegistryURL:           p.config.Integration.RegistryURL,
 		CallbackURL:           p.config.Integration.NimsForestURL,
@@ -138,7 +135,6 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 
 		// Node identification (for embedded NATS peer discovery)
 		NodeID: nodeID,
-		// NodeIP is populated by cloud-init from instance metadata
 
 		// StorageBox mount for shared registry (enables NATS peer discovery)
 		StorageBoxHost:     p.config.Registry.StorageBoxHost,
@@ -146,7 +142,7 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		StorageBoxPassword: p.config.Registry.Password,
 	}
 
-	userData, err := cloudinit.Generate(req.Role, cloudInitData)
+	userData, err := cloudinit.Generate(cloudInitData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate cloud-init: %w", err)
 	}
@@ -186,7 +182,6 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		Labels: map[string]string{
 			"managed-by": "morpheus",
 			"forest-id":  req.ForestID,
-			"role":       string(req.Role),
 		},
 	}
 

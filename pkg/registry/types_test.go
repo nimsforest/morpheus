@@ -98,7 +98,6 @@ func TestRegistryDataRegisterNode(t *testing.T) {
 	node := &Node{
 		ID:       "12345",
 		ForestID: "test-forest",
-		Role:     "edge",
 		IP:       "2a01:4f8::1",
 		Location: "hel1",
 		Status:   "active",
@@ -133,7 +132,6 @@ func TestRegistryDataRegisterNodeNoForest(t *testing.T) {
 	node := &Node{
 		ID:       "12345",
 		ForestID: "nonexistent",
-		Role:     "edge",
 		IP:       "2a01:4f8::1",
 		Location: "hel1",
 		Status:   "active",
@@ -192,7 +190,6 @@ func TestRegistryDataUpdateNodeStatus(t *testing.T) {
 	node := &Node{
 		ID:       "12345",
 		ForestID: "test-forest",
-		Role:     "edge",
 		IP:       "2a01:4f8::1",
 		Location: "hel1",
 		Status:   "provisioning",
@@ -309,7 +306,6 @@ func TestRegistryDataUpdatedAt(t *testing.T) {
 	node := &Node{
 		ID:       "12345",
 		ForestID: "test-forest",
-		Role:     "edge",
 		IP:       "2a01:4f8::1",
 		Location: "hel1",
 		Status:   "active",
