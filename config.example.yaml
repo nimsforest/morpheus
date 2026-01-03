@@ -15,6 +15,10 @@ infrastructure:
 integration:
   nimsforest_url: ""  # URL for NimsForest callbacks (optional)
   registry_url: ""    # Morpheus registry URL (optional)
+  
+  # Auto-install NimsForest on provisioned machines
+  nimsforest_install: true                              # Download and start NimsForest automatically
+  nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"  # URL to download binary
 
 # Provisioning settings
 provisioning:

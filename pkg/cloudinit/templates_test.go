@@ -158,3 +158,66 @@ func TestNodeRoleConstants(t *testing.T) {
 		t.Errorf("Expected RoleStorage to be 'storage', got '%s'", RoleStorage)
 	}
 }
+
+func TestGenerateWithNimsForestInstall(t *testing.T) {
+	data := TemplateData{
+		NodeRole:              RoleEdge,
+		ForestID:              "test-forest",
+		NimsForestInstall:     true,
+		NimsForestDownloadURL: "https://nimsforest.io/bin/nimsforest",
+	}
+
+	script, err := Generate(RoleEdge, data)
+	if err != nil {
+		t.Fatalf("Failed to generate cloud-init script: %v", err)
+	}
+
+	// Check for NimsForest download URL
+	if !strings.Contains(script, "https://nimsforest.io/bin/nimsforest") {
+		t.Error("Script should contain NimsForest download URL")
+	}
+
+	// Check for binary download
+	if !strings.Contains(script, "/opt/nimsforest/bin/nimsforest") {
+		t.Error("Script should download NimsForest to /opt/nimsforest/bin/")
+	}
+
+	// Check for systemd service
+	if !strings.Contains(script, "nimsforest.service") {
+		t.Error("Script should create systemd service for NimsForest")
+	}
+
+	// Check for service start
+	if !strings.Contains(script, "systemctl start nimsforest") {
+		t.Error("Script should start NimsForest service")
+	}
+
+	// Check forest ID is passed to service
+	if !strings.Contains(script, "FOREST_ID=test-forest") {
+		t.Error("Script should pass forest ID to NimsForest service")
+	}
+}
+
+func TestGenerateWithoutNimsForestInstall(t *testing.T) {
+	data := TemplateData{
+		NodeRole:          RoleEdge,
+		ForestID:          "test-forest",
+		NimsForestInstall: false,
+		CallbackURL:       "http://callback.example.com",
+	}
+
+	script, err := Generate(RoleEdge, data)
+	if err != nil {
+		t.Fatalf("Failed to generate cloud-init script: %v", err)
+	}
+
+	// Should NOT contain NimsForest download logic
+	if strings.Contains(script, "Installing NimsForest") {
+		t.Error("Script should NOT download NimsForest when install is disabled")
+	}
+
+	// Should still have callback logic
+	if !strings.Contains(script, "callback.example.com") {
+		t.Error("Script should contain callback URL when NimsForest install is disabled")
+	}
+}

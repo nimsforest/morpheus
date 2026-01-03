@@ -47,6 +47,10 @@ type SSHConfig struct {
 type IntegrationConfig struct {
 	NimsForestURL string `yaml:"nimsforest_url"` // URL for NimsForest bootstrap callbacks
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
+
+	// NimsForest auto-installation settings
+	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines
+	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (e.g., https://nimsforest.io/bin/nimsforest)
 }
 
 // DefaultsConfig defines default server settings (DEPRECATED)
