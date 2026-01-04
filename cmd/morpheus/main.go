@@ -1149,15 +1149,15 @@ func handleGrow() {
 	// JSON output
 	if jsonOutput {
 		output := map[string]interface{}{
-			"forest_id":       forestID,
-			"total_nodes":     len(nodes),
-			"reachable_nodes": reachableNodes,
+			"forest_id":         forestID,
+			"total_nodes":       len(nodes),
+			"reachable_nodes":   reachableNodes,
 			"total_connections": totalConns,
-			"avg_cpu_percent": avgCPU,
-			"avg_mem_mb":      avgMem,
-			"cpu_high":        avgCPU > threshold,
-			"threshold":       threshold,
-			"nodes":           nodeStats,
+			"avg_cpu_percent":   avgCPU,
+			"avg_mem_mb":        avgMem,
+			"cpu_high":          avgCPU > threshold,
+			"threshold":         threshold,
+			"nodes":             nodeStats,
 		}
 		jsonData, _ := json.MarshalIndent(output, "", "  ")
 		fmt.Println(string(jsonData))
@@ -1237,9 +1237,9 @@ func handleGrow() {
 
 // nodeHealthInfo holds health info for display
 type nodeHealthInfo struct {
-	NodeID      string `json:"node_id"`
-	IP          string `json:"ip"`
-	Reachable   bool   `json:"reachable"`
+	NodeID      string  `json:"node_id"`
+	IP          string  `json:"ip"`
+	Reachable   bool    `json:"reachable"`
 	CPU         float64 `json:"cpu_percent,omitempty"`
 	MemMB       int64   `json:"mem_mb,omitempty"`
 	Connections int     `json:"connections,omitempty"`
@@ -2437,7 +2437,7 @@ func handleTestE2E() {
 	if err == nil && strings.Contains(output, "server_id") {
 		fmt.Println("   ✅ NATS monitoring endpoint responding on :8222")
 		testsPassed++
-		
+
 		// Extract and show some stats
 		if strings.Contains(output, "\"connections\"") {
 			fmt.Println("      /varz endpoint available")

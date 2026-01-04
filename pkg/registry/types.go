@@ -38,9 +38,9 @@ type Forest struct {
 type Node struct {
 	ID        string            `json:"id"`
 	ForestID  string            `json:"forest_id"`
-	IP        string            `json:"ip"`                  // Primary IP (IPv6 preferred, IPv4 fallback)
-	IPv6      string            `json:"ipv6,omitempty"`      // IPv6 address (if available)
-	IPv4      string            `json:"ipv4,omitempty"`      // IPv4 address (if available)
+	IP        string            `json:"ip"`             // Primary IP (IPv6 preferred, IPv4 fallback)
+	IPv6      string            `json:"ipv6,omitempty"` // IPv6 address (if available)
+	IPv4      string            `json:"ipv4,omitempty"` // IPv4 address (if available)
 	Location  string            `json:"location"`
 	Status    string            `json:"status"`
 	Metadata  map[string]string `json:"metadata,omitempty"`

@@ -1,4 +1,4 @@
-.PHONY: build install clean test run help
+.PHONY: build install clean test run help hooks check
 
 BINARY_NAME=morpheus
 BUILD_DIR=bin
@@ -61,5 +61,30 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 lint: fmt vet ## Run linters
+
+hooks: ## Install git pre-commit hooks
+	@echo "Installing git hooks..."
+	@mkdir -p .git/hooks
+	@cp scripts/hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "✓ Pre-commit hook installed"
+
+check: fmt vet ## Run all pre-commit checks (same as hooks)
+	@echo "Running pre-commit checks..."
+	@$(GO) build ./...
+	@echo "✓ Build OK"
+	@cp go.mod go.mod.backup
+	@cp go.sum go.sum.backup 2>/dev/null || true
+	@$(GO) mod tidy
+	@if ! diff -q go.mod go.mod.backup > /dev/null 2>&1; then \
+		echo "✗ go.mod is not tidy. Run 'go mod tidy'"; \
+		mv go.mod.backup go.mod; \
+		mv go.sum.backup go.sum 2>/dev/null || true; \
+		exit 1; \
+	fi
+	@mv go.mod.backup go.mod
+	@mv go.sum.backup go.sum 2>/dev/null || true
+	@echo "✓ go.mod is tidy"
+	@echo "✓ All checks passed!"
 
 .DEFAULT_GOAL := help
