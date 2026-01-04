@@ -258,7 +258,7 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 	// Try IPv6 first if available, fall back to IPv4 if configured
 	primaryIP := server.PublicIPv6
 	fallbackIP := ""
-	
+
 	if primaryIP == "" {
 		// No IPv6, use IPv4 as primary
 		primaryIP = server.PublicIPv4
