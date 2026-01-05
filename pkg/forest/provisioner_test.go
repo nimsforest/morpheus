@@ -16,10 +16,10 @@ func TestGetNodeCount(t *testing.T) {
 		size     string
 		expected int
 	}{
-		{"small", 1},
+		{"small", 2},   // Minimum for NATS clustering
 		{"medium", 3},
 		{"large", 5},
-		{"unknown", 1}, // default
+		{"unknown", 2}, // default (minimum for NATS clustering)
 	}
 
 	for _, tt := range tests {
