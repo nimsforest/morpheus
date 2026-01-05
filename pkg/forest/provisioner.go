@@ -9,32 +9,45 @@ import (
 
 	"github.com/nimsforest/morpheus/pkg/cloudinit"
 	"github.com/nimsforest/morpheus/pkg/config"
-	"github.com/nimsforest/morpheus/pkg/provider"
-	"github.com/nimsforest/morpheus/pkg/registry"
+	"github.com/nimsforest/morpheus/pkg/dns"
+	"github.com/nimsforest/morpheus/pkg/machine"
 	"github.com/nimsforest/morpheus/pkg/sshutil"
+	"github.com/nimsforest/morpheus/pkg/storage"
 )
 
 // Provisioner handles forest provisioning
 type Provisioner struct {
-	provider provider.Provider
-	registry registry.Registry
+	machine  machine.Provider
+	storage  storage.Registry
+	dns      dns.Provider
 	config   *config.Config
 }
 
 // NewProvisioner creates a new forest provisioner
-// Accepts any registry that implements the registry.Registry interface
-func NewProvisioner(p provider.Provider, r registry.Registry, cfg *config.Config) *Provisioner {
+// Accepts any machine provider that implements the machine.Provider interface
+// and any storage that implements the storage.Registry interface
+func NewProvisioner(m machine.Provider, s storage.Registry, cfg *config.Config) *Provisioner {
 	return &Provisioner{
-		provider: p,
-		registry: r,
-		config:   cfg,
+		machine: m,
+		storage: s,
+		config:  cfg,
+	}
+}
+
+// NewProvisionerWithDNS creates a new forest provisioner with DNS support
+func NewProvisionerWithDNS(m machine.Provider, s storage.Registry, d dns.Provider, cfg *config.Config) *Provisioner {
+	return &Provisioner{
+		machine: m,
+		storage: s,
+		dns:     d,
+		config:  cfg,
 	}
 }
 
 // ProvisionRequest contains parameters for provisioning a forest
 type ProvisionRequest struct {
 	ForestID   string
-	Size       string // small, medium, large
+	NodeCount  int    // Number of nodes to provision
 	Location   string
 	ServerType string // Provider-specific server type
 	Image      string // OS image to use
@@ -42,37 +55,40 @@ type ProvisionRequest struct {
 
 // Provision creates a new forest with the specified configuration
 func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error {
-	// Register forest
-	forest := &registry.Forest{
-		ID:       req.ForestID,
-		Size:     req.Size,
-		Location: req.Location,
-		Provider: p.config.Infrastructure.Provider,
-		Status:   "provisioning",
+	// Validate node count
+	nodeCount := req.NodeCount
+	if nodeCount <= 0 {
+		nodeCount = 1 // Default to single node
 	}
 
-	if err := p.registry.RegisterForest(forest); err != nil {
+	// Register forest
+	forest := &storage.Forest{
+		ID:        req.ForestID,
+		NodeCount: nodeCount,
+		Location:  req.Location,
+		Provider:  p.config.GetMachineProvider(),
+		Status:    "provisioning",
+	}
+
+	if err := p.storage.RegisterForest(forest); err != nil {
 		return fmt.Errorf("failed to register forest: %w", err)
 	}
-
-	// Determine number of nodes based on size
-	nodeCount := getNodeCount(req.Size)
 
 	fmt.Printf("\n📦 Step 1/%d: Provisioning machines\n", 2+nodeCount)
 	fmt.Printf("    Creating %d machine%s...\n", nodeCount, plural(nodeCount))
 
 	// Provision nodes
-	var provisionedServers []*provider.Server
+	var provisionedServers []*machine.Server
 	for i := 0; i < nodeCount; i++ {
 		nodeName := fmt.Sprintf("%s-node-%d", req.ForestID, i+1)
 
 		fmt.Printf("\n   Machine %d/%d: %s\n", i+1, nodeCount, nodeName)
 
-		server, err := p.provisionNode(ctx, req, nodeName, i, func(s *provider.Server) {
+		server, err := p.provisionNode(ctx, req, nodeName, i, nodeCount, func(s *machine.Server) {
 			// Register node immediately after server creation (before SSH verification)
 			// This ensures teardown can find and delete it even if interrupted
 			// Store both IPv4 and IPv6 addresses for flexible connectivity
-			node := &registry.Node{
+			node := &storage.Node{
 				ID:       s.ID,
 				ForestID: req.ForestID,
 				IP:       s.GetPreferredIP(), // Primary IP (IPv6 preferred)
@@ -82,8 +98,8 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 				Status:   "provisioning", // Will be updated to "active" after SSH verification
 				Metadata: s.Labels,
 			}
-			if err := p.registry.RegisterNode(node); err != nil {
-				fmt.Printf("   ⚠️  Warning: failed to register node in registry: %s\n", err)
+			if err := p.storage.RegisterNode(node); err != nil {
+				fmt.Printf("   ⚠️  Warning: failed to register node in storage: %s\n", err)
 			}
 		})
 		if err != nil {
@@ -100,7 +116,7 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		forest.Location = server.Location
 
 		// Update node status to active now that SSH verification passed
-		if err := p.registry.UpdateNodeStatus(req.ForestID, server.ID, "active"); err != nil {
+		if err := p.storage.UpdateNodeStatus(req.ForestID, server.ID, "active"); err != nil {
 			fmt.Printf("   ⚠️  Warning: failed to update node status: %s\n", err)
 		}
 
@@ -112,14 +128,19 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 		} else {
 			fmt.Printf("   ✅ Machine %d ready (IPv4: %s)\n", i+1, server.PublicIPv4)
 		}
+
+		// Create DNS records if DNS provider is configured
+		if p.dns != nil && p.config.DNS.Domain != "" {
+			p.createDNSRecords(ctx, req.ForestID, server, i)
+		}
 	}
 
 	// Update forest status and location
 	fmt.Printf("\n📋 Step %d/%d: Finalizing registration\n", 2+nodeCount, 2+nodeCount)
-	if err := p.registry.UpdateForest(forest); err != nil {
+	if err := p.storage.UpdateForest(forest); err != nil {
 		fmt.Printf("   ⚠️  Warning: failed to update forest: %s\n", err)
 	}
-	if err := p.registry.UpdateForestStatus(req.ForestID, "active"); err != nil {
+	if err := p.storage.UpdateForestStatus(req.ForestID, "active"); err != nil {
 		fmt.Printf("   ⚠️  Warning: failed to update forest status: %s\n", err)
 	}
 	fmt.Printf("   ✅ Forest registered and ready\n")
@@ -127,15 +148,52 @@ func (p *Provisioner) Provision(ctx context.Context, req ProvisionRequest) error
 	return nil
 }
 
+// createDNSRecords creates DNS records for a provisioned server
+func (p *Provisioner) createDNSRecords(ctx context.Context, forestID string, server *machine.Server, nodeIndex int) {
+	domain := p.config.DNS.Domain
+	ttl := p.config.DNS.TTL
+
+	// Create A record if IPv4 is available
+	if server.PublicIPv4 != "" {
+		recordName := fmt.Sprintf("%s-node-%d", forestID, nodeIndex+1)
+		_, err := p.dns.CreateRecord(ctx, dns.CreateRecordRequest{
+			Domain: domain,
+			Name:   recordName,
+			Type:   dns.RecordTypeA,
+			Value:  server.PublicIPv4,
+			TTL:    ttl,
+		})
+		if err != nil {
+			fmt.Printf("   ⚠️  Warning: failed to create A record: %s\n", err)
+		} else {
+			fmt.Printf("   🌐 DNS: %s.%s -> %s\n", recordName, domain, server.PublicIPv4)
+		}
+	}
+
+	// Create AAAA record if IPv6 is available
+	if server.PublicIPv6 != "" {
+		recordName := fmt.Sprintf("%s-node-%d", forestID, nodeIndex+1)
+		_, err := p.dns.CreateRecord(ctx, dns.CreateRecordRequest{
+			Domain: domain,
+			Name:   recordName,
+			Type:   dns.RecordTypeAAAA,
+			Value:  server.PublicIPv6,
+			TTL:    ttl,
+		})
+		if err != nil {
+			fmt.Printf("   ⚠️  Warning: failed to create AAAA record: %s\n", err)
+		} else {
+			fmt.Printf("   🌐 DNS: %s.%s -> %s\n", recordName, domain, server.PublicIPv6)
+		}
+	}
+}
+
 // provisionNode provisions a single node
 // The onCreated callback is called immediately after the server is created (before SSH verification)
 // to allow early registration for cleanup purposes
-func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, onCreated func(*provider.Server)) (*provider.Server, error) {
+func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, nodeName string, index int, nodeCount int, onCreated func(*machine.Server)) (*machine.Server, error) {
 	// Generate unique node ID for this node
 	nodeID := nodeName // e.g., "myforest-node-1"
-
-	// Determine total node count for cluster configuration
-	nodeCount := getNodeCount(req.Size)
 
 	// Generate cloud-init script
 	fmt.Printf("      ⏳ Configuring cloud-init...\n")
@@ -149,12 +207,23 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		// Node identification (for embedded NATS peer discovery)
 		NodeID:    nodeID,
 		NodeIndex: index,
-		NodeCount: nodeCount, // 1=standalone, 3+=cluster mode
+		NodeCount: nodeCount,
 
 		// StorageBox mount for shared registry (enables NATS peer discovery)
-		StorageBoxHost:     p.config.Registry.StorageBoxHost,
-		StorageBoxUser:     p.config.Registry.Username,
-		StorageBoxPassword: p.config.Registry.Password,
+		StorageBoxHost:     p.config.Storage.StorageBox.Host,
+		StorageBoxUser:     p.config.Storage.StorageBox.Username,
+		StorageBoxPassword: p.config.Storage.StorageBox.Password,
+	}
+
+	// Fall back to legacy config if new config is empty
+	if cloudInitData.StorageBoxHost == "" {
+		cloudInitData.StorageBoxHost = p.config.Registry.StorageBoxHost
+	}
+	if cloudInitData.StorageBoxUser == "" {
+		cloudInitData.StorageBoxUser = p.config.Registry.Username
+	}
+	if cloudInitData.StorageBoxPassword == "" {
+		cloudInitData.StorageBoxPassword = p.config.Registry.Password
 	}
 
 	userData, err := cloudinit.Generate(cloudInitData)
@@ -162,32 +231,22 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		return nil, fmt.Errorf("failed to generate cloud-init: %w", err)
 	}
 
-	// Determine server type and image based on provisioning context
+	// Determine server type and image
 	serverType := req.ServerType
 	if serverType == "" {
-		// Fallback to legacy config if available
-		if p.config.Infrastructure.Defaults != nil && p.config.Infrastructure.Defaults.ServerType != "" {
-			serverType = p.config.Infrastructure.Defaults.ServerType
-		} else {
-			return nil, fmt.Errorf("server type not specified in request and no default configured")
-		}
+		serverType = p.config.GetServerType()
 	}
 
 	image := req.Image
 	if image == "" {
-		// Default to Ubuntu 24.04 if not specified
-		image = "ubuntu-24.04"
-		// Check legacy config
-		if p.config.Infrastructure.Defaults != nil && p.config.Infrastructure.Defaults.Image != "" {
-			image = p.config.Infrastructure.Defaults.Image
-		}
+		image = p.config.GetImage()
 	}
 
 	// Create server
 	sshKeyName := p.config.GetSSHKeyName()
 	fmt.Printf("      ⏳ Creating server on cloud provider...\n")
 	fmt.Printf("      SSH key: %s\n", sshKeyName)
-	createReq := provider.CreateServerRequest{
+	createReq := machine.CreateServerRequest{
 		Name:       nodeName,
 		ServerType: serverType,
 		Image:      image,
@@ -198,10 +257,10 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 			"managed-by": "morpheus",
 			"forest-id":  req.ForestID,
 		},
-		EnableIPv4: p.config.Infrastructure.EnableIPv4Fallback,
+		EnableIPv4: p.config.IsIPv4Enabled(),
 	}
 
-	server, err := p.provider.CreateServer(ctx, createReq)
+	server, err := p.machine.CreateServer(ctx, createReq)
 	if err != nil {
 		return nil, err
 	}
@@ -219,12 +278,12 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 	fmt.Printf("      ⏳ Waiting for server to boot...\n")
 
 	// Wait for server to be running
-	if err := p.provider.WaitForServer(ctx, server.ID, provider.ServerStateRunning); err != nil {
+	if err := p.machine.WaitForServer(ctx, server.ID, machine.ServerStateRunning); err != nil {
 		return nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
 	// Fetch updated server info to get IP address
-	server, err = p.provider.GetServer(ctx, server.ID)
+	server, err = p.machine.GetServer(ctx, server.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server info: %w", err)
 	}
@@ -245,7 +304,7 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 // waitForInfrastructureReady waits until the server's infrastructure is ready
 // This checks SSH connectivity as an indicator that cloud-init has progressed
 // far enough for the server to be usable
-func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *provider.Server) error {
+func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *machine.Server) error {
 	// Check that we have at least one IP address
 	if server.PublicIPv6 == "" && server.PublicIPv4 == "" {
 		return fmt.Errorf("server has no IP address")
@@ -262,7 +321,7 @@ func (p *Provisioner) waitForInfrastructureReady(ctx context.Context, server *pr
 	if primaryIP == "" {
 		// No IPv6, use IPv4 as primary
 		primaryIP = server.PublicIPv4
-	} else if p.config.Infrastructure.EnableIPv4Fallback && server.PublicIPv4 != "" {
+	} else if p.config.IsIPv4Enabled() && server.PublicIPv4 != "" {
 		// IPv6 available, but IPv4 fallback is enabled
 		fallbackIP = server.PublicIPv4
 	}
@@ -387,9 +446,31 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 	fmt.Printf("🗑️  Tearing down forest: %s\n\n", forestID)
 
 	// Get all nodes for this forest
-	nodes, err := p.registry.GetNodes(forestID)
+	nodes, err := p.storage.GetNodes(forestID)
 	if err != nil {
 		return fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	// Delete DNS records if DNS provider is configured
+	if p.dns != nil && p.config.DNS.Domain != "" {
+		fmt.Printf("Deleting DNS records...\n")
+		for i, node := range nodes {
+			recordName := fmt.Sprintf("%s-node-%d", forestID, i+1)
+			
+			// Delete A record
+			if node.IPv4 != "" {
+				if err := p.dns.DeleteRecord(ctx, p.config.DNS.Domain, recordName, string(dns.RecordTypeA)); err != nil {
+					fmt.Printf("   ⚠️  Warning: failed to delete A record: %s\n", err)
+				}
+			}
+			
+			// Delete AAAA record
+			if node.IPv6 != "" {
+				if err := p.dns.DeleteRecord(ctx, p.config.DNS.Domain, recordName, string(dns.RecordTypeAAAA)); err != nil {
+					fmt.Printf("   ⚠️  Warning: failed to delete AAAA record: %s\n", err)
+				}
+			}
+		}
 	}
 
 	// Delete all servers
@@ -398,7 +479,7 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 		for i, node := range nodes {
 			fmt.Printf("   [%d/%d] Deleting %s...", i+1, len(nodes), node.ID)
 
-			if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
+			if err := p.machine.DeleteServer(ctx, node.ID); err != nil {
 				fmt.Printf(" ⚠️  Warning: %s\n", err)
 			} else {
 				fmt.Printf(" ✅\n")
@@ -406,9 +487,9 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 		}
 	}
 
-	// Remove from registry
-	fmt.Printf("\nCleaning up registry...")
-	if err := p.registry.DeleteForest(forestID); err != nil {
+	// Remove from storage
+	fmt.Printf("\nCleaning up storage...")
+	if err := p.storage.DeleteForest(forestID); err != nil {
 		fmt.Printf(" ⚠️  Warning: %s\n", err)
 	} else {
 		fmt.Printf(" ✅\n")
@@ -418,41 +499,26 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 }
 
 // rollback removes all provisioned servers on failure
-func (p *Provisioner) rollback(ctx context.Context, forestID string, _ []*provider.Server) {
-	// Get all registered nodes from registry (includes nodes registered before SSH verification)
-	nodes, err := p.registry.GetNodes(forestID)
+func (p *Provisioner) rollback(ctx context.Context, forestID string, _ []*machine.Server) {
+	// Get all registered nodes from storage (includes nodes registered before SSH verification)
+	nodes, err := p.storage.GetNodes(forestID)
 	if err != nil {
-		fmt.Printf("   ⚠️  Warning: failed to get nodes from registry: %s\n", err)
+		fmt.Printf("   ⚠️  Warning: failed to get nodes from storage: %s\n", err)
 	}
 
 	// Delete all servers that were registered
 	for i, node := range nodes {
 		fmt.Printf("   🗑️  Deleting machine %d/%d (%s)...\n", i+1, len(nodes), node.ID)
-		if err := p.provider.DeleteServer(ctx, node.ID); err != nil {
+		if err := p.machine.DeleteServer(ctx, node.ID); err != nil {
 			fmt.Printf("   ⚠️  Warning: failed to delete server %s: %s\n", node.ID, err)
 		} else {
 			fmt.Printf("   ✅ Machine deleted\n")
 		}
 	}
 
-	// Remove from registry
-	p.registry.DeleteForest(forestID)
+	// Remove from storage
+	p.storage.DeleteForest(forestID)
 	fmt.Printf("   ✅ Rollback complete\n")
-}
-
-// getNodeCount returns the number of nodes for a given forest size
-// Minimum of 2 nodes ensures proper NATS clustering
-func getNodeCount(size string) int {
-	switch size {
-	case "small":
-		return 2 // Minimum for NATS clustering
-	case "medium":
-		return 3
-	case "large":
-		return 5
-	default:
-		return 2
-	}
 }
 
 // plural returns "s" if count is not 1, empty string otherwise

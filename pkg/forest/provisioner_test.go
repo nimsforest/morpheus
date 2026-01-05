@@ -8,56 +8,34 @@ import (
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/config"
-	"github.com/nimsforest/morpheus/pkg/provider"
+	"github.com/nimsforest/morpheus/pkg/machine"
 )
 
-func TestGetNodeCount(t *testing.T) {
-	tests := []struct {
-		size     string
-		expected int
-	}{
-		{"small", 2},   // Minimum for NATS clustering
-		{"medium", 3},
-		{"large", 5},
-		{"unknown", 2}, // default (minimum for NATS clustering)
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.size, func(t *testing.T) {
-			count := getNodeCount(tt.size)
-			if count != tt.expected {
-				t.Errorf("For size '%s', expected %d nodes, got %d",
-					tt.size, tt.expected, count)
-			}
-		})
-	}
-}
-
-// mockProvider implements provider.Provider for testing
+// mockProvider implements machine.Provider for testing
 type mockProvider struct {
-	servers map[string]*provider.Server
+	servers map[string]*machine.Server
 }
 
 func newMockProvider() *mockProvider {
 	return &mockProvider{
-		servers: make(map[string]*provider.Server),
+		servers: make(map[string]*machine.Server),
 	}
 }
 
-func (m *mockProvider) CreateServer(ctx context.Context, req provider.CreateServerRequest) (*provider.Server, error) {
-	server := &provider.Server{
+func (m *mockProvider) CreateServer(ctx context.Context, req machine.CreateServerRequest) (*machine.Server, error) {
+	server := &machine.Server{
 		ID:         fmt.Sprintf("server-%d", len(m.servers)+1),
 		Name:       req.Name,
 		PublicIPv6: "::1",
 		Location:   req.Location,
-		State:      provider.ServerStateStarting,
+		State:      machine.ServerStateStarting,
 		Labels:     req.Labels,
 	}
 	m.servers[server.ID] = server
 	return server, nil
 }
 
-func (m *mockProvider) GetServer(ctx context.Context, serverID string) (*provider.Server, error) {
+func (m *mockProvider) GetServer(ctx context.Context, serverID string) (*machine.Server, error) {
 	if server, ok := m.servers[serverID]; ok {
 		return server, nil
 	}
@@ -69,7 +47,7 @@ func (m *mockProvider) DeleteServer(ctx context.Context, serverID string) error 
 	return nil
 }
 
-func (m *mockProvider) WaitForServer(ctx context.Context, serverID string, state provider.ServerState) error {
+func (m *mockProvider) WaitForServer(ctx context.Context, serverID string, state machine.ServerState) error {
 	if server, ok := m.servers[serverID]; ok {
 		server.State = state
 		return nil
@@ -77,8 +55,8 @@ func (m *mockProvider) WaitForServer(ctx context.Context, serverID string, state
 	return fmt.Errorf("server not found: %s", serverID)
 }
 
-func (m *mockProvider) ListServers(ctx context.Context, filters map[string]string) ([]*provider.Server, error) {
-	var result []*provider.Server
+func (m *mockProvider) ListServers(ctx context.Context, filters map[string]string) ([]*machine.Server, error) {
+	var result []*machine.Server
 	for _, s := range m.servers {
 		result = append(result, s)
 	}
@@ -199,7 +177,7 @@ func TestWaitForInfrastructureReady_Success(t *testing.T) {
 
 	p := NewProvisioner(newMockProvider(), nil, cfg)
 
-	server := &provider.Server{
+	server := &machine.Server{
 		ID:         "test-server",
 		PublicIPv6: "::1",
 	}
@@ -222,7 +200,7 @@ func TestWaitForInfrastructureReady_Timeout(t *testing.T) {
 
 	p := NewProvisioner(newMockProvider(), nil, cfg)
 
-	server := &provider.Server{
+	server := &machine.Server{
 		ID:         "test-server",
 		PublicIPv6: "::1",
 	}
@@ -253,7 +231,7 @@ func TestWaitForInfrastructureReady_NoIPAddress(t *testing.T) {
 
 	p := NewProvisioner(newMockProvider(), nil, cfg)
 
-	server := &provider.Server{
+	server := &machine.Server{
 		ID:         "test-server",
 		PublicIPv6: "", // No IP address
 	}
@@ -276,7 +254,7 @@ func TestWaitForInfrastructureReady_ContextCancelled(t *testing.T) {
 
 	p := NewProvisioner(newMockProvider(), nil, cfg)
 
-	server := &provider.Server{
+	server := &machine.Server{
 		ID:         "test-server",
 		PublicIPv6: "::1",
 	}
