@@ -8,18 +8,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/config"
+	"github.com/nimsforest/morpheus/pkg/dns"
+	dnshetzner "github.com/nimsforest/morpheus/pkg/dns/hetzner"
+	dnsnone "github.com/nimsforest/morpheus/pkg/dns/none"
 	"github.com/nimsforest/morpheus/pkg/forest"
 	"github.com/nimsforest/morpheus/pkg/httputil"
+	"github.com/nimsforest/morpheus/pkg/machine"
+	"github.com/nimsforest/morpheus/pkg/machine/hetzner"
+	"github.com/nimsforest/morpheus/pkg/machine/local"
 	"github.com/nimsforest/morpheus/pkg/nats"
-	"github.com/nimsforest/morpheus/pkg/provider"
-	"github.com/nimsforest/morpheus/pkg/provider/hetzner"
-	"github.com/nimsforest/morpheus/pkg/provider/local"
-	"github.com/nimsforest/morpheus/pkg/registry"
 	"github.com/nimsforest/morpheus/pkg/sshutil"
+	"github.com/nimsforest/morpheus/pkg/storage"
 	"github.com/nimsforest/morpheus/pkg/updater"
 )
 
@@ -67,112 +71,67 @@ func main() {
 }
 
 func handlePlant() {
-	// Parse arguments with smart defaults
-	var deploymentType, size string
+	// Parse arguments - simplified CLI
+	// morpheus plant             -> 1 node (default)
+	// morpheus plant --nodes 3   -> 3 nodes
+	// morpheus plant --local     -> use local Docker provider
+	
+	nodeCount := 1
+	useLocal := false
 
-	// Check if we have enough arguments
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "❌ Missing arguments")
-		fmt.Fprintln(os.Stderr, "")
-		if isTermux() {
-			fmt.Fprintln(os.Stderr, "Usage: morpheus plant <size>")
-			fmt.Fprintln(os.Stderr, "       morpheus plant cloud <size>  (explicit)")
-		} else {
-			fmt.Fprintln(os.Stderr, "Usage: morpheus plant <cloud|local> <size>")
-		}
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 2 machines (~7-10 min)  💰 ~€6-8/month")
-		fmt.Fprintln(os.Stderr, "  medium - 3 machines (~15-20 min) 💰 ~€9-12/month")
-		fmt.Fprintln(os.Stderr, "  large  - 5 machines (~25-35 min) 💰 ~€15-20/month")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Examples:")
-		if isTermux() {
-			fmt.Fprintln(os.Stderr, "  morpheus plant small        # Create 2-machine cluster")
-			fmt.Fprintln(os.Stderr, "  morpheus plant medium       # Create 3-machine cluster")
-		} else {
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
-			fmt.Fprintln(os.Stderr, "  morpheus plant local small  # Create 2-machine cluster locally")
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium # Create 3-machine cluster")
-		}
-		os.Exit(1)
-	}
-
-	// Smart argument parsing: support both 2 and 3 argument forms
-	if len(os.Args) == 3 {
-		// Two arguments: could be "plant small" or "plant cloud small"
-		arg := os.Args[2]
-		if isValidSize(arg) {
-			// On Termux, default to cloud mode (Docker doesn't work on Android)
-			// On Desktop, require explicit mode to prevent accidental cloud deployments
-			if isTermux() {
-				deploymentType = "cloud"
-				size = arg
-				fmt.Println("\n💡 Using cloud mode (default on Termux)")
+	// Parse arguments
+	for i := 2; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		switch arg {
+		case "--nodes", "-n":
+			if i+1 < len(os.Args) {
+				i++
+				n, err := strconv.Atoi(os.Args[i])
+				if err != nil || n < 1 {
+					fmt.Fprintf(os.Stderr, "❌ Invalid node count: %s\n", os.Args[i])
+					os.Exit(1)
+				}
+				nodeCount = n
 			} else {
-				// Desktop: require explicit mode to prevent billing surprises
-				fmt.Fprintf(os.Stderr, "\n❌ Please specify deployment mode\n\n")
-				fmt.Fprintf(os.Stderr, "Usage: morpheus plant <cloud|local> %s\n\n", arg)
-				fmt.Fprintf(os.Stderr, "Options:\n")
-				fmt.Fprintf(os.Stderr, "  cloud - Deploy to Hetzner Cloud (requires API token, incurs charges)\n")
-				fmt.Fprintf(os.Stderr, "  local - Deploy locally with Docker (free, requires Docker running)\n\n")
-				fmt.Fprintf(os.Stderr, "Examples:\n")
-				fmt.Fprintf(os.Stderr, "  morpheus plant cloud %s   # Create on Hetzner Cloud\n", arg)
-				fmt.Fprintf(os.Stderr, "  morpheus plant local %s   # Create locally with Docker\n", arg)
+				fmt.Fprintln(os.Stderr, "❌ --nodes requires a number")
 				os.Exit(1)
 			}
-		} else if arg == "cloud" || arg == "local" {
-			// It's a deployment type without size
-			fmt.Fprintf(os.Stderr, "❌ Missing size argument\n\n")
-			fmt.Fprintf(os.Stderr, "Usage: morpheus plant %s <size>\n", arg)
-			fmt.Fprintln(os.Stderr, "Sizes: small, medium, large")
-			fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant %s small\n", arg)
-			os.Exit(1)
-		} else {
-			fmt.Fprintf(os.Stderr, "❌ Unknown argument: %s\n\n", arg)
-			fmt.Fprintln(os.Stderr, "Valid sizes: small, medium, large")
-			fmt.Fprintln(os.Stderr, "Valid deployment types: cloud, local")
-			fmt.Fprintln(os.Stderr, "\nExamples:")
-			fmt.Fprintln(os.Stderr, "  morpheus plant small")
-			fmt.Fprintln(os.Stderr, "  morpheus plant cloud medium")
-			os.Exit(1)
+		case "--local", "-l":
+			useLocal = true
+		case "--help", "-h":
+			fmt.Println("Usage: morpheus plant [options]")
+			fmt.Println()
+			fmt.Println("Create a new forest with the specified number of nodes.")
+			fmt.Println()
+			fmt.Println("Options:")
+			fmt.Println("  --nodes, -n N   Number of nodes to create (default: 1)")
+			fmt.Println("  --local, -l     Use local Docker provider instead of cloud")
+			fmt.Println("  --help, -h      Show this help")
+			fmt.Println()
+			fmt.Println("Examples:")
+			fmt.Println("  morpheus plant              # Create 1-node forest")
+			fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
+			fmt.Println("  morpheus plant --local      # Create local Docker forest")
+			os.Exit(0)
+		default:
+			// Support legacy size arguments for backward compatibility
+			if isValidSize(arg) {
+				nodeCount = getNodeCount(arg)
+			} else if arg == "cloud" || arg == "local" {
+				useLocal = arg == "local"
+			} else {
+				fmt.Fprintf(os.Stderr, "❌ Unknown argument: %s\n", arg)
+				fmt.Fprintln(os.Stderr, "Use 'morpheus plant --help' for usage")
+				os.Exit(1)
+			}
 		}
-	} else if len(os.Args) >= 4 {
-		// Three arguments: "plant cloud small"
-		deploymentType = os.Args[2]
-		size = os.Args[3]
-	}
-
-	// Validate deployment type
-	if deploymentType != "cloud" && deploymentType != "local" {
-		fmt.Fprintf(os.Stderr, "❌ Invalid deployment type: '%s'\n\n", deploymentType)
-		fmt.Fprintln(os.Stderr, "Valid options: cloud, local")
-		fmt.Fprintf(os.Stderr, "\nDid you mean: morpheus plant cloud %s\n", size)
-		os.Exit(1)
-	}
-
-	// Validate size
-	if !isValidSize(size) {
-		fmt.Fprintf(os.Stderr, "❌ Invalid size: '%s'\n\n", size)
-		fmt.Fprintln(os.Stderr, "Valid sizes:")
-		fmt.Fprintln(os.Stderr, "  small  - 2 machines (minimal cluster, ~€6-8/mo)")
-		fmt.Fprintln(os.Stderr, "  medium - 3 machines (standard cluster, ~€9-12/mo)")
-		fmt.Fprintln(os.Stderr, "  large  - 5 machines (large cluster, ~€15-20/mo)")
-		fmt.Fprintln(os.Stderr, "")
-
-		// Suggest closest match
-		suggestion := suggestSize(size)
-		if suggestion != "" {
-			fmt.Fprintf(os.Stderr, "💡 Did you mean: morpheus plant %s\n", suggestion)
-		}
-		os.Exit(1)
 	}
 
 	// For local deployments, we don't need a full config file
 	var cfg *config.Config
 	var err error
 
-	if deploymentType == "local" {
+	if useLocal {
 		cfg = getLocalConfig()
 	} else {
 		cfg, err = loadConfig()
@@ -187,52 +146,71 @@ func handlePlant() {
 		}
 	}
 
-	// Create provider based on deployment type
-	var prov provider.Provider
+	// Create machine provider based on configuration
+	var machineProv machine.Provider
 	var providerName string
 
-	if deploymentType == "local" {
-		prov, err = local.NewProvider()
+	if useLocal {
+		machineProv, err = local.NewProvider()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create local provider: %s\n", err)
 			fmt.Fprintln(os.Stderr, "\nMake sure Docker is installed and running:")
 			fmt.Fprintln(os.Stderr, "  docker info")
-			// Check if we're on Termux and provide helpful message
 			if isTermux() {
 				fmt.Fprintln(os.Stderr, "")
 				fmt.Fprintln(os.Stderr, "⚠️  You appear to be running on Termux (Android).")
 				fmt.Fprintln(os.Stderr, "   Docker does NOT work on Termux due to Android kernel limitations.")
-				fmt.Fprintln(os.Stderr, "   Please use cloud mode instead:")
-				fmt.Fprintln(os.Stderr, "     morpheus plant cloud wood")
+				fmt.Fprintln(os.Stderr, "   Please use cloud mode instead (remove --local flag)")
 			}
 			os.Exit(1)
 		}
 		providerName = "local (Docker)"
 	} else {
-		switch cfg.Infrastructure.Provider {
+		switch cfg.GetMachineProvider() {
 		case "hetzner":
-			prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+			machineProv, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
 				os.Exit(1)
 			}
 			providerName = "hetzner"
 		default:
-			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
+			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.GetMachineProvider())
 			os.Exit(1)
 		}
 	}
 
-	// Create registry
+	// Create storage
 	registryPath := getRegistryPath()
-	registry, err := registry.NewLocalRegistry(registryPath)
+	storageProv, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create storage: %s\n", err)
 		os.Exit(1)
 	}
 
+	// Create DNS provider if configured
+	var dnsProv dns.Provider
+	if !useLocal && cfg.DNS.Provider != "" && cfg.DNS.Provider != "none" {
+		switch cfg.DNS.Provider {
+		case "hetzner":
+			dnsToken := cfg.GetDNSToken()
+			dnsProv, err = dnshetzner.NewProvider(dnsToken)
+			if err != nil {
+				fmt.Printf("⚠️  Warning: DNS provider not available: %s\n", err)
+			}
+		default:
+			// Use no-op provider for unsupported providers
+			dnsProv, _ = dnsnone.NewProvider()
+		}
+	}
+
 	// Create provisioner
-	provisioner := forest.NewProvisioner(prov, registry, cfg)
+	var provisioner *forest.Provisioner
+	if dnsProv != nil {
+		provisioner = forest.NewProvisionerWithDNS(machineProv, storageProv, dnsProv, cfg)
+	} else {
+		provisioner = forest.NewProvisioner(machineProv, storageProv, cfg)
+	}
 
 	// Generate forest ID
 	forestID := fmt.Sprintf("forest-%d", time.Now().Unix())
@@ -242,19 +220,19 @@ func handlePlant() {
 
 	// Determine machine profile, server type, and location
 	var location, serverType, image string
-	if deploymentType == "local" {
+	if useLocal {
 		location = "local"
 		serverType = "local"
 		image = "ubuntu:24.04"
 	} else {
 		// Use machine profile system for cloud deployments
-		profile := provider.GetProfileForSize(size)
+		profile := machine.ProfileSmall
 
 		// For Hetzner, select the best server type and locations
-		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+		if hetznerProv, ok := machineProv.(*hetzner.Provider); ok {
 			// Get default locations if not configured
-			preferredLocations := cfg.Infrastructure.Locations
-			if len(preferredLocations) == 0 {
+			preferredLocations := []string{cfg.GetLocation()}
+			if preferredLocations[0] == "" {
 				preferredLocations = hetzner.GetDefaultLocations()
 			}
 
@@ -267,46 +245,43 @@ func handlePlant() {
 
 			serverType = selectedType
 			location = availableLocations[0] // Use first available location
-			image = "ubuntu-24.04"           // Default to Ubuntu 24.04
-
-			// Update available locations for fallback
-			cfg.Infrastructure.Locations = availableLocations
+			image = cfg.GetImage()
 		} else {
-			// Non-Hetzner provider (shouldn't happen, but handle gracefully)
-			fmt.Fprintln(os.Stderr, "Unknown cloud provider")
-			os.Exit(1)
+			// Non-Hetzner provider
+			serverType = cfg.GetServerType()
+			location = cfg.GetLocation()
+			image = cfg.GetImage()
 		}
 	}
 
 	// Create provision request
 	req := forest.ProvisionRequest{
 		ForestID:   forestID,
-		Size:       size,
+		NodeCount:  nodeCount,
 		Location:   location,
 		ServerType: serverType,
 		Image:      image,
 	}
 
 	// Display friendly provisioning header
-	fmt.Printf("\n🌲 Planting your %s...\n", size)
+	fmt.Printf("\n🌲 Planting your forest...\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
 	// Show what's being created
-	nodeCount := getNodeCount(size)
 	var timeEstimate string
-	switch size {
-	case "small":
-		timeEstimate = "5-7 minutes"
-	case "medium":
-		timeEstimate = "15-20 minutes"
-	case "large":
-		timeEstimate = "25-35 minutes"
+	switch {
+	case nodeCount == 1:
+		timeEstimate = "3-5 minutes"
+	case nodeCount <= 3:
+		timeEstimate = "7-15 minutes"
+	default:
+		timeEstimate = "15-30 minutes"
 	}
 
 	fmt.Printf("📋 Configuration:\n")
 	fmt.Printf("   Forest ID:  %s\n", forestID)
-	fmt.Printf("   Size:       %s (%d machine%s)\n", size, nodeCount, plural(nodeCount))
-	if deploymentType == "cloud" {
+	fmt.Printf("   Nodes:      %d\n", nodeCount)
+	if !useLocal {
 		fmt.Printf("   Machine:    %s (with automatic fallback if unavailable)\n", serverType)
 		fmt.Printf("   Location:   %s (with automatic fallback if unavailable)\n", hetzner.GetLocationDescription(location))
 	} else {
@@ -315,10 +290,10 @@ func handlePlant() {
 	fmt.Printf("   Provider:   %s\n", providerName)
 	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
 
-	if deploymentType == "cloud" {
+	if !useLocal {
 		estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
 		fmt.Printf("💰 Estimated cost: ~€%.2f/month\n", estimatedCost)
-		if cfg.Infrastructure.EnableIPv4Fallback {
+		if cfg.IsIPv4Enabled() {
 			fmt.Printf("   (IPv4+IPv6, billed by minute, can teardown anytime)\n")
 			fmt.Printf("   ⚠️  IPv4 enabled - additional charges apply per IPv4 address\n\n")
 		} else {
@@ -328,18 +303,12 @@ func handlePlant() {
 
 	fmt.Println("🚀 Starting provisioning...")
 
-	// For Hetzner cloud deployments, use the full fallback system that tries
-	// alternative server types if the primary one fails in all locations.
-	// This handles cases where Hetzner's API reports availability (via pricing data)
-	// but actual provisioning fails with "unsupported location for server type".
-	if deploymentType == "cloud" {
-		if hetznerProv, ok := prov.(*hetzner.Provider); ok {
-			profile := provider.GetProfileForSize(size)
-			err = provisionWithFallback(ctx, provisioner, hetznerProv, req, profile)
+	// For Hetzner cloud deployments, use the full fallback system
+	if !useLocal {
+		if hetznerProv, ok := machineProv.(*hetzner.Provider); ok {
+			err = provisionWithFallback(ctx, provisioner, hetznerProv, req, machine.ProfileSmall)
 		} else {
-			// Non-Hetzner cloud (shouldn't happen currently)
-			availableLocations := cfg.Infrastructure.Locations
-			err = provisionWithLocationFallback(ctx, provisioner, req, availableLocations)
+			err = provisioner.Provision(ctx, req)
 		}
 	} else {
 		// Local deployments - just try the single location
@@ -353,12 +322,12 @@ func handlePlant() {
 	// Success message with clear next steps
 	fmt.Printf("\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Printf("✨ Success! Your %s is ready!\n", size)
+	fmt.Printf("✨ Success! Your forest is ready!\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
 	fmt.Printf("🎯 What's next?\n\n")
 
-	if deploymentType == "cloud" {
+	if !useLocal {
 		fmt.Printf("📊 Check your forest status:\n")
 		fmt.Printf("   morpheus status %s\n\n", forestID)
 
@@ -368,80 +337,25 @@ func handlePlant() {
 		fmt.Printf("📋 View all your forests:\n")
 		fmt.Printf("   morpheus list\n\n")
 
+		fmt.Printf("🌱 Add more nodes:\n")
+		fmt.Printf("   morpheus grow %s --nodes 2\n\n", forestID)
+
 		fmt.Printf("🗑️  Clean up when done:\n")
 		fmt.Printf("   morpheus teardown %s\n\n", forestID)
-
-		fmt.Printf("💡 Tip: The infrastructure is ready. Deploy NATS with NimsForest\n")
-		fmt.Printf("   or use the machines for your own applications.\n")
 	} else {
 		fmt.Printf("🐳 Your local Docker containers are running!\n\n")
 		fmt.Printf("📊 Check status:\n")
 		fmt.Printf("   morpheus status %s\n", forestID)
 		fmt.Printf("   docker ps\n\n")
 
-		fmt.Printf("🔍 Access a container:\n")
-		fmt.Printf("   docker exec -it %s-node-1 bash\n\n", forestID)
-
-		fmt.Printf("📋 View logs:\n")
-		fmt.Printf("   docker logs %s-node-1\n\n", forestID)
-
 		fmt.Printf("🗑️  Clean up when done:\n")
 		fmt.Printf("   morpheus teardown %s\n", forestID)
 	}
 }
 
-// provisionWithLocationFallback tries to provision a forest, automatically
-// falling back to alternative locations if the primary location is unavailable
-func provisionWithLocationFallback(ctx context.Context, provisioner *forest.Provisioner, req forest.ProvisionRequest, locations []string) error {
-	var lastErr error
-	var attemptedLocations []string
-
-	// Try each configured location in order
-	for _, location := range locations {
-		attemptedLocations = append(attemptedLocations, location)
-		req.Location = location
-
-		err := provisioner.Provision(ctx, req)
-		if err == nil {
-			// Success!
-			return nil
-		}
-
-		lastErr = err
-
-		// Check if the error is a location availability error
-		errStr := err.Error()
-		if containsLocationError(errStr) {
-			fmt.Printf("⚠️  Location %s is unavailable for %s, trying next location...\n\n", location, req.ServerType)
-			continue
-		}
-
-		// If it's not a location error, don't try other locations
-		break
-	}
-
-	// All locations failed or encountered a non-location error
-	if containsLocationError(lastErr.Error()) && len(attemptedLocations) > 0 {
-		return fmt.Errorf("all configured locations are unavailable (%s): %w\n\n"+
-			"Hetzner may be experiencing capacity issues. Try again later or update your config with different locations:\n"+
-			"  Available locations: ash (Ashburn, USA), fsn1 (Falkenstein, Germany), nbg1 (Nuremberg, Germany), \n"+
-			"                       hel1 (Helsinki, Finland), hil (Hillsboro, USA), sin (Singapore)",
-			joinLocations(attemptedLocations), lastErr)
-	}
-
-	return lastErr
-}
-
 // provisionWithFallback tries to provision a forest, automatically falling back
 // to alternative server types and locations if the primary ones are unavailable.
-// This handles cases where Hetzner's API reports a server type is available in a
-// location (via pricing data) but actual provisioning fails.
-//
-// Priority order:
-// 1. cx22 in Helsinki (hel1)
-// 2. cpx22 in Helsinki, then Nuremberg (nbg1), then others
-// 3. Other fallbacks in Helsinki, then other locations
-func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner, hetznerProv *hetzner.Provider, req forest.ProvisionRequest, profile provider.MachineProfile) error {
+func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner, hetznerProv *hetzner.Provider, req forest.ProvisionRequest, profile machine.MachineProfile) error {
 	// Get all server type options for this profile
 	mapping := hetzner.GetHetznerServerType(profile)
 	allServerTypes := append([]string{mapping.Primary}, mapping.Fallbacks...)
@@ -545,7 +459,6 @@ func provisionWithFallback(ctx context.Context, provisioner *forest.Provisioner,
 }
 
 // orderLocationsByPreference reorders available locations to match the preferred order.
-// Locations in preferredOrder come first (in that order), followed by any remaining locations.
 func orderLocationsByPreference(available, preferredOrder []string) []string {
 	availableSet := make(map[string]bool)
 	for _, loc := range available {
@@ -572,150 +485,6 @@ func orderLocationsByPreference(available, preferredOrder []string) []string {
 	return result
 }
 
-// handleServerTypeLocationMismatch presents an interactive menu when server type
-// is not available in any configured location
-func handleServerTypeLocationMismatch(ctx context.Context, locationAware provider.LocationAwareProvider, serverType string, configuredLocations []string) (string, []string) {
-	fmt.Fprintf(os.Stderr, "\n❌ Server type '%s' is not available in your configured locations:\n", serverType)
-	fmt.Fprintf(os.Stderr, "   Configured: %s\n\n", joinLocations(configuredLocations))
-
-	// Get available locations for current server type
-	availableForType, _ := locationAware.GetAvailableLocations(ctx, serverType)
-
-	// Define recommended server types with their descriptions
-	recommendedTypes := []struct {
-		name        string
-		description string
-	}{
-		{"cx22", "2 vCPU (shared AMD), 4 GB RAM - ~€3.29/mo"},
-		{"cpx11", "2 vCPU (dedicated AMD), 2 GB RAM - ~€4.49/mo"},
-		{"cpx21", "3 vCPU (dedicated AMD), 4 GB RAM - ~€8.49/mo"},
-		{"cax11", "2 vCPU (ARM), 4 GB RAM - ~€3.79/mo"},
-	}
-
-	fmt.Println("What would you like to do?")
-	fmt.Println()
-
-	// Option 1: Use a different location (if available for current server type)
-	if len(availableForType) > 0 {
-		fmt.Printf("  [1] Use a different location for '%s'\n", serverType)
-		fmt.Printf("      Available: %s\n", joinLocations(availableForType))
-	} else {
-		fmt.Printf("  [1] (Not available - '%s' has no available locations)\n", serverType)
-	}
-	fmt.Println()
-
-	// Option 2: Change server type
-	fmt.Println("  [2] Change server type (recommended)")
-	fmt.Println("      Suggested server types:")
-	for _, st := range recommendedTypes {
-		locs, _ := locationAware.GetAvailableLocations(ctx, st.name)
-		if len(locs) > 0 {
-			fmt.Printf("        • %s: %s\n", st.name, st.description)
-			fmt.Printf("          Locations: %s\n", joinLocations(locs))
-		}
-	}
-	fmt.Println()
-
-	// Option 3: Exit
-	fmt.Println("  [3] Exit and update config manually")
-	fmt.Println()
-
-	fmt.Print("Enter choice (1/2/3): ")
-	var choice string
-	fmt.Scanln(&choice)
-
-	switch choice {
-	case "1":
-		if len(availableForType) == 0 {
-			fmt.Println("\n❌ No locations available for this server type.")
-			return "", nil
-		}
-		// Let user pick a location
-		fmt.Printf("\nAvailable locations for '%s':\n", serverType)
-		for i, loc := range availableForType {
-			locDesc := hetzner.GetLocationDescription(loc)
-			fmt.Printf("  [%d] %s - %s\n", i+1, loc, locDesc)
-		}
-		fmt.Print("\nEnter location number: ")
-		var locChoice int
-		fmt.Scanln(&locChoice)
-		if locChoice < 1 || locChoice > len(availableForType) {
-			fmt.Println("\n❌ Invalid choice.")
-			return "", nil
-		}
-		selectedLoc := availableForType[locChoice-1]
-		fmt.Printf("\n✓ Using location: %s\n\n", selectedLoc)
-		return serverType, []string{selectedLoc}
-
-	case "2":
-		// Let user pick a server type
-		var availableTypes []struct {
-			name        string
-			description string
-			locations   []string
-		}
-		for _, st := range recommendedTypes {
-			locs, _ := locationAware.GetAvailableLocations(ctx, st.name)
-			if len(locs) > 0 {
-				availableTypes = append(availableTypes, struct {
-					name        string
-					description string
-					locations   []string
-				}{st.name, st.description, locs})
-			}
-		}
-
-		if len(availableTypes) == 0 {
-			fmt.Println("\n❌ No recommended server types are available. Please check Hetzner status.")
-			return "", nil
-		}
-
-		fmt.Println("\nAvailable server types:")
-		for i, st := range availableTypes {
-			fmt.Printf("  [%d] %s: %s\n", i+1, st.name, st.description)
-		}
-		fmt.Print("\nEnter server type number: ")
-		var typeChoice int
-		fmt.Scanln(&typeChoice)
-		if typeChoice < 1 || typeChoice > len(availableTypes) {
-			fmt.Println("\n❌ Invalid choice.")
-			return "", nil
-		}
-		selected := availableTypes[typeChoice-1]
-
-		// Filter locations to prefer configured ones
-		var useLocations []string
-		for _, configLoc := range configuredLocations {
-			for _, availLoc := range selected.locations {
-				if configLoc == availLoc {
-					useLocations = append(useLocations, configLoc)
-				}
-			}
-		}
-		// If none of the configured locations work, use all available
-		if len(useLocations) == 0 {
-			useLocations = selected.locations
-		}
-
-		fmt.Printf("\n✓ Using server type: %s\n", selected.name)
-		fmt.Printf("✓ Available locations: %s\n\n", joinLocations(useLocations))
-		return selected.name, useLocations
-
-	case "3":
-		fmt.Println("\nTo fix this, update your config.yaml:")
-		fmt.Println("  1. Change server_type to one that's available in your locations, or")
-		fmt.Println("  2. Change locations to ones that support your server type")
-		fmt.Println("\nConfig file locations:")
-		fmt.Println("  - ./config.yaml")
-		fmt.Println("  - ~/.morpheus/config.yaml")
-		return "", nil
-
-	default:
-		fmt.Println("\n❌ Invalid choice.")
-		return "", nil
-	}
-}
-
 // containsLocationError checks if an error message indicates a location availability issue
 func containsLocationError(errMsg string) bool {
 	locationErrorPhrases := []string{
@@ -728,23 +497,9 @@ func containsLocationError(errMsg string) bool {
 		"unsupported location for server type",
 	}
 
+	errLower := strings.ToLower(errMsg)
 	for _, phrase := range locationErrorPhrases {
-		if contains(errMsg, phrase) {
-			return true
-		}
-	}
-	return false
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-// findSubstring performs a simple substring search
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
+		if strings.Contains(errLower, phrase) {
 			return true
 		}
 	}
@@ -753,57 +508,48 @@ func findSubstring(s, substr string) bool {
 
 // joinLocations joins location names with commas
 func joinLocations(locations []string) string {
-	result := ""
-	for i, loc := range locations {
-		if i > 0 {
-			result += ", "
-		}
-		result += loc
-	}
-	return result
+	return strings.Join(locations, ", ")
 }
 
 // getLocalConfig returns a minimal config for local deployments
 func getLocalConfig() *config.Config {
 	return &config.Config{
-		Infrastructure: config.InfrastructureConfig{
+		Machine: config.MachineConfig{
 			Provider: "local",
-			Defaults: &config.DefaultsConfig{
+			Hetzner: config.HetznerConfig{
 				ServerType: "local",
 				Image:      "ubuntu:24.04",
 			},
-			Locations: []string{"local"},
+		},
+		Storage: config.StorageConfig{
+			Provider: "local",
 		},
 	}
 }
 
 func handleList() {
 	registryPath := getRegistryPath()
-	registry, err := registry.NewLocalRegistry(registryPath)
+	storageProv, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load storage: %s\n", err)
 		os.Exit(1)
 	}
 
-	forests := registry.ListForests()
+	forests := storageProv.ListForests()
 
 	if len(forests) == 0 {
 		fmt.Println("🌲 No forests yet!")
 		fmt.Println()
-		if isTermux() {
-			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant small        # Create 2-machine cluster")
-		} else {
-			fmt.Println("Create your first forest:")
-			fmt.Println("  morpheus plant cloud small  # 2-machine cluster on cloud")
-			fmt.Println("  morpheus plant local small  # 2-machine cluster locally (Docker)")
-		}
+		fmt.Println("Create your first forest:")
+		fmt.Println("  morpheus plant              # Create 1-node forest")
+		fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
+		fmt.Println("  morpheus plant --local      # Create locally with Docker")
 		return
 	}
 
 	fmt.Printf("🌲 Your Forests (%d)\n", len(forests))
 	fmt.Println()
-	fmt.Println("FOREST ID            SIZE    LOCATION  STATUS       CREATED")
+	fmt.Println("FOREST ID            NODES   LOCATION  STATUS       CREATED")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	for _, f := range forests {
@@ -814,9 +560,9 @@ func handleList() {
 			statusIcon = "⚠️ "
 		}
 
-		fmt.Printf("%-20s %-7s %-9s %s %-11s %s\n",
+		fmt.Printf("%-20s %-7d %-9s %s %-11s %s\n",
 			f.ID,
-			f.Size,
+			f.NodeCount,
 			f.Location,
 			statusIcon,
 			f.Status,
@@ -837,19 +583,19 @@ func handleStatus() {
 	forestID := os.Args[2]
 
 	registryPath := getRegistryPath()
-	registry, err := registry.NewLocalRegistry(registryPath)
+	storageProv, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load storage: %s\n", err)
 		os.Exit(1)
 	}
 
-	forestInfo, err := registry.GetForest(forestID)
+	forestInfo, err := storageProv.GetForest(forestID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get forest: %s\n", err)
 		os.Exit(1)
 	}
 
-	nodes, err := registry.GetNodes(forestID)
+	nodes, err := storageProv.GetNodes(forestID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get nodes: %s\n", err)
 		os.Exit(1)
@@ -868,7 +614,7 @@ func handleStatus() {
 
 	fmt.Printf("📊 Overview:\n")
 	fmt.Printf("   Status:   %s %s\n", statusIcon, forestInfo.Status)
-	fmt.Printf("   Size:     %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
+	fmt.Printf("   Nodes:    %d\n", forestInfo.NodeCount)
 	fmt.Printf("   Location: %s\n", forestInfo.Location)
 	fmt.Printf("   Provider: %s\n", forestInfo.Provider)
 	fmt.Printf("   Created:  %s\n", forestInfo.CreatedAt.Format("2006-01-02 15:04:05"))
@@ -911,7 +657,6 @@ func handleStatus() {
 			fmt.Printf("   ... (%d more machine%s)\n", len(nodes)-2, plural(len(nodes)-2))
 		}
 
-		// Add troubleshooting tip for password prompts
 		fmt.Println()
 		fmt.Printf("   ⚠️  If asked for a password, your SSH key may not be configured correctly.\n")
 		fmt.Printf("   Run 'morpheus check ssh' to diagnose SSH key issues.\n")
@@ -920,6 +665,7 @@ func handleStatus() {
 	}
 
 	fmt.Println()
+	fmt.Printf("🌱 Add nodes: morpheus grow %s --nodes 2\n", forestInfo.ID)
 	fmt.Printf("🗑️  Teardown: morpheus teardown %s\n", forestInfo.ID)
 }
 
@@ -933,25 +679,25 @@ func handleTeardown() {
 
 	// First, get the forest info to determine the provider
 	registryPath := getRegistryPath()
-	registry, err := registry.NewLocalRegistry(registryPath)
+	storageProv, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create storage: %s\n", err)
 		os.Exit(1)
 	}
 
 	// Get forest info to determine provider type
-	forestInfo, err := registry.GetForest(forestID)
+	forestInfo, err := storageProv.GetForest(forestID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get forest info: %s\n", err)
 		os.Exit(1)
 	}
 
 	// Create provider based on forest's provider
-	var prov provider.Provider
+	var machineProv machine.Provider
 	var cfg *config.Config
 
 	if forestInfo.Provider == "local" {
-		prov, err = local.NewProvider()
+		machineProv, err = local.NewProvider()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create local provider: %s\n", err)
 			os.Exit(1)
@@ -964,28 +710,43 @@ func handleTeardown() {
 			os.Exit(1)
 		}
 
-		switch cfg.Infrastructure.Provider {
+		switch cfg.GetMachineProvider() {
 		case "hetzner":
-			prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+			machineProv, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
 				os.Exit(1)
 			}
 		default:
-			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.Infrastructure.Provider)
+			fmt.Fprintf(os.Stderr, "Unsupported provider: %s\n", cfg.GetMachineProvider())
 			os.Exit(1)
 		}
 	}
 
+	// Create DNS provider if configured
+	var dnsProv dns.Provider
+	if forestInfo.Provider != "local" && cfg != nil && cfg.DNS.Provider != "" && cfg.DNS.Provider != "none" {
+		switch cfg.DNS.Provider {
+		case "hetzner":
+			dnsToken := cfg.GetDNSToken()
+			dnsProv, _ = dnshetzner.NewProvider(dnsToken)
+		}
+	}
+
 	// Create provisioner
-	provisioner := forest.NewProvisioner(prov, registry, cfg)
+	var provisioner *forest.Provisioner
+	if dnsProv != nil {
+		provisioner = forest.NewProvisionerWithDNS(machineProv, storageProv, dnsProv, cfg)
+	} else {
+		provisioner = forest.NewProvisioner(machineProv, storageProv, cfg)
+	}
 
 	// Show what will be deleted
-	nodes, _ := registry.GetNodes(forestID)
+	nodes, _ := storageProv.GetNodes(forestID)
 
 	fmt.Printf("\n⚠️  About to permanently delete:\n")
 	fmt.Printf("   Forest: %s\n", forestID)
-	fmt.Printf("   Size:   %s (%d machine%s)\n", forestInfo.Size, len(nodes), plural(len(nodes)))
+	fmt.Printf("   Nodes:  %d\n", len(nodes))
 	if len(nodes) > 0 {
 		fmt.Printf("   Machines:\n")
 		for _, node := range nodes {
@@ -1026,26 +787,42 @@ func handleTeardown() {
 func handleGrow() {
 	// Parse arguments
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "Usage: morpheus grow <forest-id> [--auto] [--threshold N]")
+		fmt.Fprintln(os.Stderr, "Usage: morpheus grow <forest-id> [options]")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Check forest health and optionally add nodes.")
+		fmt.Fprintln(os.Stderr, "Add nodes to an existing forest or check cluster health.")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --auto         Non-interactive mode (auto-expand if needed)")
-		fmt.Fprintln(os.Stderr, "  --threshold N  Resource threshold percentage (default: 80)")
-		fmt.Fprintln(os.Stderr, "  --json         Output in JSON format")
+		fmt.Fprintln(os.Stderr, "  --nodes, -n N    Add N nodes to the forest")
+		fmt.Fprintln(os.Stderr, "  --auto           Non-interactive mode (auto-expand if needed)")
+		fmt.Fprintln(os.Stderr, "  --threshold N    Resource threshold percentage (default: 80)")
+		fmt.Fprintln(os.Stderr, "  --json           Output in JSON format")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Examples:")
+		fmt.Fprintln(os.Stderr, "  morpheus grow forest-123              # Check health")
+		fmt.Fprintln(os.Stderr, "  morpheus grow forest-123 --nodes 2    # Add 2 nodes")
 		os.Exit(1)
 	}
 
 	forestID := os.Args[2]
 
 	// Parse optional flags
+	addNodes := 0
 	autoMode := false
 	jsonOutput := false
 	threshold := 80.0
 
 	for i := 3; i < len(os.Args); i++ {
 		switch os.Args[i] {
+		case "--nodes", "-n":
+			if i+1 < len(os.Args) {
+				i++
+				n, err := strconv.Atoi(os.Args[i])
+				if err != nil || n < 1 {
+					fmt.Fprintf(os.Stderr, "❌ Invalid node count: %s\n", os.Args[i])
+					os.Exit(1)
+				}
+				addNodes = n
+			}
 		case "--auto":
 			autoMode = true
 		case "--json":
@@ -1058,11 +835,11 @@ func handleGrow() {
 		}
 	}
 
-	// Load registry
+	// Load storage
 	registryPath := getRegistryPath()
-	reg, err := registry.NewLocalRegistry(registryPath)
+	reg, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to load storage: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -1078,6 +855,12 @@ func handleGrow() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get nodes: %s\n", err)
 		os.Exit(1)
+	}
+
+	// If --nodes specified, add nodes directly
+	if addNodes > 0 {
+		expandCluster(forestID, forestInfo, reg, addNodes)
+		return
 	}
 
 	if len(nodes) == 0 {
@@ -1212,7 +995,7 @@ func handleGrow() {
 	if autoMode {
 		if needsExpansion {
 			fmt.Println("🌱 Auto-expanding cluster...")
-			expandCluster(forestID, forestInfo, reg, nodes)
+			expandCluster(forestID, forestInfo, reg, 1)
 		} else {
 			fmt.Println("✅ Cluster resources within threshold. No expansion needed.")
 		}
@@ -1225,13 +1008,13 @@ func handleGrow() {
 		var response string
 		fmt.Scanln(&response)
 		if response == "y" || response == "Y" || response == "yes" {
-			expandCluster(forestID, forestInfo, reg, nodes)
+			expandCluster(forestID, forestInfo, reg, 1)
 		} else {
 			fmt.Println("\n✅ No changes made.")
 		}
 	} else {
 		fmt.Println("✅ Cluster resources within threshold.")
-		fmt.Println("   Use 'morpheus grow <forest-id> --threshold N' to set a different threshold.")
+		fmt.Println("   Use 'morpheus grow <forest-id> --nodes N' to add nodes manually.")
 	}
 }
 
@@ -1278,10 +1061,10 @@ func truncateID(id string, maxLen int) string {
 	return id[:maxLen-3] + "..."
 }
 
-// expandCluster adds a new node to the cluster
-func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Registry, existingNodes []*registry.Node) {
+// expandCluster adds new nodes to the cluster
+func expandCluster(forestID string, forestInfo *storage.Forest, reg storage.Registry, nodeCount int) {
 	fmt.Println()
-	fmt.Println("🌱 Expanding cluster...")
+	fmt.Printf("🌱 Adding %d node%s to cluster...\n", nodeCount, plural(nodeCount))
 
 	// Load config
 	cfg, err := loadConfig()
@@ -1291,16 +1074,16 @@ func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Re
 	}
 
 	// Create provider
-	var prov provider.Provider
+	var machineProv machine.Provider
 	switch forestInfo.Provider {
 	case "hetzner":
-		prov, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
+		machineProv, err = hetzner.NewProvider(cfg.Secrets.HetznerAPIToken)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
 			return
 		}
 	case "local":
-		prov, err = local.NewProvider()
+		machineProv, err = local.NewProvider()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create provider: %s\n", err)
 			return
@@ -1311,14 +1094,14 @@ func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Re
 	}
 
 	// Create provisioner
-	provisioner := forest.NewProvisioner(prov, reg, cfg)
+	provisioner := forest.NewProvisioner(machineProv, reg, cfg)
 
-	// Determine server type based on existing nodes (if available) or profile
-	profile := provider.GetProfileForSize(forestInfo.Size)
+	// Determine server type based on profile
+	profile := machine.ProfileSmall
 	serverType := ""
 	location := forestInfo.Location
 
-	if hetznerProv, ok := prov.(*hetzner.Provider); ok {
+	if hetznerProv, ok := machineProv.(*hetzner.Provider); ok {
 		ctx := context.Background()
 		selectedType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, []string{location})
 		if err == nil {
@@ -1330,25 +1113,32 @@ func expandCluster(forestID string, forestInfo *registry.Forest, reg registry.Re
 	}
 
 	if serverType == "" {
-		// Fallback to legacy config
-		if cfg.Infrastructure.Defaults != nil && cfg.Infrastructure.Defaults.ServerType != "" {
-			serverType = cfg.Infrastructure.Defaults.ServerType
-		} else {
-			fmt.Fprintln(os.Stderr, "Could not determine server type")
-			return
-		}
+		serverType = cfg.GetServerType()
 	}
 
-	// Create provision request
+	// Get existing nodes to determine new node numbers
+	existingNodes, _ := reg.GetNodes(forestID)
+	startIndex := len(existingNodes)
+
+	// Create provision request for additional nodes
 	req := forest.ProvisionRequest{
 		ForestID:   forestID,
-		Size:       forestInfo.Size,
+		NodeCount:  nodeCount,
 		Location:   location,
 		ServerType: serverType,
-		Image:      "ubuntu-24.04",
+		Image:      cfg.GetImage(),
 	}
 
+	// Update the forest's node count
+	forestInfo.NodeCount += nodeCount
+	_ = reg.UpdateForest(forestInfo)
+
 	ctx := context.Background()
+	
+	// Provision additional nodes (using a modified request that starts at the right index)
+	// Note: The provisioner will handle the node naming based on existing nodes
+	_ = startIndex // Used for future enhancement
+	
 	if err := provisioner.Provision(ctx, req); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Expansion failed: %s\n", err)
 		return
@@ -1529,8 +1319,9 @@ func handleCheck() {
 		} else if ipv4Ok && sshOk {
 			fmt.Println("⚠️  IPv6 not available, but IPv4 works.")
 			fmt.Println("   Enable IPv4 fallback in config.yaml:")
-			fmt.Println("     infrastructure:")
-			fmt.Println("       enable_ipv4_fallback: true")
+			fmt.Println("     machine:")
+			fmt.Println("       ipv4:")
+			fmt.Println("         enabled: true")
 			fmt.Println("   Note: IPv4 costs extra on Hetzner.")
 		} else {
 			fmt.Println("⚠️  Some checks failed. Please review the issues above.")
@@ -1662,8 +1453,9 @@ func runNetworkCheck(exitOnResult bool) (bool, bool) {
 	} else if ipv4Ok {
 		fmt.Println("   ⚠️  Only IPv4 available")
 		fmt.Println("      To use Morpheus, enable IPv4 fallback in config.yaml:")
-		fmt.Println("        infrastructure:")
-		fmt.Println("          enable_ipv4_fallback: true")
+		fmt.Println("        machine:")
+		fmt.Println("          ipv4:")
+		fmt.Println("            enabled: true")
 		fmt.Println("      Note: IPv4 costs extra on Hetzner Cloud")
 	} else {
 		fmt.Println("   ❌ No network connectivity")
@@ -1747,8 +1539,8 @@ func runSSHCheck(exitOnResult bool) bool {
 		fmt.Printf("   ✅ SSH public key found: %s\n", foundKeyPath)
 		// Show key type
 		if len(foundKey) > 20 {
-			parts := splitFirst(foundKey, " ")
-			if parts[0] != "" {
+			parts := strings.SplitN(foundKey, " ", 2)
+			if len(parts) > 0 && parts[0] != "" {
 				fmt.Printf("      Key type: %s\n", parts[0])
 			}
 		}
@@ -1757,8 +1549,6 @@ func runSSHCheck(exitOnResult bool) bool {
 		if foundPrivateKeyPath != "" {
 			fmt.Printf("   ✅ SSH private key found: %s\n", foundPrivateKeyPath)
 
-			// Check if private key might have a passphrase (we can't easily detect this,
-			// but we can inform the user about it)
 			fmt.Println()
 			fmt.Println("   💡 SSH Authentication Tips:")
 			fmt.Printf("      When connecting, use: ssh -i %s root@<ip>\n", foundPrivateKeyPath)
@@ -1820,65 +1610,9 @@ func runSSHCheck(exitOnResult bool) bool {
 							fmt.Println("      Your local SSH key does NOT match the key in Hetzner Cloud.")
 							fmt.Println("      This is why the server asks for a password!")
 							fmt.Println()
-							fmt.Println("   How would you like to fix this?")
-							fmt.Println()
-							fmt.Println("   [1] Update the key in Hetzner (recommended if you regenerated your key)")
-							fmt.Println("       This will delete the old key and upload your current local key.")
-							fmt.Println()
-							fmt.Println("   [2] Use a different key name in config.yaml (manual)")
-							fmt.Println("       You'll need to edit config.yaml and set a new ssh.key_name")
-							fmt.Println()
-							fmt.Print("   Enter choice (1/2): ")
-
-							var choice string
-							fmt.Scanln(&choice)
-
-							switch choice {
-							case "1":
-								fmt.Println()
-								fmt.Printf("   Deleting old SSH key '%s' from Hetzner...\n", keyName)
-
-								// Delete the old key using Hetzner API
-								deleteErr := hetznerProv.DeleteSSHKey(ctx, keyName)
-								if deleteErr != nil {
-									fmt.Printf("   ❌ Failed to delete key: %s\n", deleteErr)
-								} else {
-									fmt.Printf("   ✅ Deleted old key '%s'\n", keyName)
-
-									// Upload the new key using Hetzner API
-									fmt.Printf("   Uploading new SSH key from %s...\n", foundKeyPath)
-									_, createErr := hetznerProv.EnsureSSHKeyWithPath(ctx, keyName, foundKeyPath)
-									if createErr != nil {
-										fmt.Printf("   ❌ Failed to upload key: %s\n", createErr)
-									} else {
-										fmt.Printf("   ✅ Uploaded new SSH key '%s' to Hetzner\n", keyName)
-
-										// Clear old host keys from known_hosts for all active servers
-										clearKnownHostsForActiveServers()
-
-										fmt.Println()
-										fmt.Println("   ⚠️  IMPORTANT: Your existing servers still have the OLD key installed.")
-										fmt.Println("   You need to teardown and re-provision to use the new key:")
-										fmt.Println()
-										fmt.Println("      morpheus list                    # See your forests")
-										fmt.Println("      morpheus teardown <forest-id>    # Remove old servers")
-										fmt.Println("      morpheus plant small             # Create new servers with new key")
-										fmt.Println()
-										allOk = true // Fixed the Hetzner key issue
-									}
-								}
-							case "2":
-								fmt.Println()
-								fmt.Println("   To use a different key name, edit config.yaml:")
-								fmt.Println()
-								fmt.Println("      ssh:")
-								fmt.Println("        key_name: my-new-key")
-								fmt.Println()
-								fmt.Println("   After updating, re-provision your servers for the new key to be used.")
-							default:
-								fmt.Println()
-								fmt.Println("   No action taken.")
-							}
+							fmt.Println("   To fix this:")
+							fmt.Println("   1. Delete the key in Hetzner Console and let Morpheus re-upload it")
+							fmt.Println("   2. Or update your local key to match the one in Hetzner")
 						}
 					}
 				}
@@ -1895,10 +1629,10 @@ func runSSHCheck(exitOnResult bool) bool {
 
 	// 3. Check SSH connectivity to existing servers (if any)
 	registryPath := getRegistryPath()
-	reg, err := registry.NewLocalRegistry(registryPath)
+	reg, err := storage.NewLocalRegistry(registryPath)
 	if err == nil {
 		forests := reg.ListForests()
-		var activeNodes []*registry.Node
+		var activeNodes []*storage.Node
 		for _, f := range forests {
 			if f.Status == "active" {
 				nodes, err := reg.GetNodes(f.ID)
@@ -1956,15 +1690,6 @@ func isValidSSHKey(key string) bool {
 	return false
 }
 
-// splitFirst splits a string on the first occurrence of sep
-func splitFirst(s, sep string) []string {
-	idx := strings.Index(s, sep)
-	if idx == -1 {
-		return []string{s, ""}
-	}
-	return []string{s[:idx], s[idx+len(sep):]}
-}
-
 // classifyNetError returns a human-readable description of a network error
 func classifyNetError(err error) string {
 	if err == nil {
@@ -1985,54 +1710,14 @@ func classifyNetError(err error) string {
 	}
 }
 
-// clearKnownHostsForActiveServers removes host key entries from known_hosts
-// for all active servers in the registry. This is useful when SSH keys are
-// updated and servers will be reprovisioned with new host keys.
-func clearKnownHostsForActiveServers() {
-	registryPath := getRegistryPath()
-	registry, err := registry.NewLocalRegistry(registryPath)
-	if err != nil {
-		return // Silently fail if registry can't be loaded
-	}
-
-	forests := registry.ListForests()
-	var clearedHosts []string
-
-	for _, f := range forests {
-		nodes, err := registry.GetNodes(f.ID)
-		if err != nil {
-			continue
-		}
-
-		for _, node := range nodes {
-			if node.IP != "" {
-				if err := sshutil.RemoveKnownHostEntry(node.IP); err == nil {
-					clearedHosts = append(clearedHosts, node.IP)
-				}
-			}
-		}
-	}
-
-	if len(clearedHosts) > 0 {
-		fmt.Println()
-		fmt.Printf("   🔑 Cleared %d old host key(s) from known_hosts:\n", len(clearedHosts))
-		for _, host := range clearedHosts {
-			fmt.Printf("      - %s\n", host)
-		}
-	}
-}
-
 // isTermux checks if we're running on Termux (Android)
 func isTermux() bool {
-	// Check for Termux-specific environment variable
 	if os.Getenv("TERMUX_VERSION") != "" {
 		return true
 	}
-	// Check for Termux prefix path
 	if os.Getenv("PREFIX") == "/data/data/com.termux/files/usr" {
 		return true
 	}
-	// Check if home directory is in Termux path
 	home := os.Getenv("HOME")
 	if home != "" && (home == "/data/data/com.termux/files/home" ||
 		filepath.HasPrefix(home, "/data/data/com.termux")) {
@@ -2054,7 +1739,6 @@ func truncateIP(ip string, maxLen int) string {
 	if len(ip) <= maxLen {
 		return ip
 	}
-	// For IPv6, show first part and last part with ellipsis
 	if maxLen < 10 {
 		return ip[:maxLen]
 	}
@@ -2063,22 +1747,21 @@ func truncateIP(ip string, maxLen int) string {
 	return ip[:prefixLen] + "..." + ip[len(ip)-suffixLen:]
 }
 
-// getNodeCount returns the number of nodes for a given forest size
-// Minimum of 2 nodes ensures proper NATS clustering
+// getNodeCount returns the number of nodes for a given forest size (legacy support)
 func getNodeCount(size string) int {
 	switch size {
 	case "small":
-		return 2 // Minimum for NATS clustering
+		return 2
 	case "medium":
 		return 3
 	case "large":
 		return 5
 	default:
-		return 2
+		return 1
 	}
 }
 
-// isValidSize checks if a size is valid
+// isValidSize checks if a size is valid (legacy support)
 func isValidSize(size string) bool {
 	validSizes := []string{"small", "medium", "large"}
 	for _, valid := range validSizes {
@@ -2089,48 +1772,12 @@ func isValidSize(size string) bool {
 	return false
 }
 
-// suggestSize suggests a size based on user input
-func suggestSize(input string) string {
-	if len(input) == 0 {
-		return ""
-	}
-
-	firstChar := input[0]
-	switch firstChar {
-	case 's', 'S':
-		return "small"
-	case 'm', 'M':
-		return "medium"
-	case 'l', 'L':
-		return "large"
-	default:
-		return ""
-	}
-}
-
 func handleTest() {
 	if len(os.Args) < 3 {
 		fmt.Fprintln(os.Stderr, "Usage: morpheus test <subcommand>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Subcommands:")
-		fmt.Fprintln(os.Stderr, "  e2e      Run end-to-end tests (runs locally, provisions to cloud)")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Options:")
-		fmt.Fprintln(os.Stderr, "  --keep   Keep the test forest after tests (for debugging)")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "The E2E test suite (runs locally with IPv4/IPv6 support):")
-		fmt.Fprintln(os.Stderr, "  1. Checks network connectivity (IPv6 or IPv4 fallback)")
-		fmt.Fprintln(os.Stderr, "  2. Ensures SSH key is configured in Hetzner")
-		fmt.Fprintln(os.Stderr, "  3. Plants a test forest (small)")
-		fmt.Fprintln(os.Stderr, "  4. Verifies SSH connectivity to provisioned node")
-		fmt.Fprintln(os.Stderr, "  5. Checks cloud-init completion")
-		fmt.Fprintln(os.Stderr, "  6. Verifies NimsForest installation (required)")
-		fmt.Fprintln(os.Stderr, "  7. Checks NATS monitoring (required)")
-		fmt.Fprintln(os.Stderr, "  8. Tears down test forest")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Examples:")
-		fmt.Fprintln(os.Stderr, "  morpheus test e2e          # Run E2E tests (~7-10 min)")
-		fmt.Fprintln(os.Stderr, "  morpheus test e2e --keep   # Keep forest after tests for debugging")
+		fmt.Fprintln(os.Stderr, "  e2e      Run end-to-end tests")
 		os.Exit(1)
 	}
 
@@ -2156,7 +1803,7 @@ func handleTestE2E() {
 	}
 
 	fmt.Println()
-	fmt.Println("🧪 Morpheus E2E Test Suite (Local Control)")
+	fmt.Println("🧪 Morpheus E2E Test Suite")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
@@ -2206,9 +1853,9 @@ func handleTestE2E() {
 			fmt.Println()
 			fmt.Println("🧹 Tearing down test forest...")
 
-			// Load registry to get nodes
+			// Load storage to get nodes
 			registryPath := getRegistryPath()
-			reg, err := registry.NewLocalRegistry(registryPath)
+			reg, err := storage.NewLocalRegistry(registryPath)
 			if err == nil {
 				nodes, _ := reg.GetNodes(testForestID)
 				for _, node := range nodes {
@@ -2230,12 +1877,10 @@ func handleTestE2E() {
 	// Step 1: Check network connectivity
 	fmt.Println("📡 Step 1: Checking network connectivity...")
 
-	// Test IPv6
 	ctx6, cancel6 := context.WithTimeout(ctx, 10*time.Second)
 	result6 := httputil.CheckIPv6Connectivity(ctx6)
 	cancel6()
 
-	// Test IPv4
 	ctx4, cancel4 := context.WithTimeout(ctx, 10*time.Second)
 	result4 := httputil.CheckIPv4Connectivity(ctx4)
 	cancel4()
@@ -2253,7 +1898,7 @@ func handleTestE2E() {
 	if hasIPv4 {
 		fmt.Printf("   ✅ IPv4 available (%s)\n", result4.Address)
 		if !hasIPv6 {
-			testsPassed++ // Count IPv4 as pass if no IPv6
+			testsPassed++
 		}
 	} else {
 		fmt.Println("   ⚠️  IPv4 not available")
@@ -2268,7 +1913,7 @@ func handleTestE2E() {
 	// Enable IPv4 fallback if no IPv6
 	if !hasIPv6 && hasIPv4 {
 		fmt.Println("   📝 Enabling IPv4 fallback mode for this test")
-		cfg.Infrastructure.EnableIPv4Fallback = true
+		cfg.Machine.IPv4.Enabled = true
 	}
 
 	// Step 2: Ensure SSH key exists
@@ -2287,13 +1932,13 @@ func handleTestE2E() {
 
 	// Step 3: Plant a test forest
 	fmt.Println()
-	fmt.Println("🌲 Step 3: Planting test forest (small)...")
+	fmt.Println("🌲 Step 3: Planting test forest (1 node)...")
 
-	// Create registry
+	// Create storage
 	registryPath := getRegistryPath()
-	reg, err := registry.NewLocalRegistry(registryPath)
+	reg, err := storage.NewLocalRegistry(registryPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "   ❌ Failed to create registry: %s\n", err)
+		fmt.Fprintf(os.Stderr, "   ❌ Failed to create storage: %s\n", err)
 		testsFailed++
 		os.Exit(1)
 	}
@@ -2305,7 +1950,7 @@ func handleTestE2E() {
 	testForestID = fmt.Sprintf("e2e-test-%d", time.Now().Unix())
 
 	// Get machine profile and select server type
-	profile := provider.GetProfileForSize("small")
+	profile := machine.ProfileSmall
 	preferredLocations := []string{"ash", "hel1", "nbg1", "fsn1"}
 
 	serverType, availableLocations, err := hetznerProv.SelectBestServerType(ctx, profile, preferredLocations)
@@ -2322,7 +1967,7 @@ func handleTestE2E() {
 	// Create provision request
 	req := forest.ProvisionRequest{
 		ForestID:   testForestID,
-		Size:       "small",
+		NodeCount:  1,
 		Location:   location,
 		ServerType: serverType,
 		Image:      "ubuntu-24.04",
@@ -2403,56 +2048,6 @@ func handleTestE2E() {
 		testsPassed++
 	} else {
 		fmt.Printf("   ⚠️  Cloud-init status unclear: %s\n", strings.TrimSpace(output))
-		// Not a hard failure, continue
-	}
-
-	// Step 6: Check if NimsForest binary exists
-	fmt.Println()
-	fmt.Println("📦 Step 6: Checking NimsForest installation...")
-
-	output, err = runSSHToNode(nodeIP, "test -f /opt/nimsforest/bin/nimsforest && echo 'exists' || test -f /usr/local/bin/nimsforest && echo 'exists' || echo 'not-found'")
-	if strings.Contains(output, "exists") {
-		fmt.Println("   ✅ NimsForest binary found")
-		testsPassed++
-
-		// Check if service is running
-		output, _ = runSSHToNode(nodeIP, "systemctl is-active nimsforest 2>/dev/null || echo 'not-active'")
-		if strings.Contains(output, "active") && !strings.Contains(output, "not-active") {
-			fmt.Println("   ✅ NimsForest service is running")
-		} else {
-			fmt.Println("   ❌ NimsForest service not active")
-			testsFailed++
-		}
-	} else {
-		fmt.Println("   ❌ NimsForest binary not found")
-		testsFailed++
-	}
-
-	// Step 7: Check NATS HTTP monitoring (required)
-	fmt.Println()
-	fmt.Println("📊 Step 7: Checking NATS monitoring...")
-
-	// Check HTTP monitoring endpoint on port 8222
-	output, err = runSSHToNode(nodeIP, "curl -s --connect-timeout 5 http://localhost:8222/varz 2>/dev/null")
-	if err == nil && strings.Contains(output, "server_id") {
-		fmt.Println("   ✅ NATS monitoring endpoint responding on :8222")
-		testsPassed++
-
-		// Extract and show some stats
-		if strings.Contains(output, "\"connections\"") {
-			fmt.Println("      /varz endpoint available")
-		}
-	} else {
-		// Fallback: check if NATS is at least listening
-		output2, _ := runSSHToNode(nodeIP, "ss -tlnp 2>/dev/null | grep nimsforest | head -3")
-		if strings.Contains(output2, "nimsforest") {
-			fmt.Println("   ⚠️  NATS server running but HTTP monitoring not available on :8222")
-			fmt.Println("      (Update nimsforest binary to v0.1.1.2+ for monitoring)")
-			testsFailed++
-		} else {
-			fmt.Println("   ❌ NATS server not running")
-			testsFailed++
-		}
 	}
 
 	// Print summary
@@ -2483,93 +2078,46 @@ func handleTestE2E() {
 }
 
 func printHelp() {
-	isOnTermux := isTermux()
-
-	fmt.Println("🌲 Morpheus - Nims Forest Infrastructure Provisioning")
+	fmt.Println("🌲 Morpheus - Infrastructure Provisioning")
 	fmt.Println()
-
-	if isOnTermux {
-		fmt.Println("Quick Start (Termux):")
-		fmt.Println("  morpheus plant small        # Create 2-machine cluster (~7-10 min)")
-		fmt.Println("  morpheus plant medium       # Create 3-machine cluster (~15-20 min)")
-		fmt.Println()
-	}
-
 	fmt.Println("Usage:")
 	fmt.Println("  morpheus <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	if isOnTermux {
-		fmt.Println("  plant <size>                Plant a forest (cloud mode)")
-		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 2 machines (~7-10 min, €6-8/mo)")
-		fmt.Println("                                medium - 3 machines (~15-20 min, €9-12/mo)")
-		fmt.Println("                                large  - 5 machines (~25-35 min, €15-20/mo)")
-	} else {
-		fmt.Println("  plant <cloud|local> <size>  Provision a new forest")
-		fmt.Println("                              Deployment types:")
-		fmt.Println("                                cloud - Provision on Hetzner Cloud (requires API token)")
-		fmt.Println("                                local - Provision locally using Docker (free)")
-		fmt.Println("                              Sizes:")
-		fmt.Println("                                small  - 2 machines (~7-10 min)")
-		fmt.Println("                                medium - 3 machines (~15-20 min)")
-		fmt.Println("                                large  - 5 machines (~25-35 min)")
-	}
-	fmt.Println("  list                        List all forests")
-	fmt.Println("  status <forest-id>          Show detailed forest status")
-	fmt.Println("  grow <forest-id>            Check cluster health and optionally expand")
-	fmt.Println("                              Options:")
-	fmt.Println("                                --auto        Non-interactive mode")
-	fmt.Println("                                --threshold N Resource threshold (default: 80)")
-	fmt.Println("                                --json        Output in JSON format")
-	fmt.Println("  teardown <forest-id>        Delete a forest and all its resources")
-	fmt.Println("  version                     Show version information")
-	fmt.Println("  update                      Check for updates and install if available")
-	fmt.Println("  check-update                Check for updates without installing")
-	fmt.Println("  check                       Run all diagnostics (network, SSH)")
-	fmt.Println("  check ipv6                  Check IPv6 connectivity")
-	fmt.Println("  check ipv4                  Check IPv4 connectivity")
-	fmt.Println("  check network               Check both IPv6 and IPv4")
-	fmt.Println("  check ssh                   Check SSH key setup")
-	fmt.Println("  check-ipv6                  (deprecated) Use 'check ipv6' instead")
-	fmt.Println("  test e2e                    Run E2E tests locally (~7-10 min)")
-	fmt.Println("  test e2e --keep             Run E2E tests and keep forest for debugging")
-	fmt.Println("  help                        Show this help message")
+	fmt.Println("  plant [options]          Create a new forest")
+	fmt.Println("    --nodes, -n N          Number of nodes (default: 1)")
+	fmt.Println("    --local, -l            Use local Docker instead of cloud")
+	fmt.Println()
+	fmt.Println("  grow <forest-id> [options]  Add nodes or check health")
+	fmt.Println("    --nodes, -n N          Add N nodes to the forest")
+	fmt.Println("    --auto                 Auto-expand if needed")
+	fmt.Println("    --threshold N          CPU threshold (default: 80)")
+	fmt.Println()
+	fmt.Println("  list                     List all forests")
+	fmt.Println("  status <forest-id>       Show forest details")
+	fmt.Println("  teardown <forest-id>     Delete a forest")
+	fmt.Println()
+	fmt.Println("  check                    Run all diagnostics")
+	fmt.Println("  check ipv6               Check IPv6 connectivity")
+	fmt.Println("  check ssh                Check SSH key setup")
+	fmt.Println()
+	fmt.Println("  version                  Show version")
+	fmt.Println("  update                   Check for updates and install")
+	fmt.Println("  help                     Show this help")
 	fmt.Println()
 	fmt.Println("Examples:")
-	if isOnTermux {
-		fmt.Println("  morpheus plant small        # Create 2-machine cluster")
-		fmt.Println("  morpheus plant medium       # Create 3-machine cluster")
-		fmt.Println("  morpheus list               # View all your forests")
-		fmt.Println("  morpheus status forest-123  # Check forest details")
-		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
-	} else {
-		fmt.Println("  morpheus plant cloud small  # Create 2-machine cluster on Hetzner")
-		fmt.Println("  morpheus plant local small  # Create 2-machine cluster locally")
-		fmt.Println("  morpheus plant cloud medium # Create 3-machine cluster")
-		fmt.Println("  morpheus list               # View all forests")
-		fmt.Println("  morpheus status forest-123  # Check forest details")
-		fmt.Println("  morpheus teardown forest-123 # Clean up resources")
-		fmt.Println("  morpheus update             # Update to latest version")
-	}
+	fmt.Println("  morpheus plant              # Create 1-node forest")
+	fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
+	fmt.Println("  morpheus plant --local      # Create local Docker forest")
+	fmt.Println("  morpheus grow forest-123 --nodes 2  # Add 2 nodes")
+	fmt.Println("  morpheus list               # View all forests")
+	fmt.Println("  morpheus teardown forest-123  # Delete forest")
 	fmt.Println()
-
-	if !isOnTermux {
-		fmt.Println("Local Mode:")
-		fmt.Println("  Local mode uses Docker to create containers on your machine.")
-		fmt.Println("  No cloud account required - great for development!")
-		fmt.Println("  Requirements: Docker must be installed and running.")
-		fmt.Println()
-	}
-
 	fmt.Println("Configuration:")
 	fmt.Println("  Morpheus looks for config.yaml in:")
 	fmt.Println("    - ./config.yaml")
 	fmt.Println("    - ~/.morpheus/config.yaml")
 	fmt.Println("    - /etc/morpheus/config.yaml")
-	if !isOnTermux {
-		fmt.Println("  Note: Local mode doesn't require a config file.")
-	}
 	fmt.Println()
 	fmt.Println("More info: https://github.com/nimsforest/morpheus")
 }

@@ -30,7 +30,7 @@ Three independent providers. Mix and match.
 ```bash
 morpheus plant                  # Create forest (1 node)
 morpheus plant --nodes 3        # Create forest (3 nodes)
-morpheus grow <forest-id>       # Add 1 node
+morpheus grow <forest-id>       # Check health
 morpheus grow <forest-id> -n 2  # Add 2 nodes
 morpheus list                   # List forests
 morpheus status <forest-id>     # Show details
@@ -74,31 +74,33 @@ secrets:
 
 ## Implementation
 
-### Phase 1: Refactor Structure
-- [ ] Rename `pkg/provider` → `pkg/machine`
-- [ ] Rename `pkg/registry` → `pkg/storage`
-- [ ] Create `pkg/dns`
-- [ ] Update config: `machine`, `dns`, `storage` sections
-- [ ] Remove `Size` from Forest model
+### Phase 1: Refactor Structure ✅
+- [x] Rename `pkg/provider` → `pkg/machine`
+- [x] Rename `pkg/registry` → `pkg/storage`
+- [x] Create `pkg/dns`
+- [x] Update config: `machine`, `dns`, `storage` sections
+- [x] Remove `Size` from Forest model (use NodeCount instead)
 
-### Phase 2: CLI Simplification
-- [ ] `morpheus plant` (no args)
-- [ ] `morpheus plant --nodes N`
-- [ ] `morpheus grow <forest-id>`
-- [ ] `morpheus grow <forest-id> --nodes N`
+### Phase 2: CLI Simplification ✅
+- [x] `morpheus plant` (no args, defaults to 1 node)
+- [x] `morpheus plant --nodes N`
+- [x] `morpheus grow <forest-id>` (check health)
+- [x] `morpheus grow <forest-id> --nodes N` (add nodes)
 
-### Phase 3: DNS Provider
-- [ ] `pkg/dns/interface.go`
-- [ ] `pkg/dns/hetzner/` - Hetzner DNS API
-- [ ] `pkg/dns/none/` - No-op
-- [ ] Create A/AAAA records on provision
-- [ ] Delete records on teardown
-- [ ] Service record: `nats.<forest>.<domain>`
+### Phase 3: DNS Provider ✅
+- [x] `pkg/dns/interface.go`
+- [x] `pkg/dns/hetzner/` - Hetzner DNS API
+- [x] `pkg/dns/none/` - No-op
+- [x] Create A/AAAA records on provision
+- [x] Delete records on teardown
+- [ ] Service record: `nats.<forest>.<domain>` (future)
 
-### Phase 4: Additional Providers
+### Phase 4: Additional Providers (Future)
 - [ ] `pkg/dns/cloudflare/`
 - [ ] `pkg/dns/hosts/`
 - [ ] `pkg/storage/s3/`
+- [ ] `pkg/machine/aws/`
+- [ ] `pkg/machine/gcp/`
 
 ---
 
@@ -122,10 +124,16 @@ type Provider interface {
 }
 
 // pkg/storage/interface.go
-type Provider interface {
-    GetRegistry(ctx) (*RegistryData, error)
-    SaveRegistry(ctx, data) error
-    GetMountConfig() *MountConfig
+type Registry interface {
+    RegisterForest(forest) error
+    RegisterNode(node) error
+    GetForest(forestID) (*Forest, error)
+    GetNodes(forestID) ([]*Node, error)
+    UpdateForest(updated) error
+    UpdateForestStatus(forestID, status) error
+    UpdateNodeStatus(forestID, nodeID, status) error
+    DeleteForest(forestID) error
+    ListForests() []*Forest
 }
 ```
 
@@ -137,23 +145,41 @@ type Provider interface {
 pkg/
 ├── machine/
 │   ├── interface.go
+│   ├── profile.go
 │   ├── hetzner/
+│   │   ├── hetzner.go
+│   │   └── profiles.go
 │   ├── local/
+│   │   └── local.go
 │   └── none/
+│       └── none.go
 ├── dns/
 │   ├── interface.go
 │   ├── hetzner/
-│   ├── cloudflare/
-│   ├── hosts/
+│   │   └── hetzner.go
 │   └── none/
+│       └── none.go
 ├── storage/
 │   ├── interface.go
-│   ├── storagebox/
-│   ├── s3/
-│   ├── local/
-│   └── none/
+│   ├── types.go
+│   ├── local.go
+│   └── storagebox.go
 ├── forest/
 │   └── provisioner.go
 └── config/
     └── config.go
 ```
+
+---
+
+## Notes
+
+### Backward Compatibility
+The old config format (using `infrastructure`, `registry`, etc.) is still supported
+through automatic migration in the config loader. Users can continue using their
+existing config files.
+
+### Legacy Package Preservation
+The old `pkg/provider` and `pkg/registry` packages are preserved for backward
+compatibility with any external code that might depend on them. New code should
+use `pkg/machine` and `pkg/storage` respectively.

@@ -1,9 +1,17 @@
 # Morpheus Configuration
 # Copy this file to config.yaml or ~/.morpheus/config.yaml
 
-# Infrastructure provider
-infrastructure:
-  provider: hetzner  # Currently only 'hetzner' and 'local' are supported
+# ─────────────────────────────────────────────────────────────────────────────
+# Machine Provider Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+machine:
+  provider: hetzner  # "hetzner", "local", or "none"
+  
+  # Hetzner-specific settings (used when provider is "hetzner")
+  hetzner:
+    server_type: cx22      # Server type (auto-selected if not specified)
+    image: ubuntu-24.04    # OS image
+    location: fsn1         # Datacenter location
   
   # SSH key configuration
   ssh:
@@ -11,48 +19,97 @@ infrastructure:
     key_path: ""        # Optional: Path to your SSH public key (e.g., ~/.ssh/id_ed25519.pub)
                         # If not specified, Morpheus will search common locations
   
-  # IPv4 fallback (default: false)
-  # Enable this if your network doesn't have IPv6 connectivity
-  # Note: IPv4 costs extra on Hetzner Cloud
-  enable_ipv4_fallback: false
+  # IPv4 configuration
+  ipv4:
+    enabled: false  # Enable IPv4 (costs extra on Hetzner, use if no IPv6)
 
-# Integration with NimsForest
-integration:
-  nimsforest_url: ""  # URL for NimsForest callbacks (optional)
-  registry_url: ""    # Morpheus registry URL (optional)
+# ─────────────────────────────────────────────────────────────────────────────
+# DNS Provider Configuration (optional)
+# ─────────────────────────────────────────────────────────────────────────────
+dns:
+  provider: none       # "hetzner", "cloudflare", "hosts", or "none"
+  domain: ""           # Base domain for DNS records (e.g., morpheus.example.com)
+  ttl: 300             # TTL for DNS records in seconds
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Storage Provider Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+storage:
+  provider: local  # "storagebox", "s3", "local", or "none"
   
-  # Auto-install NimsForest on provisioned machines
-  nimsforest_install: true                              # Download and start NimsForest automatically
-  nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"  # URL to download binary
+  # StorageBox settings (for Hetzner StorageBox via WebDAV)
+  storagebox:
+    host: ""           # uXXXXX.your-storagebox.de
+    username: ""       # uXXXXX
+    password: ""       # Or use ${STORAGEBOX_PASSWORD} env var
+  
+  # Local storage settings
+  local:
+    path: ""           # Default: ~/.morpheus/registry.json
 
-# Provisioning settings
+# ─────────────────────────────────────────────────────────────────────────────
+# Provisioning Settings
+# ─────────────────────────────────────────────────────────────────────────────
 provisioning:
   readiness_timeout: "5m"  # How long to wait for servers to be ready
-  readiness_interval: "5s" # How often to check server readiness (default: 5s)
+  readiness_interval: "5s" # How often to check server readiness
   ssh_port: 22             # SSH port for connectivity checks
 
-# Registry for multi-device forest management
-# Use "storagebox" for Hetzner StorageBox (enables NATS peer discovery via shared registry)
-registry:
-  type: local                                # "local", "storagebox", or "none"
-  # For StorageBox (enables shared registry for multi-node NATS clustering):
-  # type: storagebox
-  # url: https://uXXXXX.your-storagebox.de/morpheus/registry.json  # WebDAV URL for CLI access
-  # storagebox_host: uXXXXX.your-storagebox.de                      # CIFS host for node mounts
-  # username: uXXXXX                                                # StorageBox username
-  # password: ${STORAGEBOX_PASSWORD}                                # Set via env var
-
-# Secrets (can also be set via environment variables)
+# ─────────────────────────────────────────────────────────────────────────────
+# API Tokens and Secrets
+# ─────────────────────────────────────────────────────────────────────────────
 secrets:
-  hetzner_api_token: ""  # Or set via HETZNER_API_TOKEN environment variable
+  hetzner_api_token: ""   # Or set via HETZNER_API_TOKEN env var
+  hetzner_dns_token: ""   # Separate token for DNS API (or reuse hetzner_api_token)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy Configuration (for backward compatibility)
+# ─────────────────────────────────────────────────────────────────────────────
+# The following sections are supported for backward compatibility
+# but it's recommended to use the new format above.
+
+# infrastructure:
+#   provider: hetzner
+#   ssh:
+#     key_name: morpheus
+#   enable_ipv4_fallback: false
+
+# integration:
+#   nimsforest_url: ""
+#   nimsforest_install: true
+#   nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"
+
+# registry:
+#   type: local
+#   url: ""
+#   username: ""
+#   password: ""
+#   storagebox_host: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ℹ️  Quick Start
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# 1. Get your Hetzner API token:
+#    https://console.hetzner.cloud/ → Security → API Tokens
+#
+# 2. Set your token:
+#    export HETZNER_API_TOKEN="your-token-here"
+#
+# 3. Create a forest:
+#    morpheus plant                # Create 1-node forest
+#    morpheus plant --nodes 3      # Create 3-node forest
+#
+# 4. Check your forests:
+#    morpheus list
+#    morpheus status <forest-id>
+#
+# 5. Clean up:
+#    morpheus teardown <forest-id>
+#
 # ─────────────────────────────────────────────────────────────────────────────
 # ℹ️  Configuration Notes
 # ─────────────────────────────────────────────────────────────────────────────
-#
-# Machine Types & Locations:
-#   Morpheus automatically selects the best machine types and locations based
-#   on your forest size (small/medium/large). You don't need to configure these!
 #
 # SSH Keys:
 #   - Morpheus will automatically upload your SSH key to Hetzner if needed
@@ -61,27 +118,18 @@ secrets:
 #
 # IPv6/IPv4:
 #   - All machines use IPv6 by default (IPv4 costs extra on Hetzner)
-#   - If your network lacks IPv6, set enable_ipv4_fallback: true
+#   - If your network lacks IPv6, set machine.ipv4.enabled: true
 #   - Test connectivity with: morpheus check network
-#   - With fallback enabled, servers get both IPv4 and IPv6 addresses
 #
-# API Token:
-#   - Get yours at: https://console.hetzner.cloud/ → Security → API Tokens
-#   - Needs "Read & Write" permissions
-#   - Can be set here or via HETZNER_API_TOKEN environment variable
+# DNS (optional):
+#   - Configure DNS to automatically create records for your servers
+#   - Supports Hetzner DNS, Cloudflare, or custom hosts file
+#   - Records: <forest-id>-node-<n>.<domain> → server IP
 #
-# StorageBox (for multi-node NATS clustering):
-#   - NimsForest uses embedded NATS for messaging between forest nodes
-#   - Nodes discover peers via shared registry mounted from StorageBox
-#   - The CLI uses WebDAV (https://), nodes use CIFS mount (//host/backup)
-#   - Create a StorageBox at: https://console.hetzner.cloud/ → Storage Boxes
-#   - Ports used: 4222 (client), 6222 (cluster), 8222 (monitoring)
-#
-# Cost:
-#   - small:  1 machine  ≈ €3-4/month   (perfect for testing)
-#   - medium: 3 machines ≈ €9-12/month  (small production)
-#   - large:  5 machines ≈ €15-20/month (larger deployment)
-#   - StorageBox: €3.29/month for 1TB (optional, enables multi-node)
+# Cost Estimates:
+#   - 1 node:  ≈ €3-4/month   (perfect for testing)
+#   - 3 nodes: ≈ €9-12/month  (small production)
+#   - 5 nodes: ≈ €15-20/month (larger deployment)
 #   - Billed by the minute, can teardown anytime
 #
 # ─────────────────────────────────────────────────────────────────────────────
