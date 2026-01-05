@@ -3,88 +3,157 @@
 ## Architecture
 
 ```
-┌─────────────────┐
-│    Morpheus     │  CLI (phone/laptop)
-└────────┬────────┘
-         │ WebDAV
-         ▼
-┌─────────────────┐
-│ Hetzner         │  Shared registry at /mnt/forest/registry.json
-│ StorageBox      │  Mounted via CIFS on each node
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Forest Nodes    │  Each runs NimsForest with embedded NATS
-│ (Hetzner VMs)   │  Peers discover each other via shared registry
-└─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                          Morpheus                               │
+│                                                                 │
+│        morpheus plant          morpheus grow <forest-id>        │
+│                                                                 │
+└───────────┬───────────────────┬───────────────────┬─────────────┘
+            │                   │                   │
+            ▼                   ▼                   ▼
+   ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+   │ Machine Provider│ │  DNS Provider   │ │Storage Provider │
+   │                 │ │                 │ │                 │
+   │  - hetzner      │ │  - hetzner      │ │  - storagebox   │
+   │  - local        │ │  - cloudflare   │ │  - s3           │
+   │  - aws          │ │  - hosts        │ │  - local        │
+   │  - gcp          │ │  - none         │ │  - none         │
+   └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-All nodes are identical - they run NimsForest with embedded NATS. StorageBox provides shared storage.
+Three independent providers. Mix and match.
 
 ---
 
-## How It Works
+## CLI
 
+```bash
+morpheus plant                  # Create forest (1 node)
+morpheus plant --nodes 3        # Create forest (3 nodes)
+morpheus grow <forest-id>       # Add 1 node
+morpheus grow <forest-id> -n 2  # Add 2 nodes
+morpheus list                   # List forests
+morpheus status <forest-id>     # Show details
+morpheus teardown <forest-id>   # Delete forest
 ```
-Node-1 starts:
-  → Mounts /mnt/forest (StorageBox via CIFS)
-  → Registers in /mnt/forest/registry.json
-  → Starts NimsForest with embedded NATS (cluster of 1)
 
-Node-2 starts:
-  → Mounts /mnt/forest
-  → Registers in registry, sees node-1
-  → Starts NimsForest, joins cluster via NATS gossip
-
-Node-N:
-  → Same pattern - NATS gossip handles membership
-```
+No `cloud`/`local`. No `small`/`medium`/`large`. Just plant and grow.
 
 ---
 
-## Completed
+## Config
 
-- [x] `morpheus plant cloud small/medium/large`
-- [x] NimsForest binary download and systemd service
-- [x] StorageBox Registry (WebDAV + CIFS mount)
-- [x] NATS monitoring (`pkg/nats/monitor.go`)
-- [x] `morpheus grow` - cluster health monitoring
-- [x] Cloud-init mounts StorageBox, registers node (using jq)
-- [x] Environment variables: FOREST_ID, NODE_ID, NODE_IP, REGISTRY_PATH
-
----
-
-## Quick Reference
-
-**Node Files:**
-- `/etc/morpheus/node-info.json` - Node identity
-- `/mnt/forest/registry.json` - Shared peer registry
-- `/opt/nimsforest/bin/nimsforest` - NimsForest binary
-
-**NimsForest Startup:**
-1. Reads FOREST_ID, NODE_ID from environment
-2. Reads REGISTRY_PATH for peer IPs
-3. Starts embedded NATS, joins cluster via gossip
-
-**Ports:**
-- 4222 - NATS client
-- 6222 - NATS cluster
-- 8222 - NATS monitoring
-
-**Config:**
 ```yaml
-registry:
-  type: storagebox
-  url: https://uXXXXX.your-storagebox.de/morpheus/registry.json
-  storagebox_host: uXXXXX.your-storagebox.de
-  username: uXXXXX
-  password: ${STORAGEBOX_PASSWORD}
+machine:
+  provider: hetzner
+  hetzner:
+    server_type: cx22
+    image: ubuntu-24.04
+    location: fsn1
+  ssh:
+    key_name: morpheus
+
+dns:
+  provider: hetzner
+  domain: morpheus.example.com
+  ttl: 300
+
+storage:
+  provider: storagebox
+  storagebox:
+    host: uXXXXX.your-storagebox.de
+    username: uXXXXX
+    password: ${STORAGEBOX_PASSWORD}
+
+secrets:
+  hetzner_api_token: ${HETZNER_API_TOKEN}
+  hetzner_dns_token: ${HETZNER_DNS_TOKEN}
 ```
 
 ---
 
-## Future
+## Implementation
 
-- Local mode (run NimsForest directly without cloud)
-- Health checks endpoint
+### Phase 1: Refactor Structure
+- [ ] Rename `pkg/provider` → `pkg/machine`
+- [ ] Rename `pkg/registry` → `pkg/storage`
+- [ ] Create `pkg/dns`
+- [ ] Update config: `machine`, `dns`, `storage` sections
+- [ ] Remove `Size` from Forest model
+
+### Phase 2: CLI Simplification
+- [ ] `morpheus plant` (no args)
+- [ ] `morpheus plant --nodes N`
+- [ ] `morpheus grow <forest-id>`
+- [ ] `morpheus grow <forest-id> --nodes N`
+
+### Phase 3: DNS Provider
+- [ ] `pkg/dns/interface.go`
+- [ ] `pkg/dns/hetzner/` - Hetzner DNS API
+- [ ] `pkg/dns/none/` - No-op
+- [ ] Create A/AAAA records on provision
+- [ ] Delete records on teardown
+- [ ] Service record: `nats.<forest>.<domain>`
+
+### Phase 4: Additional Providers
+- [ ] `pkg/dns/cloudflare/`
+- [ ] `pkg/dns/hosts/`
+- [ ] `pkg/storage/s3/`
+
+---
+
+## Provider Interfaces
+
+```go
+// pkg/machine/interface.go
+type Provider interface {
+    CreateServer(ctx, req) (*Server, error)
+    GetServer(ctx, id) (*Server, error)
+    DeleteServer(ctx, id) error
+    WaitForServer(ctx, id, state) error
+    ListServers(ctx, filters) ([]*Server, error)
+}
+
+// pkg/dns/interface.go
+type Provider interface {
+    CreateRecord(ctx, req) (*Record, error)
+    DeleteRecord(ctx, domain, name, type) error
+    ListRecords(ctx, domain) ([]*Record, error)
+}
+
+// pkg/storage/interface.go
+type Provider interface {
+    GetRegistry(ctx) (*RegistryData, error)
+    SaveRegistry(ctx, data) error
+    GetMountConfig() *MountConfig
+}
+```
+
+---
+
+## Directory Structure
+
+```
+pkg/
+├── machine/
+│   ├── interface.go
+│   ├── hetzner/
+│   ├── local/
+│   └── none/
+├── dns/
+│   ├── interface.go
+│   ├── hetzner/
+│   ├── cloudflare/
+│   ├── hosts/
+│   └── none/
+├── storage/
+│   ├── interface.go
+│   ├── storagebox/
+│   ├── s3/
+│   ├── local/
+│   └── none/
+├── forest/
+│   └── provisioner.go
+└── config/
+    └── config.go
+```
