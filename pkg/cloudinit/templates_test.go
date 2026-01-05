@@ -61,7 +61,7 @@ func TestGenerateWithStorageBox(t *testing.T) {
 		"cifs",
 		"registry.json",
 		"jq",
-		"REGISTRY_PATH=/mnt/forest/registry.json",
+		"NATS_CLUSTER_REGISTRY=/mnt/forest/registry.json",
 	}
 
 	for _, check := range checks {
