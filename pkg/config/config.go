@@ -128,9 +128,18 @@ type IntegrationConfig struct {
 	RegistryURL   string `yaml:"registry_url"`   // Optional: Morpheus registry URL
 
 	// NimsForest auto-installation settings (NimsForest includes embedded NATS)
-	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines
-	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (e.g., https://nimsforest.io/bin/nimsforest)
+	// By default, Morpheus will install NimsForest on all provisioned machines
+	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines (default: true)
+	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (default: latest from GitHub)
+	NimsForestVersion     string `yaml:"nimsforest_version"`      // Version to download (default: latest)
 }
+
+const (
+	// DefaultNimsForestDownloadURL is the base URL for NimsForest releases
+	DefaultNimsForestDownloadURL = "https://github.com/nimsforest/nimsforest2/releases/latest/download/forest-linux-amd64"
+	// DefaultNimsForestVersion is the default version (empty means latest)
+	DefaultNimsForestVersion = ""
+)
 
 // DefaultsConfig defines default server settings (DEPRECATED)
 type DefaultsConfig struct {
@@ -247,6 +256,14 @@ func (c *Config) applyDefaults() {
 	// Storage defaults
 	if c.Storage.Provider == "" {
 		c.Storage.Provider = "local"
+	}
+
+	// NimsForest integration defaults - install by default
+	// NimsForestInstall defaults to true (install NimsForest on all machines)
+	if c.Integration.NimsForestDownloadURL == "" {
+		c.Integration.NimsForestDownloadURL = DefaultNimsForestDownloadURL
+		// If URL wasn't set, enable install by default
+		c.Integration.NimsForestInstall = true
 	}
 }
 
@@ -483,6 +500,20 @@ func (c *Config) GetDNSToken() string {
 	}
 	// Fall back to API token for Hetzner (some users might use same token)
 	return c.Secrets.HetznerAPIToken
+}
+
+// IsNimsForestInstallEnabled returns whether NimsForest should be installed
+// By default, NimsForest is installed unless explicitly disabled via config
+func (c *Config) IsNimsForestInstallEnabled() bool {
+	return c.Integration.NimsForestInstall
+}
+
+// GetNimsForestDownloadURL returns the NimsForest download URL
+func (c *Config) GetNimsForestDownloadURL() string {
+	if c.Integration.NimsForestDownloadURL != "" {
+		return c.Integration.NimsForestDownloadURL
+	}
+	return DefaultNimsForestDownloadURL
 }
 
 // applyProvisioningDefaults sets default values for provisioning config

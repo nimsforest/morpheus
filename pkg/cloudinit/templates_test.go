@@ -25,10 +25,13 @@ func TestGenerate(t *testing.T) {
 		"ufw allow 4222/tcp",
 		"ufw allow 6222/tcp",
 		"ufw allow 8222/tcp",
+		"ufw allow 8080/tcp",
 		"/opt/nimsforest/bin",
 		"test-forest",
 		"https://example.com/nimsforest",
 		"nimsforest.service",
+		"nimsforest-webview.service",
+		"standalone",
 	}
 
 	for _, check := range checks {

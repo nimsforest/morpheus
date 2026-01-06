@@ -76,8 +76,11 @@ secrets:
 
 # integration:
 #   nimsforest_url: ""
+#   # NimsForest is installed by default on all provisioned machines
+#   # Set to false to disable auto-installation
 #   nimsforest_install: true
-#   nimsforest_download_url: "https://nimsforest.io/bin/nimsforest"
+#   # Download URL for NimsForest binary (defaults to latest GitHub release)
+#   nimsforest_download_url: "https://github.com/nimsforest/nimsforest2/releases/latest/download/forest-linux-amd64"
 
 # registry:
 #   type: local
