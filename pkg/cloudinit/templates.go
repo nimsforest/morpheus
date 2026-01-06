@@ -55,11 +55,12 @@ write_files:
     permissions: '0644'
 
 runcmd:
-  # Configure firewall - NATS ports for embedded NATS
+  # Configure firewall - NATS ports for embedded NATS + NimsForest webview
   - ufw allow 22/tcp comment 'SSH'
   - ufw allow 4222/tcp comment 'NATS client'
   - ufw allow 6222/tcp comment 'NATS cluster'
   - ufw allow 8222/tcp comment 'NATS monitoring'
+  - ufw allow 8080/tcp comment 'NimsForest webview'
   - ufw --force enable
   
   # Create directories for nimsforest
@@ -100,12 +101,13 @@ runcmd:
   {{end}}
   
   {{if .NimsForestInstall}}
-  # Download and install NimsForest
+  # Download and install NimsForest (binary with embedded NATS)
   - |
-    echo "📦 Installing NimsForest..."
+    echo "📦 Installing NimsForest from {{.NimsForestDownloadURL}}..."
     if curl -fsSL -o /opt/nimsforest/bin/nimsforest "{{.NimsForestDownloadURL}}"; then
       chmod +x /opt/nimsforest/bin/nimsforest
       ln -sf /opt/nimsforest/bin/nimsforest /usr/local/bin/forest
+      /opt/nimsforest/bin/nimsforest version || echo "NimsForest binary ready"
       echo "✅ NimsForest installed"
       
       # Get node IP - try IPv4 first (more reliable), then IPv6, then hostname
@@ -125,16 +127,16 @@ runcmd:
       echo "{\"nodes\":{\"{{.ForestID}}\":[{\"id\":\"{{.NodeID}}\",\"ip\":\"$NODE_IP\",\"forest_id\":\"{{.ForestID}}\"}]}}" > /mnt/forest/registry.json
       {{end}}
       
-      # Create systemd service for cluster mode
+      # Create systemd service for NimsForest (standalone mode with embedded NATS)
       cat > /etc/systemd/system/nimsforest.service <<'SERVICEEOF'
     [Unit]
-    Description=NimsForest
+    Description=NimsForest - Event-Driven Organizational Orchestration
     After=network-online.target{{if .StorageBoxHost}} mnt-forest.mount{{end}}
     Wants=network-online.target
 
     [Service]
     Type=simple
-    ExecStart=/opt/nimsforest/bin/nimsforest start
+    ExecStart=/opt/nimsforest/bin/nimsforest standalone
     Restart=always
     RestartSec=5
     Environment=NATS_CLUSTER_NODE_INFO=/etc/nimsforest/node-info.json
@@ -147,11 +149,33 @@ runcmd:
     WantedBy=multi-user.target
     SERVICEEOF
       
+      # Create systemd service for NimsForest webview
+      cat > /etc/systemd/system/nimsforest-webview.service <<'WEBVIEWEOF'
+    [Unit]
+    Description=NimsForest Webview - Isometric Visualization
+    After=nimsforest.service
+    Requires=nimsforest.service
+
+    [Service]
+    Type=simple
+    ExecStart=/opt/nimsforest/bin/nimsforest viewmodel webview --port=8080
+    Restart=always
+    RestartSec=5
+    WorkingDirectory=/var/lib/nimsforest
+
+    [Install]
+    WantedBy=multi-user.target
+    WEBVIEWEOF
+      
       sed -i 's/^    //' /etc/systemd/system/nimsforest.service
+      sed -i 's/^    //' /etc/systemd/system/nimsforest-webview.service
       systemctl daemon-reload
-      systemctl enable nimsforest
+      systemctl enable nimsforest nimsforest-webview
       systemctl start nimsforest
-      echo "✅ NimsForest started"
+      sleep 2
+      systemctl start nimsforest-webview
+      echo "✅ NimsForest started with embedded NATS"
+      echo "✅ NimsForest webview available at http://$(hostname -I | awk '{print $1}'):8080/"
     else
       echo "❌ Failed to download NimsForest"
     fi
