@@ -9,7 +9,10 @@ machine:
   
   # Hetzner-specific settings (used when provider is "hetzner")
   hetzner:
-    server_type: cx22      # Server type (auto-selected if not specified)
+    server_type: cx22      # Server type
+    server_type_fallback:  # Fallback server types if primary unavailable
+      - cpx11
+      - cx32
     image: ubuntu-24.04    # OS image
     location: fsn1         # Datacenter location
   
