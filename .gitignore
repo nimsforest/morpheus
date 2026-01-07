@@ -1,6 +1,7 @@
 # Binaries
 /morpheus
 bin/
+nats-server*/
 *.exe
 *.dll
 *.so
