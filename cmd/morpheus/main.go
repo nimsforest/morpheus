@@ -71,10 +71,10 @@ func main() {
 
 func handlePlant() {
 	// Parse arguments - simplified CLI
-	// morpheus plant             -> 1 node (default)
+	// morpheus plant             -> 2 nodes (default)
 	// morpheus plant --nodes 3   -> 3 nodes
 
-	nodeCount := 1
+	nodeCount := 2
 
 	// Parse arguments
 	for i := 2; i < len(os.Args); i++ {
@@ -99,11 +99,11 @@ func handlePlant() {
 			fmt.Println("Create a new forest with the specified number of nodes.")
 			fmt.Println()
 			fmt.Println("Options:")
-			fmt.Println("  --nodes, -n N   Number of nodes to create (default: 1)")
+			fmt.Println("  --nodes, -n N   Number of nodes to create (default: 2)")
 			fmt.Println("  --help, -h      Show this help")
 			fmt.Println()
 			fmt.Println("Examples:")
-			fmt.Println("  morpheus plant              # Create 1-node forest")
+			fmt.Println("  morpheus plant              # Create 2-node cluster")
 			fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
 			os.Exit(0)
 		default:
@@ -461,7 +461,7 @@ func handleList() {
 		fmt.Println("🌲 No forests yet!")
 		fmt.Println()
 		fmt.Println("Create your first forest:")
-		fmt.Println("  morpheus plant              # Create 1-node forest")
+		fmt.Println("  morpheus plant              # Create 2-node cluster")
 		fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
 		return
 	}
@@ -1970,7 +1970,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  plant [options]          Create a new forest")
-	fmt.Println("    --nodes, -n N          Number of nodes (default: 1)")
+	fmt.Println("    --nodes, -n N          Number of nodes (default: 2)")
 	fmt.Println()
 	fmt.Println("  grow <forest-id> [options]  Add nodes or check health")
 	fmt.Println("    --nodes, -n N          Add N nodes to the forest")
@@ -1990,7 +1990,7 @@ func printHelp() {
 	fmt.Println("  help                     Show this help")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  morpheus plant              # Create 1-node forest")
+	fmt.Println("  morpheus plant              # Create 2-node cluster")
 	fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
 	fmt.Println("  morpheus grow forest-123 --nodes 2  # Add 2 nodes")
 	fmt.Println("  morpheus list               # View all forests")
