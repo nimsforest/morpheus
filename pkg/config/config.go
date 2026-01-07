@@ -34,9 +34,10 @@ type MachineConfig struct {
 
 // HetznerConfig defines Hetzner-specific machine settings
 type HetznerConfig struct {
-	ServerType string `yaml:"server_type"` // e.g., cx22
-	Image      string `yaml:"image"`       // e.g., ubuntu-24.04
-	Location   string `yaml:"location"`    // e.g., fsn1
+	ServerType         string   `yaml:"server_type"`          // e.g., cx22
+	ServerTypeFallback []string `yaml:"server_type_fallback"` // e.g., [cpx11, cx32]
+	Image              string   `yaml:"image"`                // e.g., ubuntu-24.04
+	Location           string   `yaml:"location"`             // e.g., fsn1
 }
 
 // IPv4Config defines IPv4 settings
@@ -441,6 +442,11 @@ func (c *Config) GetServerType() string {
 		return c.Infrastructure.Defaults.ServerType
 	}
 	return "cx22"
+}
+
+// GetServerTypeFallback returns the fallback server types
+func (c *Config) GetServerTypeFallback() []string {
+	return c.Machine.Hetzner.ServerTypeFallback
 }
 
 // GetImage returns the image (with legacy fallback)
