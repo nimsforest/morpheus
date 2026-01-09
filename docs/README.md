@@ -14,6 +14,7 @@ User-facing guides for getting started and using Morpheus.
 | [CONTROL_SERVER_SETUP.md](guides/CONTROL_SERVER_SETUP.md) | Alternative setup for 24/7, teams, CI/CD |
 | [IPV6_SETUP.md](guides/IPV6_SETUP.md) | How to use IPv6 with Morpheus |
 | [IPV6_MODES.md](guides/IPV6_MODES.md) | IPv6 configuration modes (dual-stack, IPv6-first, IPv6-only) |
+| [PROXMOX_SETUP.md](guides/PROXMOX_SETUP.md) | Proxmox VE setup for remote boot mode switching |
 
 ## 🏗️ Architecture
 
