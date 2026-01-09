@@ -1,44 +1,35 @@
 // Package bootmode provides abstractions for managing machine boot modes.
-// A boot mode represents a specific OS/workload configuration that a machine
-// can run, typically implemented as different VMs in a hypervisor.
+// A boot mode represents a specific OS configuration that a NimsForest VR node
+// can run - either Linux (CachyOS + WiVRN) or Windows (SteamLink).
 package bootmode
 
 import "time"
 
-// GPUMode represents how a boot mode uses the GPU
-type GPUMode string
+// OSType represents the operating system type
+type OSType string
 
 const (
-	// GPUModeExclusive means the VM needs exclusive GPU access (e.g., VR streaming)
-	GPUModeExclusive GPUMode = "exclusive"
-	// GPUModeShared means the VM uses GPU but can potentially share (e.g., compute workloads)
-	GPUModeShared GPUMode = "shared"
-	// GPUModeNone means the VM doesn't need GPU access
-	GPUModeNone GPUMode = "none"
+	OSTypeLinux   OSType = "linux"
+	OSTypeWindows OSType = "windows"
 )
 
-// Mode represents a bootable configuration
+// Mode represents a bootable OS configuration on a VR node
 type Mode struct {
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	Provider      string            `json:"provider"`    // e.g., "proxmox"
-	ProviderID    string            `json:"provider_id"` // e.g., VM ID
-	GPUMode       GPUMode           `json:"gpu_mode"`
-	ConflictsWith []string          `json:"conflicts_with,omitempty"`
-	Status        ModeStatus        `json:"status"`
-	IPAddresses   []string          `json:"ip_addresses,omitempty"`
-	Uptime        time.Duration     `json:"uptime,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Name        string        `json:"name"`         // "linux" or "windows"
+	OS          OSType        `json:"os"`           // Operating system type
+	Description string        `json:"description"`  // Human-readable description
+	VMID        int           `json:"vmid"`         // Proxmox VM ID
+	Status      ModeStatus    `json:"status"`       // Current status
+	IPAddress   string        `json:"ip_address"`   // VM IP address (when running)
+	Uptime      time.Duration `json:"uptime"`       // How long running
+	VRSoftware  string        `json:"vr_software"`  // "wivrn" or "steamlink"
+	Services    []Service     `json:"services"`     // Running services
 }
 
-// NeedsGPU returns true if this mode requires GPU access
-func (m *Mode) NeedsGPU() bool {
-	return m.GPUMode == GPUModeExclusive || m.GPUMode == GPUModeShared
-}
-
-// NeedsExclusiveGPU returns true if this mode requires exclusive GPU access
-func (m *Mode) NeedsExclusiveGPU() bool {
-	return m.GPUMode == GPUModeExclusive
+// Service represents a service running in a mode
+type Service struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // "active", "inactive", "failed"
 }
 
 // ModeStatus represents the current status of a boot mode
@@ -54,12 +45,12 @@ const (
 
 // SwitchResult contains the result of a mode switch operation
 type SwitchResult struct {
-	FromMode    string        `json:"from_mode,omitempty"`
-	ToMode      string        `json:"to_mode"`
-	Success     bool          `json:"success"`
-	Duration    time.Duration `json:"duration"`
-	IPAddresses []string      `json:"ip_addresses,omitempty"`
-	Error       string        `json:"error,omitempty"`
+	FromMode  string        `json:"from_mode,omitempty"`
+	ToMode    string        `json:"to_mode"`
+	Success   bool          `json:"success"`
+	Duration  time.Duration `json:"duration"`
+	IPAddress string        `json:"ip_address,omitempty"`
+	Error     string        `json:"error,omitempty"`
 }
 
 // SwitchOptions configures the mode switch behavior
@@ -67,10 +58,10 @@ type SwitchOptions struct {
 	// Force stops the current VM immediately instead of graceful shutdown
 	Force bool
 
-	// Timeout for graceful shutdown (default: 60s)
+	// ShutdownTimeout for graceful shutdown (default: 60s)
 	ShutdownTimeout time.Duration
 
-	// Timeout for startup (default: 120s)
+	// StartupTimeout for VM startup (default: 120s)
 	StartupTimeout time.Duration
 
 	// WaitForNetwork waits for the VM to get an IP address
@@ -91,27 +82,33 @@ func DefaultSwitchOptions() SwitchOptions {
 	}
 }
 
+// VRNodeConfig holds configuration for a VR-capable NimsForest node
+type VRNodeConfig struct {
+	// Linux VM configuration
+	Linux VMConfig `yaml:"linux"`
+
+	// Windows VM configuration
+	Windows VMConfig `yaml:"windows"`
+
+	// GPU PCI address for passthrough (e.g., "0000:01:00")
+	GPUPCI string `yaml:"gpu_pci"`
+}
+
+// VMConfig holds configuration for a single VM
+type VMConfig struct {
+	VMID     int    `yaml:"vmid"`
+	Name     string `yaml:"name"`
+	Memory   int    `yaml:"memory"`    // MB
+	Cores    int    `yaml:"cores"`
+	DiskSize int    `yaml:"disk_size"` // GB
+}
+
 // ModeInfo contains detailed information about a mode
 type ModeInfo struct {
 	Mode
-	CPUUsage    float64     `json:"cpu_usage,omitempty"`
-	MemoryUsage float64     `json:"memory_usage,omitempty"`
-	MemoryTotal int64       `json:"memory_total,omitempty"`
-	GPUDevices  []GPUDevice `json:"gpu_devices,omitempty"`
-}
-
-// ConflictInfo describes a mode conflict
-type ConflictInfo struct {
-	TargetMode      string   `json:"target_mode"`
-	ConflictingMode string   `json:"conflicting_mode"`
-	Reason          string   `json:"reason"`
-	Alternatives    []string `json:"alternatives,omitempty"`
-}
-
-// GPUDevice represents a GPU passed through to a VM
-type GPUDevice struct {
-	Address     string `json:"address"`     // PCI address (e.g., "0000:01:00.0")
-	Vendor      string `json:"vendor"`      // e.g., "NVIDIA"
-	Model       string `json:"model"`       // e.g., "RTX 4090"
-	VRAMBytes   int64  `json:"vram_bytes"`
+	CPUUsage    float64 `json:"cpu_usage"`
+	MemoryUsage float64 `json:"memory_usage"`
+	MemoryTotal int64   `json:"memory_total"`
+	GPUName     string  `json:"gpu_name"`
+	GPUUsage    float64 `json:"gpu_usage,omitempty"`
 }

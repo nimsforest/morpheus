@@ -1,85 +1,82 @@
-# Proxmox Remote Boot Modes Setup Guide
+# NimsForest VR - Proxmox Setup Guide
 
-This guide walks you through setting up Proxmox VE for remote boot mode switching with Morpheus. This enables you to remotely switch a physical machine between different workloads:
+This guide sets up a **VR-capable NimsForest node** on Proxmox with:
 
-- **linuxvrstreaming**: Linux VR streaming workstation (e.g., CachyOS + WiVRN) - exclusive GPU
-- **windowsvrstreaming**: Windows VR streaming workstation - exclusive GPU
-- **nimsforestnogpu**: NimsForest distributed compute without GPU
-- **nimsforestsharedgpu**: NimsForest with GPU compute - cannot combine with VR streaming
+- **Linux mode**: CachyOS + WiVRN for wireless VR streaming
+- **Windows mode**: Windows + SteamLink for SteamVR ecosystem
+- **NimsForest** runs inside both modes (monolith architecture)
 
-## Prerequisites
-
-- A machine with Proxmox VE 7.x or 8.x installed
-- A dedicated GPU for passthrough (NVIDIA or AMD)
-- Network access to the Proxmox API (local, VPN, or Tailscale)
-- CPU with IOMMU support (Intel VT-d or AMD-Vi)
-
-## How It Works
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Your Phone / Laptop                          │
+│                          morpheus CLI                            │
 │                                                                  │
-│   $ morpheus mode switch windowsvrstreaming                      │
+│   morpheus plant nimsforest vr      # Initial setup              │
+│   morpheus mode linux               # Switch to CachyOS          │
+│   morpheus mode windows             # Switch to Windows          │
 │                                                                  │
 └───────────────────────────┬──────────────────────────────────────┘
-                            │ HTTPS (Proxmox API)
-                            │ via local network / VPN / Tailscale
+                            │ Proxmox API
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Proxmox VE Host                              │
-│                   (always running)                               │
 │                                                                  │
-│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────┐  │
-│  │ VM 101         │  │ VM 102           │  │ VM 103          │  │
-│  │linuxvrstreaming│  │windowsvrstreaming│  │nimsforestnogpu  │  │
-│  │ [GPU exclusive]│  │ [GPU exclusive]  │  │ [no GPU]        │  │
-│  │    STOPPED     │  │    RUNNING       │  │    STOPPED      │  │
-│  └────────────────┘  └──────────────────┘  └─────────────────┘  │
-│                             ▲                                    │
-│                             │                                    │
-│               GPU: NVIDIA RTX (exclusive to Windows VR)          │
+│  ┌──────────────────────┐  OR  ┌──────────────────────┐         │
+│  │  Linux VM (CachyOS)  │      │   Windows VM         │         │
+│  │                      │      │                      │         │
+│  │  • WiVRN (VR)        │      │  • SteamLink (VR)    │         │
+│  │  • NimsForest        │      │  • NimsForest        │         │
+│  │  • NATS cluster      │      │  • NATS cluster      │         │
+│  │  • GPU passthrough   │      │  • GPU passthrough   │         │
+│  └──────────────────────┘      └──────────────────────┘         │
+│                                                                  │
+│  ⚠️  Only ONE VM runs at a time (GPU exclusive)                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key constraint**: Only ONE VM can have the GPU at a time. Switching modes takes ~10-30 seconds because the current VM must fully stop before another can claim the GPU.
+## Prerequisites
+
+- Proxmox VE 7.x or 8.x installed
+- A dedicated GPU for passthrough (NVIDIA or AMD)
+- CPU with IOMMU support (Intel VT-d or AMD-Vi)
+- Network access to Proxmox API
 
 ## Step 1: Enable IOMMU
 
-### For Intel CPUs
+### Intel CPUs
 
 Edit `/etc/default/grub`:
 ```bash
 GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"
 ```
 
-### For AMD CPUs
+### AMD CPUs
 
-Edit `/etc/default/grub`:
 ```bash
 GRUB_CMDLINE_LINUX_DEFAULT="quiet amd_iommu=on iommu=pt"
 ```
 
-Apply changes:
+Apply and reboot:
 ```bash
 update-grub
 reboot
 ```
 
-Verify IOMMU is enabled:
+Verify:
 ```bash
 dmesg | grep -e DMAR -e IOMMU
 ```
 
 ## Step 2: Identify GPU for Passthrough
 
-Find your GPU's PCI address:
+Find your GPU:
 ```bash
 lspci -nn | grep -i vga
-# Example output: 01:00.0 VGA compatible controller [0300]: NVIDIA Corporation ... [10de:2684]
+# Example: 01:00.0 VGA compatible controller [0300]: NVIDIA Corporation ... [10de:2684]
 ```
 
-Find the IOMMU group:
+Find IOMMU group:
 ```bash
 #!/bin/bash
 for d in /sys/kernel/iommu_groups/*/devices/*; do
@@ -87,8 +84,6 @@ for d in /sys/kernel/iommu_groups/*/devices/*; do
     echo "IOMMU Group $n: $(lspci -nns ${d##*/})"
 done
 ```
-
-Note: All devices in the same IOMMU group must be passed through together.
 
 ## Step 3: Blacklist GPU Driver on Host
 
@@ -117,286 +112,289 @@ update-initramfs -u -k all
 reboot
 ```
 
-Verify GPU is using vfio-pci:
+Verify:
 ```bash
 lspci -nnk -s 01:00
 # Should show: Kernel driver in use: vfio-pci
 ```
 
-## Step 4: Create VMs
-
-### Linux VR Streaming VM (ID 101)
+## Step 4: Create Linux VM (CachyOS)
 
 ```bash
 # Create VM
-qm create 101 --name linuxvrstreaming --memory 32768 --cores 12 \
+qm create 101 --name nimsforest-vr-linux --memory 32768 --cores 12 \
   --cpu host,hidden=1 --machine q35 --bios ovmf \
   --net0 virtio,bridge=vmbr0
 
 # Add EFI disk
 qm set 101 --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=0
 
-# Add main disk (adjust storage as needed)
+# Add main disk
 qm set 101 --scsi0 local-lvm:100,ssd=1,discard=on
 
-# Add GPU passthrough (exclusive)
+# Add GPU passthrough
 qm set 101 --hostpci0 01:00,pcie=1,x-vga=1
 
-# Add USB controller for peripherals (optional)
+# Optional: USB controller for VR headset
 qm set 101 --hostpci1 00:14.0,pcie=1
 ```
 
-Install CachyOS (or your preferred Linux distro) from ISO, then install WiVRN.
+### Install CachyOS
 
-### Windows VR Streaming VM (ID 102)
+1. Download CachyOS ISO from https://cachyos.org/
+2. Boot VM from ISO
+3. Install with Desktop environment (KDE recommended for VR)
+4. Reboot and install GPU drivers
+
+### Install WiVRN
+
+```bash
+# On CachyOS (Arch-based)
+yay -S wivrn-git
+
+# Enable and start
+systemctl --user enable wivrn
+systemctl --user start wivrn
+```
+
+### Install NimsForest
+
+```bash
+# Download latest release
+curl -LO https://github.com/nimsforest/nimsforest/releases/latest/download/nimsforest-linux-amd64
+chmod +x nimsforest-linux-amd64
+sudo mv nimsforest-linux-amd64 /usr/local/bin/nimsforest
+
+# Create systemd service
+sudo tee /etc/systemd/system/nimsforest.service << 'EOF'
+[Unit]
+Description=NimsForest Node
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nimsforest run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable --now nimsforest
+```
+
+## Step 5: Create Windows VM
 
 ```bash
 # Create VM
-qm create 102 --name windowsvrstreaming --memory 32768 --cores 12 \
+qm create 102 --name nimsforest-vr-windows --memory 32768 --cores 12 \
   --cpu host,hidden=1 --machine q35 --bios ovmf \
   --net0 virtio,bridge=vmbr0
 
 # Add EFI disk
 qm set 102 --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=0
 
-# Add main disk
+# Add main disk (Windows needs more space)
 qm set 102 --scsi0 local-lvm:200,ssd=1,discard=on
 
-# Add GPU passthrough (exclusive - same GPU, different VM)
+# Add GPU passthrough (same GPU)
 qm set 102 --hostpci0 01:00,pcie=1,x-vga=1
 
-# Add virtio drivers ISO for Windows
+# Add VirtIO drivers ISO
 qm set 102 --ide2 local:iso/virtio-win.iso,media=cdrom
 ```
 
-Install Windows, then install:
-1. VirtIO drivers from the ISO
-2. NVIDIA/AMD GPU drivers
-3. QEMU Guest Agent (for IP detection)
-4. VR software (SteamVR, Virtual Desktop, etc.)
+### Install Windows
 
-### NimsForest No GPU VM (ID 103)
+1. Download Windows 10/11 ISO
+2. Download VirtIO drivers ISO from https://fedorapeople.org/groups/virt/virtio-win/
+3. Boot and install Windows
+4. Install VirtIO drivers from ISO
+5. Install QEMU Guest Agent
+6. Install GPU drivers
+7. Install Steam and SteamLink
 
-```bash
-# Create VM (no GPU passthrough)
-qm create 103 --name nimsforestnogpu --memory 16384 --cores 8 \
-  --cpu host --machine q35 \
-  --net0 virtio,bridge=vmbr0
+### Install NimsForest on Windows
 
-# Add main disk
-qm set 103 --scsi0 local-lvm:50,ssd=1,discard=on
+```powershell
+# Download from GitHub releases
+Invoke-WebRequest -Uri "https://github.com/nimsforest/nimsforest/releases/latest/download/nimsforest-windows-amd64.exe" -OutFile "nimsforest.exe"
+
+# Run as service (use NSSM or similar)
 ```
 
-Install Ubuntu 24.04 for NimsForest distributed compute.
-
-### NimsForest Shared GPU VM (ID 104) - Optional
+## Step 6: Create Proxmox API Token
 
 ```bash
-# Create VM (with GPU for compute workloads)
-qm create 104 --name nimsforestsharedgpu --memory 24576 --cores 10 \
-  --cpu host --machine q35 \
-  --net0 virtio,bridge=vmbr0
-
-# Add main disk
-qm set 104 --scsi0 local-lvm:80,ssd=1,discard=on
-
-# Add GPU passthrough (shared mode - can't run with VR streaming)
-qm set 104 --hostpci0 01:00,pcie=1
-```
-
-Install Ubuntu 24.04 with CUDA/ROCm for GPU compute workloads.
-
-**Note:** `nimsforestsharedgpu` cannot run alongside `linuxvrstreaming` or `windowsvrstreaming` because they all need the GPU.
-
-## Step 5: Create Proxmox API Token
-
-```bash
-# Create user (if not using root)
 pveum user add morpheus@pam --comment "Morpheus automation"
-
-# Grant VM admin permissions
 pveum aclmod / -user morpheus@pam -role PVEVMAdmin
-
-# Create API token (SAVE THE SECRET!)
 pveum user token add morpheus@pam morpheus-token --privsep=0
 ```
 
-Output will look like:
-```
-┌──────────────┬──────────────────────────────────────────────────┐
-│ key          │ value                                            │
-╞══════════════╪══════════════════════════════════════════════════╡
-│ full-tokenid │ morpheus@pam!morpheus-token                      │
-├──────────────┼──────────────────────────────────────────────────┤
-│ info         │ {"privsep":"0"}                                  │
-├──────────────┼──────────────────────────────────────────────────┤
-│ value        │ xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx             │
-└──────────────┴──────────────────────────────────────────────────┘
-```
+**Save the token value!**
 
-**Save the token value!** You won't be able to see it again.
+## Step 7: Configure Morpheus
 
-## Step 6: Configure Morpheus
-
-Add to your `~/.morpheus/config.yaml`:
+Add to `~/.morpheus/config.yaml`:
 
 ```yaml
 proxmox:
-  host: "192.168.1.100"           # Your Proxmox IP
+  host: "192.168.1.100"
   port: 8006
-  node: "pve"                      # Proxmox node name
-  
-  # API token (from Step 5)
+  node: "pve"
   api_token_id: "morpheus@pam!morpheus-token"
-  api_token_secret: "${PROXMOX_API_TOKEN}"  # Set via environment
-  
-  # Self-signed certs are common in home labs
+  api_token_secret: "${PROXMOX_API_TOKEN}"
   verify_ssl: false
-  
-  # Boot modes
-  modes:
-    linuxvrstreaming:
-      vmid: 101
-      description: "Linux VR streaming (CachyOS + WiVRN)"
-      gpu_mode: exclusive
-      
-    windowsvrstreaming:
-      vmid: 102
-      description: "Windows VR streaming"
-      gpu_mode: exclusive
-      
-    nimsforestnogpu:
-      vmid: 103
-      description: "NimsForest distributed compute (no GPU)"
-      gpu_mode: none
-      
-    nimsforestsharedgpu:
-      vmid: 104
-      description: "NimsForest with GPU compute"
-      gpu_mode: shared
-      conflicts_with:
-        - linuxvrstreaming
-        - windowsvrstreaming
+
+vr:
+  linux:
+    vmid: 101
+    name: "nimsforest-vr-linux"
+    memory: 32768
+    cores: 12
+    disk_size: 100
+    
+  windows:
+    vmid: 102
+    name: "nimsforest-vr-windows"
+    memory: 32768
+    cores: 12
+    disk_size: 200
+    
+  gpu_pci: "0000:01:00"
+
+nimsforest:
+  cluster_id: "forest-abc123"
 ```
 
-Set the API token:
+Set the token:
 ```bash
-export PROXMOX_API_TOKEN="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+export PROXMOX_API_TOKEN="your-token-value"
 ```
 
-## Step 7: Use Morpheus
+## Step 8: Use Morpheus
 
 ```bash
-# List available modes
-morpheus mode list
-
-# Check current status
+# Check current mode
 morpheus mode status
 
-# Switch to Windows VR streaming
-morpheus mode switch windowsvrstreaming
+# Switch to Linux for WiVRN VR
+morpheus mode linux
 
-# Switch to Linux VR streaming
-morpheus mode switch linuxvrstreaming
+# Switch to Windows for SteamVR
+morpheus mode windows
 
-# Switch to NimsForest (no GPU)
-morpheus mode switch nimsforestnogpu
-
-# Switch to NimsForest with GPU (only if VR streaming is not running)
-morpheus mode switch nimsforestsharedgpu
+# List modes
+morpheus mode list
 ```
 
-## Remote Access Options
+## Usage Examples
+
+### Switch to Linux for Wireless VR
+
+```bash
+$ morpheus mode linux
+
+Switching windows → linux...
+  Stopping windows VM... ✓ (15s)
+  Starting linux VM... ✓ (8s)
+  Waiting for network... ✓
+
+✅ Now in linux mode
+   IP: 192.168.1.150
+   Services: WiVRN, NimsForest, NATS
+```
+
+### Check Status
+
+```bash
+$ morpheus mode status
+
+🎮 Current Mode: linux
+   VM: nimsforest-vr-linux (101)
+   Status: running
+   Uptime: 2h 34m
+   IP: 192.168.1.150
+   GPU: NVIDIA RTX 4090
+   
+   Services:
+     • wivrn: active
+     • nimsforest: active  
+     • nats: active (cluster: forest-abc123)
+```
+
+### List All Modes
+
+```bash
+$ morpheus mode list
+
+MODE      VMID   STATUS    OS        VR SOFTWARE
+linux     101    running   CachyOS   WiVRN
+windows   102    stopped   Win11     SteamLink
+```
+
+## Remote Access
 
 ### Option A: Tailscale (Recommended)
 
-Install Tailscale on your Proxmox host:
 ```bash
+# On Proxmox host
 curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up
 ```
 
-Now you can access Proxmox from anywhere via Tailscale IP.
+Now access from anywhere via Tailscale IP.
 
 ### Option B: WireGuard VPN
 
-Set up WireGuard on your router or a dedicated server.
-
-### Option C: Port Forwarding (Not Recommended)
-
-If you must expose Proxmox to the internet:
-1. Use a strong password and API token
-2. Enable 2FA on Proxmox
-3. Consider using Cloudflare Tunnel instead
+Set up WireGuard on your router.
 
 ## Troubleshooting
 
-### GPU Not Detected in VM
+### GPU Not Detected
 
-1. Verify IOMMU is enabled: `dmesg | grep -e DMAR -e IOMMU`
-2. Check GPU is using vfio-pci: `lspci -nnk -s 01:00`
-3. Ensure `cpu: host,hidden=1` is set in VM config
+1. Verify IOMMU: `dmesg | grep -e DMAR -e IOMMU`
+2. Check vfio-pci binding: `lspci -nnk -s 01:00`
+3. Ensure `cpu: host,hidden=1` in VM config
 
-### VM Won't Start - GPU In Use
+### VM Won't Start
 
-Only ONE VM can use the GPU. Stop any running GPU VM first:
+Only ONE VM can have the GPU at a time. Stop the other VM first:
 ```bash
-morpheus mode switch <other-mode>
+morpheus mode linux  # This stops windows first
 ```
 
-### Connection Refused
+### WiVRN Not Working
 
-1. Check Proxmox is running: `systemctl status pveproxy`
-2. Verify firewall allows port 8006
-3. Test API access: `curl -k https://192.168.1.100:8006/api2/json`
+1. Check service: `systemctl --user status wivrn`
+2. Ensure VR headset is connected
+3. Check firewall allows UDP ports
 
-### QEMU Guest Agent Not Working
+### NimsForest Not Connecting
 
-Install in each VM:
+1. Check service: `systemctl status nimsforest`
+2. Verify network connectivity
+3. Check NATS cluster configuration
 
-**Linux:**
-```bash
-apt install qemu-guest-agent
-systemctl enable --now qemu-guest-agent
-```
+## What Each Mode Provides
 
-**Windows:**
-Install from the virtio-win ISO: `guest-agent/qemu-ga-x86_64.msi`
+### Linux Mode (CachyOS)
+- **VR**: WiVRN for wireless Quest/Pico streaming
+- **Desktop**: KDE Plasma with GPU acceleration
+- **Compute**: Full CUDA/ROCm support for NimsForest workloads
+- **Drivers**: Latest NVIDIA/AMD from Arch repos
 
-## Performance Tips
+### Windows Mode
+- **VR**: SteamLink, Virtual Desktop, native SteamVR
+- **Gaming**: Native Windows game support
+- **Compute**: CUDA support for NimsForest workloads
+- **Compatibility**: Windows-only VR apps
 
-### For VR (CachyOS + WiVRN)
+## Why This Architecture?
 
-1. Pin CPU cores to the VM for consistent performance
-2. Use hugepages for memory
-3. Disable CPU power saving in BIOS
-4. Use a wired network connection for low latency
-
-### For Gaming (Windows)
-
-1. Install GPU drivers in Safe Mode first
-2. Use Looking Glass for local display
-3. Consider CPU pinning for consistent frame times
-
-### VM Config Optimizations
-
-```conf
-# /etc/pve/qemu-server/101.conf
-cpu: host,hidden=1,flags=+pcid
-args: -cpu host,kvm=off,hv_vendor_id=proxmox
-machine: q35
-balloon: 0
-```
-
-## Security Notes
-
-1. **Never expose Proxmox directly to the internet** - use VPN or Tailscale
-2. **Use API tokens instead of passwords** - tokens can be revoked individually
-3. **Enable 2FA on Proxmox web UI** - even if using API tokens
-4. **Keep Proxmox updated** - security patches are important
-
-## Next Steps
-
-- Set up scheduled mode switching (e.g., Windows at night for game updates)
-- Integrate with Home Assistant for voice control
-- Configure Wake-on-LAN for remote host power control
+1. **Monolith = Simple**: One machine, two boot options, no parallel VM complexity
+2. **Full GPU**: Each mode gets exclusive GPU (required for VR)
+3. **NimsForest Always**: Both modes participate in the distributed cluster
+4. **Best of Both**: Open-source VR (WiVRN) + SteamVR ecosystem
+5. **Remote Control**: Switch modes from your phone

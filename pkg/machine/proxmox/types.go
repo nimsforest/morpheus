@@ -1,5 +1,5 @@
 // Package proxmox provides a machine provider for Proxmox VE hypervisors.
-// It enables remote management of VMs for boot mode switching scenarios.
+// It enables remote management of VMs for NimsForest VR nodes.
 package proxmox
 
 import "time"
@@ -16,24 +16,24 @@ const (
 
 // VM represents a Proxmox virtual machine
 type VM struct {
-	VMID        int               `json:"vmid"`
-	Name        string            `json:"name"`
-	Status      VMStatus          `json:"status"`
-	Node        string            `json:"node"`
-	Memory      int64             `json:"maxmem"`      // Maximum memory in bytes
-	MemoryUsed  int64             `json:"mem"`         // Used memory in bytes
-	CPUs        int               `json:"cpus"`        // Number of CPUs
-	CPUUsage    float64           `json:"cpu"`         // CPU usage (0.0-1.0)
-	Uptime      int64             `json:"uptime"`      // Uptime in seconds
-	NetIn       int64             `json:"netin"`       // Network bytes in
-	NetOut      int64             `json:"netout"`      // Network bytes out
-	DiskRead    int64             `json:"diskread"`    // Disk bytes read
-	DiskWrite   int64             `json:"diskwrite"`   // Disk bytes written
-	Template    bool              `json:"template"`    // Is this a template?
-	Tags        string            `json:"tags"`        // Comma-separated tags
-	Description string            `json:"description"` // VM description
-	Config      *VMConfig         `json:"-"`           // Full VM configuration (loaded separately)
-	IPs         []string          `json:"-"`           // IP addresses (from QEMU agent)
+	VMID        int      `json:"vmid"`
+	Name        string   `json:"name"`
+	Status      VMStatus `json:"status"`
+	Node        string   `json:"node"`
+	Memory      int64    `json:"maxmem"`   // Maximum memory in bytes
+	MemoryUsed  int64    `json:"mem"`      // Used memory in bytes
+	CPUs        int      `json:"cpus"`     // Number of CPUs
+	CPUUsage    float64  `json:"cpu"`      // CPU usage (0.0-1.0)
+	Uptime      int64    `json:"uptime"`   // Uptime in seconds
+	NetIn       int64    `json:"netin"`    // Network bytes in
+	NetOut      int64    `json:"netout"`   // Network bytes out
+	DiskRead    int64    `json:"diskread"` // Disk bytes read
+	DiskWrite   int64    `json:"diskwrite"`
+	Template    bool     `json:"template"`
+	Tags        string   `json:"tags"`
+	Description string   `json:"description"`
+	Config      *VMConfig
+	IPs         []string // IP addresses (from QEMU agent)
 }
 
 // VMConfig represents the full configuration of a VM
@@ -48,18 +48,18 @@ type VMConfig struct {
 	Boot        string   `json:"boot"`
 	OSType      string   `json:"ostype"`
 	Description string   `json:"description"`
-	HostPCI     []string `json:"-"` // PCI passthrough devices (hostpci0, hostpci1, etc.)
+	HostPCI     []string // PCI passthrough devices
 }
 
 // Node represents a Proxmox cluster node
 type Node struct {
 	Node           string  `json:"node"`
-	Status         string  `json:"status"` // "online" or "offline"
-	CPU            float64 `json:"cpu"`    // CPU usage (0.0-1.0)
+	Status         string  `json:"status"`
+	CPU            float64 `json:"cpu"`
 	MaxCPU         int     `json:"maxcpu"`
-	Memory         int64   `json:"mem"`    // Used memory
-	MaxMemory      int64   `json:"maxmem"` // Total memory
-	Disk           int64   `json:"disk"`   // Used disk
+	Memory         int64   `json:"mem"`
+	MaxMemory      int64   `json:"maxmem"`
+	Disk           int64   `json:"disk"`
 	MaxDisk        int64   `json:"maxdisk"`
 	Uptime         int64   `json:"uptime"`
 	SSLFingerprint string  `json:"ssl_fingerprint"`
@@ -87,65 +87,15 @@ func (t *TaskStatus) IsSuccessful() bool {
 	return t.Status == "stopped" && t.ExitStatus == "OK"
 }
 
-// GPUMode represents how a boot mode uses the GPU
-type GPUMode string
-
-const (
-	// GPUModeExclusive means the VM needs exclusive GPU access (e.g., VR streaming)
-	GPUModeExclusive GPUMode = "exclusive"
-	// GPUModeShared means the VM uses GPU but can potentially share (e.g., compute workloads)
-	GPUModeShared GPUMode = "shared"
-	// GPUModeNone means the VM doesn't need GPU access
-	GPUModeNone GPUMode = "none"
-)
-
-// BootMode represents a configured boot mode
-type BootMode struct {
-	Name          string   `json:"name"`
-	VMID          int      `json:"vmid"`
-	Description   string   `json:"description"`
-	GPUMode       GPUMode  `json:"gpu_mode"`
-	ConflictsWith []string `json:"conflicts_with,omitempty"`
-}
-
-// NeedsGPU returns true if this mode requires GPU access
-func (m *BootMode) NeedsGPU() bool {
-	return m.GPUMode == GPUModeExclusive || m.GPUMode == GPUModeShared
-}
-
-// NeedsExclusiveGPU returns true if this mode requires exclusive GPU access
-func (m *BootMode) NeedsExclusiveGPU() bool {
-	return m.GPUMode == GPUModeExclusive
-}
-
-// ConflictsWithMode checks if this mode conflicts with another mode
-func (m *BootMode) ConflictsWithMode(other string) bool {
-	for _, conflict := range m.ConflictsWith {
-		if conflict == other {
-			return true
-		}
-	}
-	return false
-}
-
 // ProviderConfig holds Proxmox provider configuration
 type ProviderConfig struct {
-	Host           string              `yaml:"host"`
-	Port           int                 `yaml:"port"`
-	Node           string              `yaml:"node"`
-	APITokenID     string              `yaml:"api_token_id"`
-	APITokenSecret string              `yaml:"api_token_secret"`
-	VerifySSL      bool                `yaml:"verify_ssl"`
-	Timeout        time.Duration       `yaml:"timeout"`
-	Modes          map[string]ModeSpec `yaml:"modes"`
-}
-
-// ModeSpec defines a boot mode in configuration
-type ModeSpec struct {
-	VMID          int      `yaml:"vmid"`
-	Description   string   `yaml:"description"`
-	GPUMode       GPUMode  `yaml:"gpu_mode"`
-	ConflictsWith []string `yaml:"conflicts_with,omitempty"`
+	Host           string        `yaml:"host"`
+	Port           int           `yaml:"port"`
+	Node           string        `yaml:"node"`
+	APITokenID     string        `yaml:"api_token_id"`
+	APITokenSecret string        `yaml:"api_token_secret"`
+	VerifySSL      bool          `yaml:"verify_ssl"`
+	Timeout        time.Duration `yaml:"timeout"`
 }
 
 // DefaultConfig returns a ProviderConfig with sensible defaults
@@ -155,6 +105,5 @@ func DefaultConfig() ProviderConfig {
 		Node:      "pve",
 		VerifySSL: false, // Common in home labs with self-signed certs
 		Timeout:   30 * time.Second,
-		Modes:     make(map[string]ModeSpec),
 	}
 }

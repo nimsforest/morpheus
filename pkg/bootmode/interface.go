@@ -3,57 +3,27 @@ package bootmode
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
-// Manager defines the interface for boot mode management
+// Manager defines the interface for boot mode management on VR nodes
 type Manager interface {
-	// ListModes returns all available boot modes
+	// ListModes returns all available boot modes (linux, windows)
 	ListModes(ctx context.Context) ([]Mode, error)
 
-	// GetMode returns a specific mode by name
+	// GetMode returns a specific mode by name ("linux" or "windows")
 	GetMode(ctx context.Context, name string) (*Mode, error)
 
-	// GetCurrentMode returns the currently active mode, or nil if none
+	// GetCurrentMode returns the currently running mode, or nil if none
 	GetCurrentMode(ctx context.Context) (*Mode, error)
 
-	// CheckConflicts checks if switching to a target mode would conflict with running modes
-	CheckConflicts(ctx context.Context, targetMode string) ([]ConflictInfo, error)
-
 	// Switch changes from the current mode to the target mode
-	// Returns the previous mode (if any) and any error
 	Switch(ctx context.Context, targetMode string, opts SwitchOptions) (*SwitchResult, error)
 
 	// GetModeInfo returns detailed information about a mode
 	GetModeInfo(ctx context.Context, name string) (*ModeInfo, error)
 
-	// Ping checks if the boot mode provider is reachable
+	// Ping checks if the Proxmox host is reachable
 	Ping(ctx context.Context) error
-}
-
-// ModeConflictError is returned when mode conflicts are detected
-type ModeConflictError struct {
-	TargetMode  string
-	Conflicts   []ConflictInfo
-}
-
-func (e *ModeConflictError) Error() string {
-	var names []string
-	for _, c := range e.Conflicts {
-		names = append(names, c.ConflictingMode)
-	}
-	return fmt.Sprintf("cannot switch to %s: conflicts with %s", e.TargetMode, strings.Join(names, ", "))
-}
-
-// GPUConflictError is returned when a GPU passthrough conflict is detected
-type GPUConflictError struct {
-	RunningMode string
-	TargetMode  string
-	Message     string
-}
-
-func (e *GPUConflictError) Error() string {
-	return e.Message
 }
 
 // ModeNotFoundError is returned when a requested mode doesn't exist
@@ -62,7 +32,7 @@ type ModeNotFoundError struct {
 }
 
 func (e *ModeNotFoundError) Error() string {
-	return "boot mode not found: " + e.Mode
+	return fmt.Sprintf("mode not found: %s (valid modes: linux, windows)", e.Mode)
 }
 
 // AlreadyActiveError is returned when trying to switch to the already active mode
@@ -71,5 +41,19 @@ type AlreadyActiveError struct {
 }
 
 func (e *AlreadyActiveError) Error() string {
-	return "mode already active: " + e.Mode
+	return fmt.Sprintf("already in %s mode", e.Mode)
+}
+
+// SwitchError is returned when mode switching fails
+type SwitchError struct {
+	FromMode string
+	ToMode   string
+	Reason   string
+}
+
+func (e *SwitchError) Error() string {
+	if e.FromMode == "" {
+		return fmt.Sprintf("failed to switch to %s: %s", e.ToMode, e.Reason)
+	}
+	return fmt.Sprintf("failed to switch from %s to %s: %s", e.FromMode, e.ToMode, e.Reason)
 }

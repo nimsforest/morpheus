@@ -29,54 +29,50 @@ func TestDefaultSwitchOptions(t *testing.T) {
 	}
 }
 
-func TestGPUConflictError(t *testing.T) {
-	err := &GPUConflictError{
-		RunningMode: "linuxvrstreaming",
-		TargetMode:  "windowsvrstreaming",
-		Message:     "GPU already in use by linuxvrstreaming",
-	}
-
-	expected := "GPU already in use by linuxvrstreaming"
-	if err.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, err.Error())
-	}
-}
-
-func TestModeConflictError(t *testing.T) {
-	err := &ModeConflictError{
-		TargetMode: "nimsforestsharedgpu",
-		Conflicts: []ConflictInfo{
-			{ConflictingMode: "linuxvrstreaming"},
-			{ConflictingMode: "windowsvrstreaming"},
-		},
-	}
-
-	result := err.Error()
-	if result != "cannot switch to nimsforestsharedgpu: conflicts with linuxvrstreaming, windowsvrstreaming" {
-		t.Errorf("unexpected error message: %s", result)
-	}
-}
-
 func TestModeNotFoundError(t *testing.T) {
-	err := &ModeNotFoundError{Mode: "nonexistent"}
+	err := &ModeNotFoundError{Mode: "macos"}
 
-	expected := "boot mode not found: nonexistent"
+	expected := "mode not found: macos (valid modes: linux, windows)"
 	if err.Error() != expected {
 		t.Errorf("expected %q, got %q", expected, err.Error())
 	}
 }
 
 func TestAlreadyActiveError(t *testing.T) {
-	err := &AlreadyActiveError{Mode: "linuxvrstreaming"}
+	err := &AlreadyActiveError{Mode: "linux"}
 
-	expected := "mode already active: linuxvrstreaming"
+	expected := "already in linux mode"
 	if err.Error() != expected {
 		t.Errorf("expected %q, got %q", expected, err.Error())
 	}
 }
 
+func TestSwitchError(t *testing.T) {
+	// With from mode
+	err := &SwitchError{
+		FromMode: "linux",
+		ToMode:   "windows",
+		Reason:   "VM failed to start",
+	}
+
+	expected := "failed to switch from linux to windows: VM failed to start"
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
+
+	// Without from mode
+	err2 := &SwitchError{
+		ToMode: "windows",
+		Reason: "VM not found",
+	}
+
+	expected2 := "failed to switch to windows: VM not found"
+	if err2.Error() != expected2 {
+		t.Errorf("expected %q, got %q", expected2, err2.Error())
+	}
+}
+
 func TestModeStatus_Values(t *testing.T) {
-	// Ensure all status values are defined correctly
 	statuses := []ModeStatus{
 		ModeStatusRunning,
 		ModeStatusStopped,
@@ -92,150 +88,151 @@ func TestModeStatus_Values(t *testing.T) {
 	}
 }
 
-func TestGPUMode_Values(t *testing.T) {
-	// Ensure all GPU mode values are defined correctly
-	modes := []GPUMode{
-		GPUModeExclusive,
-		GPUModeShared,
-		GPUModeNone,
+func TestOSType_Values(t *testing.T) {
+	osTypes := []OSType{
+		OSTypeLinux,
+		OSTypeWindows,
 	}
 
-	for _, m := range modes {
-		if m == "" {
-			t.Error("GPU mode should not be empty")
+	expected := []string{"linux", "windows"}
+	for i, os := range osTypes {
+		if string(os) != expected[i] {
+			t.Errorf("expected %q, got %q", expected[i], os)
 		}
 	}
 }
 
 func TestSwitchResult(t *testing.T) {
 	result := &SwitchResult{
-		FromMode:    "linuxvrstreaming",
-		ToMode:      "windowsvrstreaming",
-		Success:     true,
-		Duration:    15 * time.Second,
-		IPAddresses: []string{"192.168.1.150"},
+		FromMode:  "linux",
+		ToMode:    "windows",
+		Success:   true,
+		Duration:  15 * time.Second,
+		IPAddress: "192.168.1.150",
 	}
 
 	if !result.Success {
 		t.Error("expected Success to be true")
 	}
 
-	if result.FromMode != "linuxvrstreaming" {
-		t.Errorf("expected FromMode 'linuxvrstreaming', got %s", result.FromMode)
+	if result.FromMode != "linux" {
+		t.Errorf("expected FromMode 'linux', got %s", result.FromMode)
 	}
 
-	if result.ToMode != "windowsvrstreaming" {
-		t.Errorf("expected ToMode 'windowsvrstreaming', got %s", result.ToMode)
+	if result.ToMode != "windows" {
+		t.Errorf("expected ToMode 'windows', got %s", result.ToMode)
 	}
 
-	if len(result.IPAddresses) != 1 || result.IPAddresses[0] != "192.168.1.150" {
-		t.Errorf("unexpected IPAddresses: %v", result.IPAddresses)
+	if result.IPAddress != "192.168.1.150" {
+		t.Errorf("expected IPAddress '192.168.1.150', got %s", result.IPAddress)
 	}
 }
 
 func TestMode(t *testing.T) {
 	mode := Mode{
-		Name:        "linuxvrstreaming",
-		Description: "Linux VR streaming (CachyOS + WiVRN)",
-		Provider:    "proxmox",
-		ProviderID:  "101",
-		GPUMode:     GPUModeExclusive,
+		Name:        "linux",
+		OS:          OSTypeLinux,
+		Description: "CachyOS + WiVRN",
+		VMID:        101,
 		Status:      ModeStatusRunning,
-		IPAddresses: []string{"192.168.1.150"},
+		IPAddress:   "192.168.1.150",
 		Uptime:      2 * time.Hour,
+		VRSoftware:  "wivrn",
+		Services: []Service{
+			{Name: "wivrn", Status: "active"},
+			{Name: "nimsforest", Status: "active"},
+			{Name: "nats", Status: "active"},
+		},
 	}
 
-	if mode.Name != "linuxvrstreaming" {
-		t.Errorf("expected Name 'linuxvrstreaming', got %s", mode.Name)
+	if mode.Name != "linux" {
+		t.Errorf("expected Name 'linux', got %s", mode.Name)
+	}
+
+	if mode.OS != OSTypeLinux {
+		t.Errorf("expected OS 'linux', got %s", mode.OS)
 	}
 
 	if mode.Status != ModeStatusRunning {
 		t.Errorf("expected Status 'running', got %s", mode.Status)
 	}
 
-	if mode.GPUMode != GPUModeExclusive {
-		t.Errorf("expected GPUMode 'exclusive', got %s", mode.GPUMode)
+	if mode.VRSoftware != "wivrn" {
+		t.Errorf("expected VRSoftware 'wivrn', got %s", mode.VRSoftware)
 	}
 
-	if !mode.NeedsGPU() {
-		t.Error("expected NeedsGPU() to be true")
-	}
-
-	if !mode.NeedsExclusiveGPU() {
-		t.Error("expected NeedsExclusiveGPU() to be true")
+	if len(mode.Services) != 3 {
+		t.Errorf("expected 3 services, got %d", len(mode.Services))
 	}
 }
 
-func TestMode_NeedsGPU(t *testing.T) {
-	tests := []struct {
-		gpuMode        GPUMode
-		needsGPU       bool
-		needsExclusive bool
-	}{
-		{GPUModeExclusive, true, true},
-		{GPUModeShared, true, false},
-		{GPUModeNone, false, false},
+func TestVRNodeConfig(t *testing.T) {
+	config := VRNodeConfig{
+		Linux: VMConfig{
+			VMID:     101,
+			Name:     "nimsforest-vr-linux",
+			Memory:   32768,
+			Cores:    12,
+			DiskSize: 100,
+		},
+		Windows: VMConfig{
+			VMID:     102,
+			Name:     "nimsforest-vr-windows",
+			Memory:   32768,
+			Cores:    12,
+			DiskSize: 200,
+		},
+		GPUPCI: "0000:01:00",
 	}
 
-	for _, tt := range tests {
-		mode := Mode{GPUMode: tt.gpuMode}
-		if mode.NeedsGPU() != tt.needsGPU {
-			t.Errorf("NeedsGPU() for %s: expected %v", tt.gpuMode, tt.needsGPU)
-		}
-		if mode.NeedsExclusiveGPU() != tt.needsExclusive {
-			t.Errorf("NeedsExclusiveGPU() for %s: expected %v", tt.gpuMode, tt.needsExclusive)
-		}
+	if config.Linux.VMID != 101 {
+		t.Errorf("expected Linux VMID 101, got %d", config.Linux.VMID)
+	}
+
+	if config.Windows.VMID != 102 {
+		t.Errorf("expected Windows VMID 102, got %d", config.Windows.VMID)
+	}
+
+	if config.GPUPCI != "0000:01:00" {
+		t.Errorf("expected GPUPCI '0000:01:00', got %s", config.GPUPCI)
 	}
 }
 
 func TestModeInfo(t *testing.T) {
 	info := &ModeInfo{
 		Mode: Mode{
-			Name:        "linuxvrstreaming",
-			Description: "Linux VR streaming",
-			Provider:    "proxmox",
-			ProviderID:  "101",
-			GPUMode:     GPUModeExclusive,
+			Name:        "linux",
+			OS:          OSTypeLinux,
+			Description: "CachyOS + WiVRN",
+			VMID:        101,
 			Status:      ModeStatusRunning,
 		},
 		CPUUsage:    45.5,
 		MemoryUsage: 62.3,
 		MemoryTotal: 32 * 1024 * 1024 * 1024, // 32 GB
-		GPUDevices: []GPUDevice{
-			{
-				Address: "0000:01:00.0",
-				Vendor:  "NVIDIA",
-				Model:   "RTX 4090",
-			},
-		},
+		GPUName:     "NVIDIA RTX 4090",
 	}
 
 	if info.CPUUsage != 45.5 {
 		t.Errorf("expected CPUUsage 45.5, got %f", info.CPUUsage)
 	}
 
-	if len(info.GPUDevices) != 1 {
-		t.Errorf("expected 1 GPU device, got %d", len(info.GPUDevices))
-	}
-
-	if info.GPUDevices[0].Model != "RTX 4090" {
-		t.Errorf("expected GPU model 'RTX 4090', got %s", info.GPUDevices[0].Model)
+	if info.GPUName != "NVIDIA RTX 4090" {
+		t.Errorf("expected GPUName 'NVIDIA RTX 4090', got %s", info.GPUName)
 	}
 }
 
-func TestConflictInfo(t *testing.T) {
-	conflict := ConflictInfo{
-		TargetMode:      "nimsforestsharedgpu",
-		ConflictingMode: "linuxvrstreaming",
-		Reason:          "GPU resource conflict",
-		Alternatives:    []string{"nimsforestnogpu"},
+func TestService(t *testing.T) {
+	service := Service{
+		Name:   "wivrn",
+		Status: "active",
 	}
 
-	if conflict.TargetMode != "nimsforestsharedgpu" {
-		t.Errorf("expected TargetMode 'nimsforestsharedgpu', got %s", conflict.TargetMode)
+	if service.Name != "wivrn" {
+		t.Errorf("expected Name 'wivrn', got %s", service.Name)
 	}
 
-	if len(conflict.Alternatives) != 1 || conflict.Alternatives[0] != "nimsforestnogpu" {
-		t.Errorf("unexpected Alternatives: %v", conflict.Alternatives)
+	if service.Status != "active" {
+		t.Errorf("expected Status 'active', got %s", service.Status)
 	}
 }
