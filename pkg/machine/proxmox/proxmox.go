@@ -229,7 +229,7 @@ func (p *Provider) GetVMConfig(ctx context.Context, vmid int) (*VMConfig, error)
 	return p.client.GetVMConfig(ctx, vmid)
 }
 
-// HasGPUPassthrough checks if a VM has GPU passthrough configured
+// HasGPUPassthrough checks if a VM has GPU passthrough configured (from Proxmox config)
 func (p *Provider) HasGPUPassthrough(ctx context.Context, vmid int) (bool, error) {
 	config, err := p.client.GetVMConfig(ctx, vmid)
 	if err != nil {
@@ -238,30 +238,58 @@ func (p *Provider) HasGPUPassthrough(ctx context.Context, vmid int) (bool, error
 	return len(config.HostPCI) > 0, nil
 }
 
-// GetRunningGPUVMs returns all running VMs with GPU passthrough
-func (p *Provider) GetRunningGPUVMs(ctx context.Context) ([]*VM, error) {
-	vms, err := p.client.ListVMs(ctx)
-	if err != nil {
-		return nil, err
-	}
+// GetRunningGPUModes returns all running modes that use the GPU
+func (p *Provider) GetRunningGPUModes(ctx context.Context) ([]BootMode, error) {
+	var gpuModes []BootMode
 
-	var gpuVMs []*VM
-	for _, vm := range vms {
-		if vm.Status != VMStatusRunning {
+	for name, spec := range p.config.Modes {
+		if spec.GPUMode == GPUModeNone {
 			continue
 		}
 
-		hasGPU, err := p.HasGPUPassthrough(ctx, vm.VMID)
+		vm, err := p.client.GetVM(ctx, spec.VMID)
 		if err != nil {
-			continue // Skip VMs we can't inspect
+			continue
 		}
 
-		if hasGPU {
-			gpuVMs = append(gpuVMs, vm)
+		if vm.Status == VMStatusRunning {
+			gpuModes = append(gpuModes, BootMode{
+				Name:          name,
+				VMID:          spec.VMID,
+				Description:   spec.Description,
+				GPUMode:       spec.GPUMode,
+				ConflictsWith: spec.ConflictsWith,
+			})
 		}
 	}
 
-	return gpuVMs, nil
+	return gpuModes, nil
+}
+
+// GetRunningExclusiveGPUMode returns the running mode with exclusive GPU, if any
+func (p *Provider) GetRunningExclusiveGPUMode(ctx context.Context) (*BootMode, error) {
+	for name, spec := range p.config.Modes {
+		if spec.GPUMode != GPUModeExclusive {
+			continue
+		}
+
+		vm, err := p.client.GetVM(ctx, spec.VMID)
+		if err != nil {
+			continue
+		}
+
+		if vm.Status == VMStatusRunning {
+			return &BootMode{
+				Name:          name,
+				VMID:          spec.VMID,
+				Description:   spec.Description,
+				GPUMode:       spec.GPUMode,
+				ConflictsWith: spec.ConflictsWith,
+			}, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // GetModes returns all configured boot modes
@@ -269,10 +297,11 @@ func (p *Provider) GetModes() []BootMode {
 	modes := make([]BootMode, 0, len(p.config.Modes))
 	for name, spec := range p.config.Modes {
 		modes = append(modes, BootMode{
-			Name:           name,
-			VMID:           spec.VMID,
-			Description:    spec.Description,
-			GPUPassthrough: spec.GPUPassthrough,
+			Name:          name,
+			VMID:          spec.VMID,
+			Description:   spec.Description,
+			GPUMode:       spec.GPUMode,
+			ConflictsWith: spec.ConflictsWith,
 		})
 	}
 	return modes
@@ -286,11 +315,59 @@ func (p *Provider) GetMode(name string) (*BootMode, error) {
 	}
 
 	return &BootMode{
-		Name:           name,
-		VMID:           spec.VMID,
-		Description:    spec.Description,
-		GPUPassthrough: spec.GPUPassthrough,
+		Name:          name,
+		VMID:          spec.VMID,
+		Description:   spec.Description,
+		GPUMode:       spec.GPUMode,
+		ConflictsWith: spec.ConflictsWith,
 	}, nil
+}
+
+// CheckModeConflict checks if switching to a target mode would conflict with any running mode
+func (p *Provider) CheckModeConflict(ctx context.Context, targetMode string) ([]string, error) {
+	target, err := p.GetMode(targetMode)
+	if err != nil {
+		return nil, err
+	}
+
+	var conflicts []string
+
+	// Check all modes for conflicts
+	for name, spec := range p.config.Modes {
+		if name == targetMode {
+			continue
+		}
+
+		// Check if the VM for this mode is running
+		vm, err := p.client.GetVM(ctx, spec.VMID)
+		if err != nil {
+			continue // Skip if we can't check
+		}
+
+		if vm.Status != VMStatusRunning {
+			continue // Not running, no conflict
+		}
+
+		// Check explicit conflicts
+		if target.ConflictsWithMode(name) {
+			conflicts = append(conflicts, name)
+			continue
+		}
+
+		// Check GPU conflicts: exclusive modes conflict with any other GPU mode
+		if target.NeedsExclusiveGPU() && spec.GPUMode != GPUModeNone {
+			conflicts = append(conflicts, name)
+			continue
+		}
+
+		// Check if running mode is exclusive and target needs GPU
+		runningMode := BootMode{GPUMode: spec.GPUMode}
+		if runningMode.NeedsExclusiveGPU() && target.NeedsGPU() {
+			conflicts = append(conflicts, name)
+		}
+	}
+
+	return conflicts, nil
 }
 
 // GetCurrentMode returns the currently active boot mode (running VM)
@@ -302,10 +379,11 @@ func (p *Provider) GetCurrentMode(ctx context.Context) (*BootMode, error) {
 		}
 		if vm.Status == VMStatusRunning {
 			return &BootMode{
-				Name:           name,
-				VMID:           spec.VMID,
-				Description:    spec.Description,
-				GPUPassthrough: spec.GPUPassthrough,
+				Name:          name,
+				VMID:          spec.VMID,
+				Description:   spec.Description,
+				GPUMode:       spec.GPUMode,
+				ConflictsWith: spec.ConflictsWith,
 			}, nil
 		}
 	}

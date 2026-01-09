@@ -116,20 +116,26 @@ func TestProvider_GetModes(t *testing.T) {
 		APITokenID:     "user@pam!token",
 		APITokenSecret: "secret",
 		Modes: map[string]ModeSpec{
-			"cachyos": {
-				VMID:           101,
-				Description:    "CachyOS with WiVRN",
-				GPUPassthrough: true,
+			"linuxvrstreaming": {
+				VMID:        101,
+				Description: "Linux VR streaming",
+				GPUMode:     GPUModeExclusive,
 			},
-			"windows": {
-				VMID:           102,
-				Description:    "Windows Pro",
-				GPUPassthrough: true,
+			"windowsvrstreaming": {
+				VMID:        102,
+				Description: "Windows VR streaming",
+				GPUMode:     GPUModeExclusive,
 			},
-			"nimsforest": {
-				VMID:           103,
-				Description:    "NimsForest",
-				GPUPassthrough: false,
+			"nimsforestnogpu": {
+				VMID:        103,
+				Description: "NimsForest without GPU",
+				GPUMode:     GPUModeNone,
+			},
+			"nimsforestsharedgpu": {
+				VMID:          104,
+				Description:   "NimsForest with shared GPU",
+				GPUMode:       GPUModeShared,
+				ConflictsWith: []string{"linuxvrstreaming", "windowsvrstreaming"},
 			},
 		},
 	}
@@ -140,8 +146,8 @@ func TestProvider_GetModes(t *testing.T) {
 	}
 
 	modes := provider.GetModes()
-	if len(modes) != 3 {
-		t.Errorf("expected 3 modes, got %d", len(modes))
+	if len(modes) != 4 {
+		t.Errorf("expected 4 modes, got %d", len(modes))
 	}
 
 	// Check that all modes are present
@@ -150,7 +156,7 @@ func TestProvider_GetModes(t *testing.T) {
 		modeNames[m.Name] = true
 	}
 
-	for _, name := range []string{"cachyos", "windows", "nimsforest"} {
+	for _, name := range []string{"linuxvrstreaming", "windowsvrstreaming", "nimsforestnogpu", "nimsforestsharedgpu"} {
 		if !modeNames[name] {
 			t.Errorf("missing mode: %s", name)
 		}
@@ -163,10 +169,10 @@ func TestProvider_GetMode(t *testing.T) {
 		APITokenID:     "user@pam!token",
 		APITokenSecret: "secret",
 		Modes: map[string]ModeSpec{
-			"cachyos": {
-				VMID:           101,
-				Description:    "CachyOS with WiVRN",
-				GPUPassthrough: true,
+			"linuxvrstreaming": {
+				VMID:        101,
+				Description: "Linux VR streaming",
+				GPUMode:     GPUModeExclusive,
 			},
 		},
 	}
@@ -177,26 +183,71 @@ func TestProvider_GetMode(t *testing.T) {
 	}
 
 	// Test existing mode
-	mode, err := provider.GetMode("cachyos")
+	mode, err := provider.GetMode("linuxvrstreaming")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if mode.Name != "cachyos" {
-		t.Errorf("expected name 'cachyos', got %s", mode.Name)
+	if mode.Name != "linuxvrstreaming" {
+		t.Errorf("expected name 'linuxvrstreaming', got %s", mode.Name)
 	}
 
 	if mode.VMID != 101 {
 		t.Errorf("expected VMID 101, got %d", mode.VMID)
 	}
 
-	if !mode.GPUPassthrough {
-		t.Error("expected GPUPassthrough to be true")
+	if mode.GPUMode != GPUModeExclusive {
+		t.Errorf("expected GPUMode 'exclusive', got %s", mode.GPUMode)
+	}
+
+	if !mode.NeedsExclusiveGPU() {
+		t.Error("expected NeedsExclusiveGPU() to be true")
 	}
 
 	// Test non-existing mode
 	_, err = provider.GetMode("nonexistent")
 	if err == nil {
 		t.Error("expected error for non-existing mode")
+	}
+}
+
+func TestBootMode_NeedsGPU(t *testing.T) {
+	tests := []struct {
+		mode     GPUMode
+		needsGPU bool
+		needsExclusive bool
+	}{
+		{GPUModeExclusive, true, true},
+		{GPUModeShared, true, false},
+		{GPUModeNone, false, false},
+	}
+
+	for _, tt := range tests {
+		bm := BootMode{GPUMode: tt.mode}
+		if bm.NeedsGPU() != tt.needsGPU {
+			t.Errorf("NeedsGPU() for %s: expected %v", tt.mode, tt.needsGPU)
+		}
+		if bm.NeedsExclusiveGPU() != tt.needsExclusive {
+			t.Errorf("NeedsExclusiveGPU() for %s: expected %v", tt.mode, tt.needsExclusive)
+		}
+	}
+}
+
+func TestBootMode_ConflictsWithMode(t *testing.T) {
+	bm := BootMode{
+		Name:          "nimsforestsharedgpu",
+		ConflictsWith: []string{"linuxvrstreaming", "windowsvrstreaming"},
+	}
+
+	if !bm.ConflictsWithMode("linuxvrstreaming") {
+		t.Error("expected conflict with linuxvrstreaming")
+	}
+
+	if !bm.ConflictsWithMode("windowsvrstreaming") {
+		t.Error("expected conflict with windowsvrstreaming")
+	}
+
+	if bm.ConflictsWithMode("nimsforestnogpu") {
+		t.Error("should not conflict with nimsforestnogpu")
 	}
 }

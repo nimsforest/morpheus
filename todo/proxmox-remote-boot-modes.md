@@ -6,18 +6,30 @@
 
 Add Proxmox VE support to Morpheus for managing on-premise hardware with multiple boot modes (OS configurations). This enables remotely switching a physical machine between different workloads:
 
-- **CachyOS + WiVRN**: VR streaming workstation with full GPU passthrough
-- **Windows Pro**: Gaming/productivity with full GPU access
-- **NimsForest**: Distributed compute node (may or may not need GPU)
+- **linuxvrstreaming**: Linux VR streaming workstation (e.g., CachyOS + WiVRN) - exclusive GPU
+- **windowsvrstreaming**: Windows VR streaming workstation - exclusive GPU
+- **nimsforestnogpu**: NimsForest distributed compute without GPU
+- **nimsforestsharedgpu**: NimsForest with GPU for compute tasks - cannot combine with VR streaming
 
 The physical host never powers down - only VMs are stopped/started.
 
 ## Technical Constraints
 
-1. **GPU Passthrough**: Only ONE VM can have GPU access at a time
-2. **VM Restart Required**: Cannot hot-swap GPU between VMs (~10-30s downtime)
-3. **Host Stays Up**: Proxmox host remains running, only guests restart
-4. **Network Prerequisite**: Need network access to Proxmox API (local or VPN/Tailscale)
+1. **Exclusive GPU Modes**: VR streaming modes (`linuxvrstreaming`, `windowsvrstreaming`) require exclusive GPU access
+2. **Shared GPU Mode**: `nimsforestsharedgpu` uses the GPU but CANNOT run alongside VR streaming modes
+3. **No GPU Mode**: `nimsforestnogpu` can theoretically run alongside other modes (if you have multiple VMs capability)
+4. **VM Restart Required**: Cannot hot-swap GPU between VMs (~10-30s downtime)
+5. **Host Stays Up**: Proxmox host remains running, only guests restart
+6. **Network Prerequisite**: Need network access to Proxmox API (local or VPN/Tailscale)
+
+### Mode Compatibility Matrix
+
+| Mode | GPU | Can combine with |
+|------|-----|------------------|
+| `linuxvrstreaming` | exclusive | nothing (needs full GPU) |
+| `windowsvrstreaming` | exclusive | nothing (needs full GPU) |
+| `nimsforestsharedgpu` | shared | `nimsforestnogpu` only |
+| `nimsforestnogpu` | none | any other mode |
 
 ## Architecture
 
@@ -25,9 +37,9 @@ The physical host never powers down - only VMs are stopped/started.
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Morpheus CLI                             │
 │                                                                  │
-│   morpheus mode list              # Show available modes         │
-│   morpheus mode switch cachyos    # Switch to CachyOS mode       │
-│   morpheus mode status            # Show current mode            │
+│   morpheus mode list                    # Show available modes   │
+│   morpheus mode switch linuxvrstreaming # Switch to Linux VR     │
+│   morpheus mode status                  # Show current mode      │
 │                                                                  │
 └───────────────────────────┬──────────────────────────────────────┘
                             │ Proxmox API (HTTPS)
@@ -35,13 +47,19 @@ The physical host never powers down - only VMs are stopped/started.
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Proxmox VE Host                              │
 │                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │ VM 101       │  │ VM 102       │  │ VM 103       │           │
-│  │ cachyos      │  │ windows      │  │ nimsforest   │           │
-│  │ [GPU:0000:01]│  │ [GPU:0000:01]│  │ [no GPU]     │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
+│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────┐  │
+│  │ VM 101         │  │ VM 102           │  │ VM 103          │  │
+│  │linuxvrstreaming│  │windowsvrstreaming│  │nimsforestnogpu  │  │
+│  │ [GPU:exclusive]│  │ [GPU:exclusive]  │  │ [no GPU]        │  │
+│  └────────────────┘  └──────────────────┘  └─────────────────┘  │
 │                                                                  │
-│  GPU: Passed to whichever VM is running                          │
+│  ┌─────────────────┐                                             │
+│  │ VM 104          │                                             │
+│  │nimsforestshared │  ← Cannot run with VR streaming modes       │
+│  │ [GPU:shared]    │                                             │
+│  └─────────────────┘                                             │
+│                                                                  │
+│  GPU: Passed to active mode (exclusive or shared)                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -115,20 +133,28 @@ proxmox:
   
   # Boot modes - map friendly names to VM IDs
   modes:
-    cachyos:
+    linuxvrstreaming:
       vmid: 101
-      description: "CachyOS + WiVRN (VR streaming)"
-      gpu_passthrough: true
+      description: "Linux VR streaming (CachyOS + WiVRN)"
+      gpu_mode: exclusive
       
-    windows:
+    windowsvrstreaming:
       vmid: 102  
-      description: "Windows 11 Pro"
-      gpu_passthrough: true
+      description: "Windows VR streaming"
+      gpu_mode: exclusive
       
-    nimsforest:
+    nimsforestnogpu:
       vmid: 103
-      description: "NimsForest distributed compute"
-      gpu_passthrough: false
+      description: "NimsForest distributed compute (no GPU)"
+      gpu_mode: none
+      
+    nimsforestsharedgpu:
+      vmid: 104
+      description: "NimsForest with GPU compute"
+      gpu_mode: shared
+      conflicts_with:
+        - linuxvrstreaming
+        - windowsvrstreaming
 ```
 
 ## API Reference
@@ -156,46 +182,55 @@ POST /nodes/{node}/qemu/{vmid}/status/shutdown # Shutdown VM (ACPI)
 ```bash
 # List available modes
 $ morpheus mode list
-MODE         VMID    STATUS     GPU    DESCRIPTION
----------------------------------------------------------------
-cachyos      101     running    yes    CachyOS + WiVRN (VR streaming)
-windows      102     stopped    yes    Windows 11 Pro
-nimsforest   103     stopped    no     NimsForest distributed compute
+MODE                 VMID   STATUS    GPU        DESCRIPTION
+--------------------------------------------------------------------------------
+linuxvrstreaming     101    running   exclusive  Linux VR streaming (CachyOS + WiVRN)
+windowsvrstreaming   102    stopped   exclusive  Windows VR streaming
+nimsforestnogpu      103    stopped   none       NimsForest distributed compute (no GPU)
+nimsforestsharedgpu  104    stopped   shared     NimsForest with GPU compute
 
-Current mode: cachyos
+Current mode: linuxvrstreaming
 
 # Check current status
 $ morpheus mode status
-🎮 Current Mode: cachyos (VM 101)
+🎮 Current Mode: linuxvrstreaming (VM 101)
 
-Status: running
-Uptime: 2h 34m
-GPU:    NVIDIA RTX 4090 (passed through)
-IP:     192.168.1.150
+Status:   running
+Uptime:   2h 34m
+GPU:      NVIDIA RTX 4090 (exclusive)
+IP:       192.168.1.150
 
-# Switch to Windows
-$ morpheus mode switch windows
+# Switch to Windows VR streaming
+$ morpheus mode switch windowsvrstreaming
 
-Switching from cachyos → windows...
-  Shutting down cachyos (VM 101)... ✓ (8s)
-  Starting windows (VM 102)... ✓ (15s)
+Switching from linuxvrstreaming → windowsvrstreaming...
+  Shutting down linuxvrstreaming (VM 101)... ✓ (8s)
+  Starting windowsvrstreaming (VM 102)... ✓ (15s)
   Waiting for network... ✓
 
-✅ Now in windows mode
+✅ Now in windowsvrstreaming mode
    IP: 192.168.1.151
-   GPU: NVIDIA RTX 4090 (passed through)
+   GPU: NVIDIA RTX 4090 (exclusive)
 
-# Switch to NimsForest (no GPU needed)
-$ morpheus mode switch nimsforest
+# Switch to NimsForest without GPU
+$ morpheus mode switch nimsforestnogpu
 
-Switching from windows → nimsforest...
-  Shutting down windows (VM 102)... ✓ (12s)
-  Starting nimsforest (VM 103)... ✓ (5s)
+Switching from windowsvrstreaming → nimsforestnogpu...
+  Shutting down windowsvrstreaming (VM 102)... ✓ (12s)
+  Starting nimsforestnogpu (VM 103)... ✓ (5s)
   Waiting for network... ✓
 
-✅ Now in nimsforest mode
+✅ Now in nimsforestnogpu mode
    IP: 192.168.1.152
-   GPU: none (not required)
+   GPU: none
+
+# Try to switch to shared GPU mode while VR streaming is active
+$ morpheus mode switch nimsforestsharedgpu
+
+❌ Cannot switch to nimsforestsharedgpu
+   Conflicts with: linuxvrstreaming, windowsvrstreaming
+   
+   Stop VR streaming mode first, or use nimsforestnogpu instead.
 ```
 
 ## Proxmox VM Setup Prerequisites

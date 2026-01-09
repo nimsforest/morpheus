@@ -35,12 +35,13 @@ func (m *ProxmoxManager) ListModes(ctx context.Context) ([]Mode, error) {
 		if err != nil {
 			// Include mode even if we can't get VM status
 			modes = append(modes, Mode{
-				Name:           pm.Name,
-				Description:    pm.Description,
-				Provider:       "proxmox",
-				ProviderID:     fmt.Sprintf("%d", pm.VMID),
-				GPUPassthrough: pm.GPUPassthrough,
-				Status:         ModeStatusUnknown,
+				Name:          pm.Name,
+				Description:   pm.Description,
+				Provider:      "proxmox",
+				ProviderID:    fmt.Sprintf("%d", pm.VMID),
+				GPUMode:       m.proxmoxGPUModeToBootmode(pm.GPUMode),
+				ConflictsWith: pm.ConflictsWith,
+				Status:        ModeStatusUnknown,
 			})
 			continue
 		}
@@ -48,12 +49,13 @@ func (m *ProxmoxManager) ListModes(ctx context.Context) ([]Mode, error) {
 		status := m.vmStatusToModeStatus(vm.Status)
 
 		mode := Mode{
-			Name:           pm.Name,
-			Description:    pm.Description,
-			Provider:       "proxmox",
-			ProviderID:     fmt.Sprintf("%d", pm.VMID),
-			GPUPassthrough: pm.GPUPassthrough,
-			Status:         status,
+			Name:          pm.Name,
+			Description:   pm.Description,
+			Provider:      "proxmox",
+			ProviderID:    fmt.Sprintf("%d", pm.VMID),
+			GPUMode:       m.proxmoxGPUModeToBootmode(pm.GPUMode),
+			ConflictsWith: pm.ConflictsWith,
+			Status:        status,
 		}
 
 		if status == ModeStatusRunning {
@@ -77,22 +79,24 @@ func (m *ProxmoxManager) GetMode(ctx context.Context, name string) (*Mode, error
 	vm, err := m.provider.GetVM(ctx, pm.VMID)
 	if err != nil {
 		return &Mode{
-			Name:           pm.Name,
-			Description:    pm.Description,
-			Provider:       "proxmox",
-			ProviderID:     fmt.Sprintf("%d", pm.VMID),
-			GPUPassthrough: pm.GPUPassthrough,
-			Status:         ModeStatusUnknown,
+			Name:          pm.Name,
+			Description:   pm.Description,
+			Provider:      "proxmox",
+			ProviderID:    fmt.Sprintf("%d", pm.VMID),
+			GPUMode:       m.proxmoxGPUModeToBootmode(pm.GPUMode),
+			ConflictsWith: pm.ConflictsWith,
+			Status:        ModeStatusUnknown,
 		}, nil
 	}
 
 	mode := &Mode{
-		Name:           pm.Name,
-		Description:    pm.Description,
-		Provider:       "proxmox",
-		ProviderID:     fmt.Sprintf("%d", pm.VMID),
-		GPUPassthrough: pm.GPUPassthrough,
-		Status:         m.vmStatusToModeStatus(vm.Status),
+		Name:          pm.Name,
+		Description:   pm.Description,
+		Provider:      "proxmox",
+		ProviderID:    fmt.Sprintf("%d", pm.VMID),
+		GPUMode:       m.proxmoxGPUModeToBootmode(pm.GPUMode),
+		ConflictsWith: pm.ConflictsWith,
+		Status:        m.vmStatusToModeStatus(vm.Status),
 	}
 
 	if mode.Status == ModeStatusRunning {
@@ -116,6 +120,45 @@ func (m *ProxmoxManager) GetCurrentMode(ctx context.Context) (*Mode, error) {
 	return m.GetMode(ctx, pm.Name)
 }
 
+// CheckConflicts checks if switching to a target mode would conflict with running modes
+func (m *ProxmoxManager) CheckConflicts(ctx context.Context, targetMode string) ([]ConflictInfo, error) {
+	conflicts, err := m.provider.CheckModeConflict(ctx, targetMode)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(conflicts) == 0 {
+		return nil, nil
+	}
+
+	target, _ := m.provider.GetMode(targetMode)
+	var result []ConflictInfo
+	for _, conflictName := range conflicts {
+		info := ConflictInfo{
+			TargetMode:      targetMode,
+			ConflictingMode: conflictName,
+		}
+
+		// Determine reason
+		if target != nil && target.NeedsExclusiveGPU() {
+			info.Reason = fmt.Sprintf("%s requires exclusive GPU access", targetMode)
+		} else if target != nil && target.ConflictsWithMode(conflictName) {
+			info.Reason = fmt.Sprintf("%s explicitly conflicts with %s", targetMode, conflictName)
+		} else {
+			info.Reason = "GPU resource conflict"
+		}
+
+		// Suggest alternatives
+		if target != nil && target.NeedsGPU() {
+			info.Alternatives = []string{"nimsforestnogpu"}
+		}
+
+		result = append(result, info)
+	}
+
+	return result, nil
+}
+
 // Switch changes from the current mode to the target mode
 func (m *ProxmoxManager) Switch(ctx context.Context, targetMode string, opts SwitchOptions) (*SwitchResult, error) {
 	startTime := time.Now()
@@ -128,6 +171,13 @@ func (m *ProxmoxManager) Switch(ctx context.Context, targetMode string, opts Swi
 	if err != nil {
 		result.Error = err.Error()
 		return result, &ModeNotFoundError{Mode: targetMode}
+	}
+
+	// Check for conflicts (but we'll handle them by stopping conflicting VMs)
+	conflicts, err := m.CheckConflicts(ctx, targetMode)
+	if err != nil {
+		result.Error = err.Error()
+		return result, err
 	}
 
 	// Get current mode (if any)
@@ -146,25 +196,44 @@ func (m *ProxmoxManager) Switch(ctx context.Context, targetMode string, opts Swi
 			result.Duration = time.Since(startTime)
 			return result, &AlreadyActiveError{Mode: targetMode}
 		}
-
-		// GPU conflict check: if both modes need GPU, we need to stop the current one
-		if current.GPUPassthrough && target.GPUPassthrough {
-			// This is expected - we'll stop the current VM first
-		}
 	}
 
 	// Dry run - just report what would happen
 	if opts.DryRun {
 		result.Success = true
 		result.Duration = time.Since(startTime)
+		if len(conflicts) > 0 {
+			return result, &ModeConflictError{TargetMode: targetMode, Conflicts: conflicts}
+		}
 		return result, nil
 	}
 
-	// Stop current mode if running
-	if current != nil {
-		if err := m.stopVM(ctx, current.VMID, opts); err != nil {
-			result.Error = fmt.Sprintf("failed to stop %s: %v", current.Name, err)
+	// Stop all conflicting modes
+	for _, conflict := range conflicts {
+		conflictMode, err := m.provider.GetMode(conflict.ConflictingMode)
+		if err != nil {
+			continue
+		}
+		if err := m.stopVM(ctx, conflictMode.VMID, opts); err != nil {
+			result.Error = fmt.Sprintf("failed to stop conflicting mode %s: %v", conflict.ConflictingMode, err)
 			return result, err
+		}
+	}
+
+	// Stop current mode if running and not already stopped
+	if current != nil {
+		alreadyStopped := false
+		for _, c := range conflicts {
+			if c.ConflictingMode == current.Name {
+				alreadyStopped = true
+				break
+			}
+		}
+		if !alreadyStopped {
+			if err := m.stopVM(ctx, current.VMID, opts); err != nil {
+				result.Error = fmt.Sprintf("failed to stop %s: %v", current.Name, err)
+				return result, err
+			}
 		}
 	}
 
@@ -191,6 +260,20 @@ func (m *ProxmoxManager) Switch(ctx context.Context, targetMode string, opts Swi
 	return result, nil
 }
 
+// proxmoxGPUModeToBootmode converts proxmox.GPUMode to bootmode.GPUMode
+func (m *ProxmoxManager) proxmoxGPUModeToBootmode(mode proxmox.GPUMode) GPUMode {
+	switch mode {
+	case proxmox.GPUModeExclusive:
+		return GPUModeExclusive
+	case proxmox.GPUModeShared:
+		return GPUModeShared
+	case proxmox.GPUModeNone:
+		return GPUModeNone
+	default:
+		return GPUModeNone
+	}
+}
+
 // GetModeInfo returns detailed information about a mode
 func (m *ProxmoxManager) GetModeInfo(ctx context.Context, name string) (*ModeInfo, error) {
 	pm, err := m.provider.GetMode(name)
@@ -210,14 +293,15 @@ func (m *ProxmoxManager) GetModeInfo(ctx context.Context, name string) (*ModeInf
 
 	info := &ModeInfo{
 		Mode: Mode{
-			Name:           pm.Name,
-			Description:    pm.Description,
-			Provider:       "proxmox",
-			ProviderID:     fmt.Sprintf("%d", pm.VMID),
-			GPUPassthrough: pm.GPUPassthrough,
-			Status:         m.vmStatusToModeStatus(vm.Status),
-			IPAddresses:    vm.IPs,
-			Uptime:         time.Duration(vm.Uptime) * time.Second,
+			Name:          pm.Name,
+			Description:   pm.Description,
+			Provider:      "proxmox",
+			ProviderID:    fmt.Sprintf("%d", pm.VMID),
+			GPUMode:       m.proxmoxGPUModeToBootmode(pm.GPUMode),
+			ConflictsWith: pm.ConflictsWith,
+			Status:        m.vmStatusToModeStatus(vm.Status),
+			IPAddresses:   vm.IPs,
+			Uptime:        time.Duration(vm.Uptime) * time.Second,
 		},
 		CPUUsage:    vm.CPUUsage * 100, // Convert to percentage
 		MemoryUsage: float64(vm.MemoryUsed) / float64(vm.Memory) * 100,

@@ -5,17 +5,40 @@ package bootmode
 
 import "time"
 
+// GPUMode represents how a boot mode uses the GPU
+type GPUMode string
+
+const (
+	// GPUModeExclusive means the VM needs exclusive GPU access (e.g., VR streaming)
+	GPUModeExclusive GPUMode = "exclusive"
+	// GPUModeShared means the VM uses GPU but can potentially share (e.g., compute workloads)
+	GPUModeShared GPUMode = "shared"
+	// GPUModeNone means the VM doesn't need GPU access
+	GPUModeNone GPUMode = "none"
+)
+
 // Mode represents a bootable configuration
 type Mode struct {
-	Name           string            `json:"name"`
-	Description    string            `json:"description"`
-	Provider       string            `json:"provider"`       // e.g., "proxmox"
-	ProviderID     string            `json:"provider_id"`    // e.g., VM ID
-	GPUPassthrough bool              `json:"gpu_passthrough"`
-	Status         ModeStatus        `json:"status"`
-	IPAddresses    []string          `json:"ip_addresses,omitempty"`
-	Uptime         time.Duration     `json:"uptime,omitempty"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	Provider      string            `json:"provider"`    // e.g., "proxmox"
+	ProviderID    string            `json:"provider_id"` // e.g., VM ID
+	GPUMode       GPUMode           `json:"gpu_mode"`
+	ConflictsWith []string          `json:"conflicts_with,omitempty"`
+	Status        ModeStatus        `json:"status"`
+	IPAddresses   []string          `json:"ip_addresses,omitempty"`
+	Uptime        time.Duration     `json:"uptime,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+}
+
+// NeedsGPU returns true if this mode requires GPU access
+func (m *Mode) NeedsGPU() bool {
+	return m.GPUMode == GPUModeExclusive || m.GPUMode == GPUModeShared
+}
+
+// NeedsExclusiveGPU returns true if this mode requires exclusive GPU access
+func (m *Mode) NeedsExclusiveGPU() bool {
+	return m.GPUMode == GPUModeExclusive
 }
 
 // ModeStatus represents the current status of a boot mode
@@ -71,10 +94,18 @@ func DefaultSwitchOptions() SwitchOptions {
 // ModeInfo contains detailed information about a mode
 type ModeInfo struct {
 	Mode
-	CPUUsage    float64       `json:"cpu_usage,omitempty"`
-	MemoryUsage float64       `json:"memory_usage,omitempty"`
-	MemoryTotal int64         `json:"memory_total,omitempty"`
-	GPUDevices  []GPUDevice   `json:"gpu_devices,omitempty"`
+	CPUUsage    float64     `json:"cpu_usage,omitempty"`
+	MemoryUsage float64     `json:"memory_usage,omitempty"`
+	MemoryTotal int64       `json:"memory_total,omitempty"`
+	GPUDevices  []GPUDevice `json:"gpu_devices,omitempty"`
+}
+
+// ConflictInfo describes a mode conflict
+type ConflictInfo struct {
+	TargetMode      string   `json:"target_mode"`
+	ConflictingMode string   `json:"conflicting_mode"`
+	Reason          string   `json:"reason"`
+	Alternatives    []string `json:"alternatives,omitempty"`
 }
 
 // GPUDevice represents a GPU passed through to a VM

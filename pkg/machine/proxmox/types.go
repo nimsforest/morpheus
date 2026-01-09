@@ -87,12 +87,45 @@ func (t *TaskStatus) IsSuccessful() bool {
 	return t.Status == "stopped" && t.ExitStatus == "OK"
 }
 
+// GPUMode represents how a boot mode uses the GPU
+type GPUMode string
+
+const (
+	// GPUModeExclusive means the VM needs exclusive GPU access (e.g., VR streaming)
+	GPUModeExclusive GPUMode = "exclusive"
+	// GPUModeShared means the VM uses GPU but can potentially share (e.g., compute workloads)
+	GPUModeShared GPUMode = "shared"
+	// GPUModeNone means the VM doesn't need GPU access
+	GPUModeNone GPUMode = "none"
+)
+
 // BootMode represents a configured boot mode
 type BootMode struct {
-	Name           string `json:"name"`
-	VMID           int    `json:"vmid"`
-	Description    string `json:"description"`
-	GPUPassthrough bool   `json:"gpu_passthrough"`
+	Name          string   `json:"name"`
+	VMID          int      `json:"vmid"`
+	Description   string   `json:"description"`
+	GPUMode       GPUMode  `json:"gpu_mode"`
+	ConflictsWith []string `json:"conflicts_with,omitempty"`
+}
+
+// NeedsGPU returns true if this mode requires GPU access
+func (m *BootMode) NeedsGPU() bool {
+	return m.GPUMode == GPUModeExclusive || m.GPUMode == GPUModeShared
+}
+
+// NeedsExclusiveGPU returns true if this mode requires exclusive GPU access
+func (m *BootMode) NeedsExclusiveGPU() bool {
+	return m.GPUMode == GPUModeExclusive
+}
+
+// ConflictsWithMode checks if this mode conflicts with another mode
+func (m *BootMode) ConflictsWithMode(other string) bool {
+	for _, conflict := range m.ConflictsWith {
+		if conflict == other {
+			return true
+		}
+	}
+	return false
 }
 
 // ProviderConfig holds Proxmox provider configuration
@@ -109,9 +142,10 @@ type ProviderConfig struct {
 
 // ModeSpec defines a boot mode in configuration
 type ModeSpec struct {
-	VMID           int    `yaml:"vmid"`
-	Description    string `yaml:"description"`
-	GPUPassthrough bool   `yaml:"gpu_passthrough"`
+	VMID          int      `yaml:"vmid"`
+	Description   string   `yaml:"description"`
+	GPUMode       GPUMode  `yaml:"gpu_mode"`
+	ConflictsWith []string `yaml:"conflicts_with,omitempty"`
 }
 
 // DefaultConfig returns a ProviderConfig with sensible defaults

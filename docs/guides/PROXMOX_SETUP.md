@@ -2,9 +2,10 @@
 
 This guide walks you through setting up Proxmox VE for remote boot mode switching with Morpheus. This enables you to remotely switch a physical machine between different workloads:
 
-- **CachyOS + WiVRN**: VR streaming workstation with full GPU passthrough
-- **Windows Pro**: Gaming/productivity with full GPU access  
-- **NimsForest**: Distributed compute node
+- **linuxvrstreaming**: Linux VR streaming workstation (e.g., CachyOS + WiVRN) - exclusive GPU
+- **windowsvrstreaming**: Windows VR streaming workstation - exclusive GPU
+- **nimsforestnogpu**: NimsForest distributed compute without GPU
+- **nimsforestsharedgpu**: NimsForest with GPU compute - cannot combine with VR streaming
 
 ## Prerequisites
 
@@ -19,7 +20,7 @@ This guide walks you through setting up Proxmox VE for remote boot mode switchin
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Your Phone / Laptop                          │
 │                                                                  │
-│   $ morpheus mode switch windows                                 │
+│   $ morpheus mode switch windowsvrstreaming                      │
 │                                                                  │
 └───────────────────────────┬──────────────────────────────────────┘
                             │ HTTPS (Proxmox API)
@@ -29,16 +30,15 @@ This guide walks you through setting up Proxmox VE for remote boot mode switchin
 │                     Proxmox VE Host                              │
 │                   (always running)                               │
 │                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
-│  │ VM 101       │  │ VM 102       │  │ VM 103       │           │
-│  │ CachyOS      │  │ Windows      │  │ NimsForest   │           │
-│  │ [GPU ✓]      │  │ [GPU ✓]      │  │ [no GPU]     │           │
-│  │              │  │              │  │              │           │
-│  │  STOPPED     │  │  RUNNING     │  │  STOPPED     │           │
-│  └──────────────┘  └──────────────┘  └──────────────┘           │
-│                          ▲                                       │
-│                          │                                       │
-│              GPU: NVIDIA RTX (passed to Windows)                 │
+│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────┐  │
+│  │ VM 101         │  │ VM 102           │  │ VM 103          │  │
+│  │linuxvrstreaming│  │windowsvrstreaming│  │nimsforestnogpu  │  │
+│  │ [GPU exclusive]│  │ [GPU exclusive]  │  │ [no GPU]        │  │
+│  │    STOPPED     │  │    RUNNING       │  │    STOPPED      │  │
+│  └────────────────┘  └──────────────────┘  └─────────────────┘  │
+│                             ▲                                    │
+│                             │                                    │
+│               GPU: NVIDIA RTX (exclusive to Windows VR)          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -125,11 +125,11 @@ lspci -nnk -s 01:00
 
 ## Step 4: Create VMs
 
-### CachyOS VM (ID 101)
+### Linux VR Streaming VM (ID 101)
 
 ```bash
 # Create VM
-qm create 101 --name cachyos --memory 32768 --cores 12 \
+qm create 101 --name linuxvrstreaming --memory 32768 --cores 12 \
   --cpu host,hidden=1 --machine q35 --bios ovmf \
   --net0 virtio,bridge=vmbr0
 
@@ -139,20 +139,20 @@ qm set 101 --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=0
 # Add main disk (adjust storage as needed)
 qm set 101 --scsi0 local-lvm:100,ssd=1,discard=on
 
-# Add GPU passthrough
+# Add GPU passthrough (exclusive)
 qm set 101 --hostpci0 01:00,pcie=1,x-vga=1
 
 # Add USB controller for peripherals (optional)
 qm set 101 --hostpci1 00:14.0,pcie=1
 ```
 
-Install CachyOS from ISO, then install WiVRN.
+Install CachyOS (or your preferred Linux distro) from ISO, then install WiVRN.
 
-### Windows VM (ID 102)
+### Windows VR Streaming VM (ID 102)
 
 ```bash
 # Create VM
-qm create 102 --name windows --memory 32768 --cores 12 \
+qm create 102 --name windowsvrstreaming --memory 32768 --cores 12 \
   --cpu host,hidden=1 --machine q35 --bios ovmf \
   --net0 virtio,bridge=vmbr0
 
@@ -162,7 +162,7 @@ qm set 102 --efidisk0 local-lvm:1,efitype=4m,pre-enrolled-keys=0
 # Add main disk
 qm set 102 --scsi0 local-lvm:200,ssd=1,discard=on
 
-# Add GPU passthrough (same GPU, different VM)
+# Add GPU passthrough (exclusive - same GPU, different VM)
 qm set 102 --hostpci0 01:00,pcie=1,x-vga=1
 
 # Add virtio drivers ISO for Windows
@@ -173,12 +173,13 @@ Install Windows, then install:
 1. VirtIO drivers from the ISO
 2. NVIDIA/AMD GPU drivers
 3. QEMU Guest Agent (for IP detection)
+4. VR software (SteamVR, Virtual Desktop, etc.)
 
-### NimsForest VM (ID 103)
+### NimsForest No GPU VM (ID 103)
 
 ```bash
-# Create VM (no GPU passthrough needed)
-qm create 103 --name nimsforest --memory 16384 --cores 8 \
+# Create VM (no GPU passthrough)
+qm create 103 --name nimsforestnogpu --memory 16384 --cores 8 \
   --cpu host --machine q35 \
   --net0 virtio,bridge=vmbr0
 
@@ -186,7 +187,26 @@ qm create 103 --name nimsforest --memory 16384 --cores 8 \
 qm set 103 --scsi0 local-lvm:50,ssd=1,discard=on
 ```
 
-Install Ubuntu 24.04 for NimsForest.
+Install Ubuntu 24.04 for NimsForest distributed compute.
+
+### NimsForest Shared GPU VM (ID 104) - Optional
+
+```bash
+# Create VM (with GPU for compute workloads)
+qm create 104 --name nimsforestsharedgpu --memory 24576 --cores 10 \
+  --cpu host --machine q35 \
+  --net0 virtio,bridge=vmbr0
+
+# Add main disk
+qm set 104 --scsi0 local-lvm:80,ssd=1,discard=on
+
+# Add GPU passthrough (shared mode - can't run with VR streaming)
+qm set 104 --hostpci0 01:00,pcie=1
+```
+
+Install Ubuntu 24.04 with CUDA/ROCm for GPU compute workloads.
+
+**Note:** `nimsforestsharedgpu` cannot run alongside `linuxvrstreaming` or `windowsvrstreaming` because they all need the GPU.
 
 ## Step 5: Create Proxmox API Token
 
@@ -235,20 +255,28 @@ proxmox:
   
   # Boot modes
   modes:
-    cachyos:
+    linuxvrstreaming:
       vmid: 101
-      description: "CachyOS + WiVRN (VR streaming)"
-      gpu_passthrough: true
+      description: "Linux VR streaming (CachyOS + WiVRN)"
+      gpu_mode: exclusive
       
-    windows:
+    windowsvrstreaming:
       vmid: 102
-      description: "Windows 11 Pro"
-      gpu_passthrough: true
+      description: "Windows VR streaming"
+      gpu_mode: exclusive
       
-    nimsforest:
+    nimsforestnogpu:
       vmid: 103
-      description: "NimsForest distributed compute"
-      gpu_passthrough: false
+      description: "NimsForest distributed compute (no GPU)"
+      gpu_mode: none
+      
+    nimsforestsharedgpu:
+      vmid: 104
+      description: "NimsForest with GPU compute"
+      gpu_mode: shared
+      conflicts_with:
+        - linuxvrstreaming
+        - windowsvrstreaming
 ```
 
 Set the API token:
@@ -265,14 +293,17 @@ morpheus mode list
 # Check current status
 morpheus mode status
 
-# Switch to Windows
-morpheus mode switch windows
+# Switch to Windows VR streaming
+morpheus mode switch windowsvrstreaming
 
-# Switch to CachyOS for VR
-morpheus mode switch cachyos
+# Switch to Linux VR streaming
+morpheus mode switch linuxvrstreaming
 
-# Switch to NimsForest
-morpheus mode switch nimsforest
+# Switch to NimsForest (no GPU)
+morpheus mode switch nimsforestnogpu
+
+# Switch to NimsForest with GPU (only if VR streaming is not running)
+morpheus mode switch nimsforestsharedgpu
 ```
 
 ## Remote Access Options
