@@ -52,25 +52,103 @@ nimsforest.customer.com     NS  oxygen.ns.hetzner.com
 nimsforest.customer.com     NS  helium.ns.hetzner.de
 ```
 
-## Root Domain Hosting
+## Apex Domain Management
 
-When NimsForest manages the customer's marketing website, we create a record under the delegated subdomain (e.g., `www.nimsforest.customer.com`). Customer then configures:
+Apex domains (zone roots like `customer.com` or `nimsforest.com`) require special handling because CNAME records are not allowed at the apex per RFC 1034.
 
-### Option A: CNAME/ALIAS (Preferred)
+### Scenario 1: Customer Subdomain Delegation (Default)
 
-```
-www.customer.com     CNAME  www.nimsforest.customer.com
-customer.com         ALIAS  www.nimsforest.customer.com  (or ANAME)
-```
+Customer keeps their apex and delegates a subdomain to us. When we host their website:
 
-### Option B: Static IP (Fallback)
+**Option A: ALIAS/ANAME (Preferred)**
 
-For customers whose DNS provider doesn't support ALIAS/ANAME at the apex, we provision a static IP and they use an A record:
+If the customer's DNS provider supports ALIAS/ANAME:
 
 ```
 www.customer.com     CNAME  www.nimsforest.customer.com
-customer.com         A      <static-ip-we-provision>
+customer.com         ALIAS  www.nimsforest.customer.com
 ```
+
+**Option B: Static IP (Fallback)**
+
+For providers without ALIAS support, we provision a Hetzner Floating IP:
+
+```
+www.customer.com     CNAME  www.nimsforest.customer.com
+customer.com         A      <floating-ip>
+```
+
+### Scenario 2: Full Domain Delegation
+
+For customers who want us to manage their entire domain (including apex), they change their domain's nameservers to Hetzner:
+
+```
+customer.com  NS  hydrogen.ns.hetzner.com
+customer.com  NS  oxygen.ns.hetzner.com
+customer.com  NS  helium.ns.hetzner.de
+```
+
+This is configured at the registrar level, not in DNS records. Once delegated:
+- Morpheus creates the zone for `customer.com` in Hetzner DNS
+- We have full control including apex A/AAAA records
+- Customer loses ability to manage DNS elsewhere
+
+**Use cases:**
+- Customer has no existing DNS infrastructure
+- Customer wants turnkey solution
+- Simpler setup, single point of management
+
+### Scenario 3: NimsForest's Own Domains
+
+For domains we own (e.g., `nimsforest.com`):
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  nimsforest.com (Hetzner DNS - NimsForest Project)       │
+│                                                          │
+│  @              A      <primary-floating-ip>             │
+│  @              AAAA   <primary-ipv6>                    │
+│  www            CNAME  @                                 │
+│  api            A      <api-server-ip>                   │
+│  app            A      <app-server-ip>                   │
+│  *.forests      A      <forest-lb-ip>                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Floating IP strategy:**
+- Provision a Hetzner Floating IP for the apex
+- Floating IP can be reassigned between servers without DNS changes
+- Provides failover capability
+
+### Apex Solutions Comparison
+
+| Solution | Apex Support | Failover | Complexity | Best For |
+|----------|--------------|----------|------------|----------|
+| ALIAS/ANAME | Yes | Via target | Low | Modern DNS providers |
+| Floating IP | Yes | IP reassignment | Medium | Full control needed |
+| Full delegation | Yes | Full control | High | Turnkey customers |
+| Static A record | Yes | Manual | Low | Simple setups |
+
+### Floating IP Management
+
+For apex domains requiring direct A records, use Hetzner Floating IPs:
+
+```bash
+# Create floating IP
+hcloud floating-ip create --type ipv4 --home-location fsn1 --name customer-apex
+
+# Assign to server
+hcloud floating-ip assign <floating-ip-id> <server-id>
+
+# Reassign during failover
+hcloud floating-ip assign <floating-ip-id> <new-server-id>
+```
+
+Morpheus should:
+1. Provision Floating IP when apex hosting is requested
+2. Create A record pointing to the Floating IP
+3. Manage Floating IP assignment based on server health
+4. Clean up Floating IP on teardown
 
 ## Customer Onboarding Flow
 
