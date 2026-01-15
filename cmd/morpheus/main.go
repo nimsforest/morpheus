@@ -1639,18 +1639,19 @@ func runConfigCheck(exitOnResult bool) bool {
 	}
 
 	fmt.Println()
-	fmt.Println("   Environment Variables:")
+	fmt.Println("   Secrets & Credentials:")
 
-	// Check required environment variables
-	type envVar struct {
+	// Check required secrets (can come from env or config file)
+	type secretVar struct {
 		name        string
 		description string
 		required    bool
 		hasValue    bool
 		masked      string
+		source      string // "env", "config", or ""
 	}
 
-	vars := []envVar{
+	vars := []secretVar{
 		{
 			name:        "HETZNER_API_TOKEN",
 			description: "Hetzner Cloud API token",
@@ -1683,50 +1684,57 @@ func runConfigCheck(exitOnResult bool) bool {
 		},
 	}
 
-	// Check each variable
+	// Helper to mask a value
+	maskValue := func(val string) string {
+		if len(val) > 8 {
+			return val[:4] + "..." + val[len(val)-4:]
+		}
+		return "****"
+	}
+
+	// Check each variable - first check env, then config file
 	for i := range vars {
-		val := os.Getenv(vars[i].name)
-		vars[i].hasValue = val != ""
-		if vars[i].hasValue && len(val) > 8 {
-			vars[i].masked = val[:4] + "..." + val[len(val)-4:]
-		} else if vars[i].hasValue {
-			vars[i].masked = "****"
+		envVal := os.Getenv(vars[i].name)
+		if envVal != "" {
+			vars[i].hasValue = true
+			vars[i].masked = maskValue(envVal)
+			vars[i].source = "env"
 		}
 	}
 
-	// Also check config file for values (they might be set there instead of env)
+	// Check config file for values (only if not already set from env)
 	if cfg != nil {
-		// HETZNER_API_TOKEN can come from config
-		if cfg.Secrets.HetznerAPIToken != "" {
-			for i := range vars {
-				if vars[i].name == "HETZNER_API_TOKEN" {
+		// HETZNER_API_TOKEN
+		for i := range vars {
+			if vars[i].name == "HETZNER_API_TOKEN" && vars[i].source == "" {
+				if cfg.Secrets.HetznerAPIToken != "" {
 					vars[i].hasValue = true
-					token := cfg.Secrets.HetznerAPIToken
-					if len(token) > 8 {
-						vars[i].masked = token[:4] + "..." + token[len(token)-4:]
-					} else {
-						vars[i].masked = "****"
-					}
-					break
+					vars[i].masked = maskValue(cfg.Secrets.HetznerAPIToken)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
-		// HETZNER_DNS_TOKEN can come from config
-		if cfg.Secrets.HetznerDNSToken != "" {
-			for i := range vars {
-				if vars[i].name == "HETZNER_DNS_TOKEN" {
+		// HETZNER_DNS_TOKEN
+		for i := range vars {
+			if vars[i].name == "HETZNER_DNS_TOKEN" && vars[i].source == "" {
+				if cfg.Secrets.HetznerDNSToken != "" {
 					vars[i].hasValue = true
-					break
+					vars[i].masked = maskValue(cfg.Secrets.HetznerDNSToken)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
-		// STORAGEBOX_PASSWORD can come from config
-		if cfg.Storage.StorageBox.Password != "" {
-			for i := range vars {
-				if vars[i].name == "STORAGEBOX_PASSWORD" {
+		// STORAGEBOX_PASSWORD
+		for i := range vars {
+			if vars[i].name == "STORAGEBOX_PASSWORD" && vars[i].source == "" {
+				if cfg.Storage.StorageBox.Password != "" {
 					vars[i].hasValue = true
-					break
+					vars[i].masked = maskValue(cfg.Storage.StorageBox.Password)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
 	}
@@ -1739,15 +1747,24 @@ func runConfigCheck(exitOnResult bool) bool {
 		}
 
 		if v.hasValue {
+			sourceLabel := ""
+			switch v.source {
+			case "env":
+				sourceLabel = " ← from environment variable"
+			case "config":
+				sourceLabel = " ← from config file (persistent)"
+			}
+
 			if v.required {
-				fmt.Printf("      ✅ %s: %s\n", v.name, v.masked)
+				fmt.Printf("      ✅ %s: %s%s\n", v.name, v.masked, sourceLabel)
 			} else {
-				fmt.Printf("      ✅ %s: %s (optional)\n", v.name, v.masked)
+				fmt.Printf("      ✅ %s: %s (optional)%s\n", v.name, v.masked, sourceLabel)
 			}
 		} else {
 			if v.required {
 				fmt.Printf("      ❌ %s: not set (REQUIRED)\n", v.name)
 				fmt.Printf("         %s\n", v.description)
+				fmt.Printf("         Set with: morpheus config set %s <value>\n", strings.ToLower(strings.ReplaceAll(v.name, "_", "_")))
 			} else {
 				fmt.Printf("      ○  %s: not set (optional)\n", v.name)
 			}
