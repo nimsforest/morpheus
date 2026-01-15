@@ -9,19 +9,28 @@ import (
 	"github.com/nimsforest/morpheus/pkg/dns"
 )
 
-// HandleDNSAdd handles the simplified "morpheus dns add" command
-// Usage: morpheus dns add <domain> [--customer ID]
+// HandleDNSAdd handles "morpheus dns add <type> <domain>"
+// Types: apex (we control domain) or subdomain (delegated from parent)
 func HandleDNSAdd() {
-	if len(os.Args) < 4 {
+	if len(os.Args) < 5 {
 		printDNSAddHelp()
 		os.Exit(1)
 	}
 
-	domain := os.Args[3]
+	zoneType := os.Args[3] // "apex" or "subdomain"
+	domain := os.Args[4]
 	var customerID string
 
+	// Validate zone type
+	if zoneType != "apex" && zoneType != "subdomain" {
+		fmt.Fprintf(os.Stderr, "❌ Unknown zone type: %s\n", zoneType)
+		fmt.Fprintf(os.Stderr, "   Use 'apex' or 'subdomain'\n\n")
+		printDNSAddHelp()
+		os.Exit(1)
+	}
+
 	// Parse flags
-	for i := 4; i < len(os.Args); i++ {
+	for i := 5; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--customer":
 			if i+1 < len(os.Args) {
@@ -34,7 +43,7 @@ func HandleDNSAdd() {
 		}
 	}
 
-	// Get DNS provider (reuses function from dns_zone.go)
+	// Get DNS provider
 	provider, err := getDNSProvider(customerID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %s\n", err)
@@ -65,28 +74,78 @@ func HandleDNSAdd() {
 	fmt.Printf("✨ DNS zone ready!\n")
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	// Show nameservers
-	fmt.Printf("🔧 Configure these nameservers at your registrar:\n\n")
-	if len(zone.Nameservers) > 0 {
-		for _, ns := range zone.Nameservers {
-			fmt.Printf("   %s\n", ns)
+	// Get nameservers
+	nameservers := zone.Nameservers
+	if len(nameservers) == 0 {
+		nameservers = []string{
+			"hydrogen.ns.hetzner.com",
+			"oxygen.ns.hetzner.com",
+			"helium.ns.hetzner.de",
 		}
+	}
+
+	// Show type-specific instructions
+	if zoneType == "apex" {
+		printApexInstructions(domain, nameservers)
 	} else {
-		fmt.Printf("   hydrogen.ns.hetzner.com\n")
-		fmt.Printf("   oxygen.ns.hetzner.com\n")
-		fmt.Printf("   helium.ns.hetzner.de\n")
+		printSubdomainInstructions(domain, nameservers)
+	}
+}
+
+func printApexInstructions(domain string, nameservers []string) {
+	fmt.Printf("🔧 Update nameservers at your domain registrar:\n\n")
+	for _, ns := range nameservers {
+		fmt.Printf("   %s\n", ns)
 	}
 
 	fmt.Printf("\n🎯 What's next?\n\n")
+	fmt.Printf("1. Log into your domain registrar\n")
+	fmt.Printf("2. Replace existing nameservers with the ones above\n")
+	fmt.Printf("3. Wait for propagation (up to 48 hours)\n\n")
 
-	fmt.Printf("1. Update nameservers at your registrar\n\n")
-
-	fmt.Printf("2. Create your infrastructure:\n")
+	fmt.Printf("4. Create your infrastructure:\n")
 	fmt.Printf("   morpheus plant\n\n")
+}
 
-	fmt.Printf("3. DNS records are added automatically by plant,\n")
-	fmt.Printf("   or add them manually:\n")
-	fmt.Printf("   morpheus dns record create %s A <ip>\n\n", domain)
+func printSubdomainInstructions(domain string, nameservers []string) {
+	// Extract parent domain (e.g., "experiencenet.customer.com" -> "customer.com")
+	parts := splitDomain(domain)
+	parent := "parent domain"
+	if len(parts) >= 2 {
+		parent = parts[len(parts)-2] + "." + parts[len(parts)-1]
+	}
+
+	fmt.Printf("🔧 Add NS records to the parent domain (%s):\n\n", parent)
+	for _, ns := range nameservers {
+		fmt.Printf("   %s  NS  %s\n", domain, ns)
+	}
+
+	fmt.Printf("\n🎯 What's next?\n\n")
+	fmt.Printf("1. Log into DNS management for %s\n", parent)
+	fmt.Printf("2. Add the NS records shown above\n")
+	fmt.Printf("3. Wait for propagation (usually minutes)\n\n")
+
+	fmt.Printf("4. Create your infrastructure:\n")
+	fmt.Printf("   morpheus plant\n\n")
+}
+
+func splitDomain(domain string) []string {
+	var parts []string
+	current := ""
+	for _, c := range domain {
+		if c == '.' {
+			if current != "" {
+				parts = append(parts, current)
+				current = ""
+			}
+		} else {
+			current += string(c)
+		}
+	}
+	if current != "" {
+		parts = append(parts, current)
+	}
+	return parts
 }
 
 // HandleDNSRemove handles "morpheus dns remove <domain>"
@@ -232,15 +291,19 @@ func startsWithDash(s string) bool {
 }
 
 func printDNSAddHelp() {
-	fmt.Println("Usage: morpheus dns add <domain> [--customer ID]")
+	fmt.Println("Usage: morpheus dns add <type> <domain> [--customer ID]")
 	fmt.Println()
 	fmt.Println("Create a DNS zone in Hetzner DNS.")
+	fmt.Println()
+	fmt.Println("Types:")
+	fmt.Println("  apex        You control the domain (update nameservers at registrar)")
+	fmt.Println("  subdomain   Delegated from parent (add NS records to parent)")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --customer ID    Use customer-specific DNS token")
 	fmt.Println("  --help, -h       Show this help")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  morpheus dns add nimsforest.com")
-	fmt.Println("  morpheus dns add experiencenet.acme.com --customer acme")
+	fmt.Println("  morpheus dns add apex nimsforest.com")
+	fmt.Println("  morpheus dns add subdomain experiencenet.customer.com --customer acme")
 }
