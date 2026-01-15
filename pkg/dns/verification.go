@@ -60,16 +60,19 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 		normalizedExpected[NormalizeNS(ns)] = true
 	}
 
-	// Create custom resolver with fallback to public DNS servers
-	resolver := createCustomResolver()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Look up NS records for the domain using custom resolver
-	nsRecords, err := resolver.LookupNS(ctx, domain)
+	// Try system resolver first (works in most environments including Termux)
+	nsRecords, err := net.DefaultResolver.LookupNS(ctx, domain)
 	if err != nil {
-		result.Error = fmt.Errorf("DNS lookup failed for %s: %w", domain, err)
-		return result
+		// Fall back to custom resolver with public DNS servers
+		resolver := createCustomResolver()
+		nsRecords, err = resolver.LookupNS(ctx, domain)
+		if err != nil {
+			result.Error = fmt.Errorf("DNS lookup failed for %s: %w", domain, err)
+			return result
+		}
 	}
 
 	// Extract and normalize actual nameservers
@@ -177,16 +180,19 @@ func VerifyMXRecords(domain string, expectedMX []MXRecord) *MXVerificationResult
 		ExpectedMX: expectedMX,
 	}
 
-	// Create custom resolver with fallback to public DNS servers
-	resolver := createCustomResolver()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Look up MX records for the domain using custom resolver
-	mxRecords, err := resolver.LookupMX(ctx, domain)
+	// Try system resolver first (works in most environments including Termux)
+	mxRecords, err := net.DefaultResolver.LookupMX(ctx, domain)
 	if err != nil {
-		result.Error = fmt.Errorf("MX lookup failed for %s: %w", domain, err)
-		return result
+		// Fall back to custom resolver with public DNS servers
+		resolver := createCustomResolver()
+		mxRecords, err = resolver.LookupMX(ctx, domain)
+		if err != nil {
+			result.Error = fmt.Errorf("MX lookup failed for %s: %w", domain, err)
+			return result
+		}
 	}
 
 	// Convert actual MX records to our format
