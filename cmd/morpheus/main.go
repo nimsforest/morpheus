@@ -1208,35 +1208,43 @@ func handleCheck() {
 		runNetworkCheck(true)
 	case "ssh":
 		runSSHCheck(true)
+	case "config":
+		runConfigCheck(true)
 	case "":
 		// Run all checks
 		fmt.Println("🔍 Running Morpheus Diagnostics")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
 
+		configOk := runConfigCheck(false)
+		fmt.Println()
 		ipv6Ok, ipv4Ok := runNetworkCheck(false)
 		fmt.Println()
 		sshOk := runSSHCheck(false)
 
 		fmt.Println()
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		if ipv6Ok && sshOk {
+		if configOk && ipv6Ok && sshOk {
 			fmt.Println("✅ All checks passed! You're ready to use Morpheus.")
-		} else if ipv4Ok && sshOk {
+		} else if configOk && ipv4Ok && sshOk {
 			fmt.Println("⚠️  IPv6 not available, but IPv4 works.")
 			fmt.Println("   Enable IPv4 fallback in config.yaml:")
 			fmt.Println("     machine:")
 			fmt.Println("       ipv4:")
 			fmt.Println("         enabled: true")
 			fmt.Println("   Note: IPv4 costs extra on Hetzner.")
+		} else if !configOk {
+			fmt.Println("❌ Configuration issues detected. Please review the issues above.")
+			os.Exit(1)
 		} else {
 			fmt.Println("⚠️  Some checks failed. Please review the issues above.")
 			os.Exit(1)
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown check: %s\n\n", subcommand)
-		fmt.Fprintln(os.Stderr, "Usage: morpheus check [ipv6|ipv4|network|ssh]")
+		fmt.Fprintln(os.Stderr, "Usage: morpheus check [config|ipv6|ipv4|network|ssh]")
 		fmt.Fprintln(os.Stderr, "  morpheus check         Run all checks")
+		fmt.Fprintln(os.Stderr, "  morpheus check config  Check config file and env variables")
 		fmt.Fprintln(os.Stderr, "  morpheus check ipv6    Check IPv6 connectivity")
 		fmt.Fprintln(os.Stderr, "  morpheus check ipv4    Check IPv4 connectivity")
 		fmt.Fprintln(os.Stderr, "  morpheus check network Check both IPv6 and IPv4")
@@ -1581,6 +1589,216 @@ func runSSHCheck(exitOnResult bool) bool {
 			os.Exit(1)
 		}
 	}
+	return allOk
+}
+
+// runConfigCheck checks if config file exists and all required env variables are set
+func runConfigCheck(exitOnResult bool) bool {
+	fmt.Println("📋 Configuration")
+
+	allOk := true
+	var configPath string
+	var cfg *config.Config
+	var loadErr error
+
+	// Check for config file in standard locations
+	configPaths := []string{
+		"./config.yaml",
+		filepath.Join(os.Getenv("HOME"), ".morpheus", "config.yaml"),
+		"/etc/morpheus/config.yaml",
+	}
+
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err == nil {
+			configPath = path
+			cfg, loadErr = config.LoadConfig(path)
+			break
+		}
+	}
+
+	if configPath == "" {
+		fmt.Println("   ❌ No config file found")
+		fmt.Println()
+		fmt.Println("   Searched locations:")
+		for _, p := range configPaths {
+			fmt.Printf("      • %s\n", p)
+		}
+		fmt.Println()
+		fmt.Println("   Create a config file:")
+		fmt.Println("      cp config.example.yaml config.yaml")
+		fmt.Println("      # Edit config.yaml with your settings")
+		allOk = false
+	} else if loadErr != nil {
+		fmt.Printf("   ❌ Config file found but failed to load: %s\n", configPath)
+		fmt.Printf("      Error: %s\n", loadErr)
+		allOk = false
+	} else {
+		fmt.Printf("   ✅ Config file loaded: %s\n", configPath)
+	}
+
+	fmt.Println()
+	fmt.Println("   Environment Variables:")
+
+	// Check required environment variables
+	type envVar struct {
+		name        string
+		description string
+		required    bool
+		hasValue    bool
+		masked      string
+	}
+
+	vars := []envVar{
+		{
+			name:        "HETZNER_API_TOKEN",
+			description: "Hetzner Cloud API token",
+			required:    cfg == nil || cfg.GetMachineProvider() == "hetzner" || cfg.GetMachineProvider() == "",
+		},
+		{
+			name:        "HETZNER_DNS_TOKEN",
+			description: "Hetzner DNS API token (optional, uses HETZNER_API_TOKEN as fallback)",
+			required:    false,
+		},
+		{
+			name:        "STORAGEBOX_PASSWORD",
+			description: "Hetzner StorageBox password (for shared registry)",
+			required:    cfg != nil && cfg.GetStorageProvider() == "storagebox",
+		},
+		{
+			name:        "PROXMOX_HOST",
+			description: "Proxmox VE host (for VR mode management)",
+			required:    false,
+		},
+		{
+			name:        "PROXMOX_API_TOKEN",
+			description: "Proxmox API token secret",
+			required:    false,
+		},
+		{
+			name:        "PROXMOX_TOKEN_ID",
+			description: "Proxmox API token ID (e.g., morpheus@pam!token)",
+			required:    false,
+		},
+	}
+
+	// Check each variable
+	for i := range vars {
+		val := os.Getenv(vars[i].name)
+		vars[i].hasValue = val != ""
+		if vars[i].hasValue && len(val) > 8 {
+			vars[i].masked = val[:4] + "..." + val[len(val)-4:]
+		} else if vars[i].hasValue {
+			vars[i].masked = "****"
+		}
+	}
+
+	// Also check config file for values (they might be set there instead of env)
+	if cfg != nil {
+		// HETZNER_API_TOKEN can come from config
+		if cfg.Secrets.HetznerAPIToken != "" {
+			for i := range vars {
+				if vars[i].name == "HETZNER_API_TOKEN" {
+					vars[i].hasValue = true
+					token := cfg.Secrets.HetznerAPIToken
+					if len(token) > 8 {
+						vars[i].masked = token[:4] + "..." + token[len(token)-4:]
+					} else {
+						vars[i].masked = "****"
+					}
+					break
+				}
+			}
+		}
+		// HETZNER_DNS_TOKEN can come from config
+		if cfg.Secrets.HetznerDNSToken != "" {
+			for i := range vars {
+				if vars[i].name == "HETZNER_DNS_TOKEN" {
+					vars[i].hasValue = true
+					break
+				}
+			}
+		}
+		// STORAGEBOX_PASSWORD can come from config
+		if cfg.Storage.StorageBox.Password != "" {
+			for i := range vars {
+				if vars[i].name == "STORAGEBOX_PASSWORD" {
+					vars[i].hasValue = true
+					break
+				}
+			}
+		}
+	}
+
+	// Display results
+	hasRequired := true
+	for _, v := range vars {
+		if v.required && !v.hasValue {
+			hasRequired = false
+		}
+
+		if v.hasValue {
+			if v.required {
+				fmt.Printf("      ✅ %s: %s\n", v.name, v.masked)
+			} else {
+				fmt.Printf("      ✅ %s: %s (optional)\n", v.name, v.masked)
+			}
+		} else {
+			if v.required {
+				fmt.Printf("      ❌ %s: not set (REQUIRED)\n", v.name)
+				fmt.Printf("         %s\n", v.description)
+			} else {
+				fmt.Printf("      ○  %s: not set (optional)\n", v.name)
+			}
+		}
+	}
+
+	if !hasRequired {
+		allOk = false
+	}
+
+	// Validate configuration if loaded
+	if cfg != nil {
+		fmt.Println()
+		fmt.Println("   Configuration Settings:")
+
+		provider := cfg.GetMachineProvider()
+		if provider != "" {
+			fmt.Printf("      Machine provider: %s\n", provider)
+		} else {
+			fmt.Println("      ❌ Machine provider: not set")
+			allOk = false
+		}
+
+		fmt.Printf("      Server type:      %s\n", cfg.GetServerType())
+		fmt.Printf("      Image:            %s\n", cfg.GetImage())
+		fmt.Printf("      Location:         %s\n", cfg.GetLocation())
+		fmt.Printf("      SSH key name:     %s\n", cfg.GetSSHKeyName())
+		fmt.Printf("      IPv4 enabled:     %v\n", cfg.IsIPv4Enabled())
+		fmt.Printf("      Storage provider: %s\n", cfg.GetStorageProvider())
+
+		if cfg.DNS.Provider != "" && cfg.DNS.Provider != "none" {
+			fmt.Printf("      DNS provider:     %s (domain: %s)\n", cfg.DNS.Provider, cfg.DNS.Domain)
+		}
+
+		// Run validation
+		if err := cfg.Validate(); err != nil {
+			fmt.Println()
+			fmt.Printf("   ❌ Config validation failed: %s\n", err)
+			allOk = false
+		} else {
+			fmt.Println()
+			fmt.Println("   ✅ Config validation passed")
+		}
+	}
+
+	if exitOnResult {
+		if allOk {
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
+	}
+
 	return allOk
 }
 
@@ -2319,6 +2537,7 @@ func printHelp() {
 	fmt.Println("    windows                Switch to Windows (SteamLink)")
 	fmt.Println()
 	fmt.Println("  check                    Run all diagnostics")
+	fmt.Println("  check config             Check config file and env variables")
 	fmt.Println("  check ipv6               Check IPv6 connectivity")
 	fmt.Println("  check ssh                Check SSH key setup")
 	fmt.Println()
