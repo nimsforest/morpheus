@@ -10,7 +10,7 @@ import (
 )
 
 // HandleDNSAdd handles the simplified "morpheus dns add" command
-// Usage: morpheus dns add <domain> [--ip IP] [--customer ID]
+// Usage: morpheus dns add <domain> [--customer ID]
 func HandleDNSAdd() {
 	if len(os.Args) < 4 {
 		printDNSAddHelp()
@@ -18,17 +18,11 @@ func HandleDNSAdd() {
 	}
 
 	domain := os.Args[3]
-	var serverIP string
 	var customerID string
 
 	// Parse flags
 	for i := 4; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case "--ip":
-			if i+1 < len(os.Args) {
-				i++
-				serverIP = os.Args[i]
-			}
 		case "--customer":
 			if i+1 < len(os.Args) {
 				i++
@@ -54,7 +48,7 @@ func HandleDNSAdd() {
 	fmt.Printf("\n🌐 Setting up DNS for %s\n", domain)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	// Step 1: Create zone
+	// Create zone
 	fmt.Printf("📦 Creating DNS zone...\n")
 	zone, err := provider.CreateZone(ctx, dns.CreateZoneRequest{
 		Name: domain,
@@ -65,40 +59,6 @@ func HandleDNSAdd() {
 		os.Exit(1)
 	}
 	fmt.Printf("   ✓ Zone created: %s\n\n", zone.Name)
-
-	// Step 2: Add records if IP provided
-	if serverIP != "" {
-		fmt.Printf("📝 Creating DNS records...\n")
-
-		// Create A record for apex (@)
-		_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
-			Domain: domain,
-			Name:   "@",
-			Type:   dns.RecordTypeA,
-			Value:  serverIP,
-			TTL:    300,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "   ⚠️  Failed to create A record: %s\n", err)
-		} else {
-			fmt.Printf("   ✓ %s → %s (A)\n", domain, serverIP)
-		}
-
-		// Create CNAME for www
-		_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
-			Domain: domain,
-			Name:   "www",
-			Type:   dns.RecordTypeCNAME,
-			Value:  "@",
-			TTL:    300,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "   ⚠️  Failed to create www CNAME: %s\n", err)
-		} else {
-			fmt.Printf("   ✓ www.%s → %s (CNAME)\n", domain, domain)
-		}
-		fmt.Println()
-	}
 
 	// Success output
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
@@ -119,14 +79,14 @@ func HandleDNSAdd() {
 
 	fmt.Printf("\n🎯 What's next?\n\n")
 
-	fmt.Printf("📊 Check your zone:\n")
-	fmt.Printf("   morpheus dns status %s\n\n", domain)
+	fmt.Printf("1. Update nameservers at your registrar\n\n")
 
-	fmt.Printf("📝 Add more records:\n")
-	fmt.Printf("   morpheus dns record create api.%s A <ip>\n\n", domain)
+	fmt.Printf("2. Create your infrastructure:\n")
+	fmt.Printf("   morpheus plant\n\n")
 
-	fmt.Printf("🗑️  Remove when done:\n")
-	fmt.Printf("   morpheus dns remove %s\n\n", domain)
+	fmt.Printf("3. DNS records are added automatically by plant,\n")
+	fmt.Printf("   or add them manually:\n")
+	fmt.Printf("   morpheus dns record create %s A <ip>\n\n", domain)
 }
 
 // HandleDNSRemove handles "morpheus dns remove <domain>"
@@ -272,17 +232,15 @@ func startsWithDash(s string) bool {
 }
 
 func printDNSAddHelp() {
-	fmt.Println("Usage: morpheus dns add <domain> [options]")
+	fmt.Println("Usage: morpheus dns add <domain> [--customer ID]")
 	fmt.Println()
-	fmt.Println("Create a DNS zone with optional default records.")
+	fmt.Println("Create a DNS zone in Hetzner DNS.")
 	fmt.Println()
 	fmt.Println("Options:")
-	fmt.Println("  --ip IP          Server IP for A record (also creates www CNAME)")
 	fmt.Println("  --customer ID    Use customer-specific DNS token")
 	fmt.Println("  --help, -h       Show this help")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  morpheus dns add nimsforest.com")
-	fmt.Println("  morpheus dns add nimsforest.com --ip 1.2.3.4")
-	fmt.Println("  morpheus dns add experiencenet.acme.com --customer acme --ip 1.2.3.4")
+	fmt.Println("  morpheus dns add experiencenet.acme.com --customer acme")
 }
