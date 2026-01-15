@@ -106,15 +106,23 @@ func getDNSProvider(customerID string) (*hetzner.Provider, error) {
 			return nil, fmt.Errorf("customer %q has no DNS token configured", customerID)
 		}
 	} else {
-		// Load from main config
+		// Try to load from config first
 		cfg, err := LoadConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load config: %w", err)
+		if err == nil {
+			token = cfg.GetDNSToken()
 		}
 
-		token = cfg.GetDNSToken()
+		// Fall back to environment variables if no config or no token in config
 		if token == "" {
-			return nil, fmt.Errorf("no DNS token configured. Set hetzner_dns_token in config or use --customer flag")
+			// Try dedicated DNS token first, then fall back to API token
+			token = os.Getenv("HETZNER_DNS_TOKEN")
+			if token == "" {
+				token = os.Getenv("HETZNER_API_TOKEN")
+			}
+		}
+
+		if token == "" {
+			return nil, fmt.Errorf("no DNS token configured. Set HETZNER_DNS_TOKEN or HETZNER_API_TOKEN env var, or use config file")
 		}
 	}
 
