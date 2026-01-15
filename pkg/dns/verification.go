@@ -232,3 +232,232 @@ func FormatVerificationResult(result *VerificationResult) string {
 
 	return sb.String()
 }
+
+// dohLookupMX performs DNS over HTTPS lookup for MX records
+func dohLookupMX(domain string) ([]*net.MX, error) {
+	// Try Google DNS over HTTPS
+	url := fmt.Sprintf("https://dns.google/resolve?name=%s&type=MX", domain)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// Try Cloudflare DoH as fallback
+		url = fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=MX", domain)
+		req, err = http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/dns-json")
+
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("DoH lookup failed: %w", err)
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("DoH query returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Answer []struct {
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	if len(result.Answer) == 0 {
+		return nil, fmt.Errorf("no MX records found")
+	}
+
+	var mxRecords []*net.MX
+	for _, answer := range result.Answer {
+		// MX data format: "priority host"
+		var pref uint16
+		var host string
+		fmt.Sscanf(answer.Data, "%d %s", &pref, &host)
+		mxRecords = append(mxRecords, &net.MX{
+			Host: host,
+			Pref: pref,
+		})
+	}
+
+	return mxRecords, nil
+}
+
+// lookupMXWithFallback attempts to lookup MX records using system resolver first,
+// then falls back to DNS over HTTPS if the system resolver fails
+func lookupMXWithFallback(domain string) ([]*net.MX, error) {
+	// Try system resolver first
+	mxRecords, err := net.LookupMX(domain)
+	if err == nil {
+		return mxRecords, nil
+	}
+
+	// If system resolver fails, try DNS over HTTPS
+	if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "no such host") {
+		mxRecords, dohErr := dohLookupMX(domain)
+		if dohErr == nil {
+			return mxRecords, nil
+		}
+		return nil, fmt.Errorf("MX lookup failed (system: %v, DoH: %v)", err, dohErr)
+	}
+
+	return nil, err
+}
+
+// dohLookupTXT performs DNS over HTTPS lookup for TXT records
+func dohLookupTXT(domain string) ([]string, error) {
+	// Try Google DNS over HTTPS
+	url := fmt.Sprintf("https://dns.google/resolve?name=%s&type=TXT", domain)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// Try Cloudflare DoH as fallback
+		url = fmt.Sprintf("https://cloudflare-dns.com/dns-query?name=%s&type=TXT", domain)
+		req, err = http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/dns-json")
+
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("DoH lookup failed: %w", err)
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("DoH query returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Answer []struct {
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	if len(result.Answer) == 0 {
+		return nil, fmt.Errorf("no TXT records found")
+	}
+
+	var txtRecords []string
+	for _, answer := range result.Answer {
+		// Remove quotes from TXT data if present
+		data := strings.Trim(answer.Data, "\"")
+		txtRecords = append(txtRecords, data)
+	}
+
+	return txtRecords, nil
+}
+
+// lookupTXTWithFallback attempts to lookup TXT records using system resolver first,
+// then falls back to DNS over HTTPS if the system resolver fails
+func lookupTXTWithFallback(domain string) ([]string, error) {
+	// Try system resolver first
+	txtRecords, err := net.LookupTXT(domain)
+	if err == nil {
+		return txtRecords, nil
+	}
+
+	// If system resolver fails, try DNS over HTTPS
+	if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "no such host") {
+		txtRecords, dohErr := dohLookupTXT(domain)
+		if dohErr == nil {
+			return txtRecords, nil
+		}
+		return nil, fmt.Errorf("TXT lookup failed (system: %v, DoH: %v)", err, dohErr)
+	}
+
+	return nil, err
+}
+
+// EmailVerificationResult contains the result of email DNS verification
+type EmailVerificationResult struct {
+	Domain       string
+	HasMX        bool
+	MXRecords    []*net.MX
+	HasSPF       bool
+	SPFRecord    string
+	HasDMARC     bool
+	DMARCRecord  string
+	HasDKIM      bool
+	DKIMSelector string
+	Error        error
+}
+
+// VerifyEmailDNS checks if a domain has proper email DNS records (MX, SPF, DMARC)
+func VerifyEmailDNS(domain string) *EmailVerificationResult {
+	result := &EmailVerificationResult{
+		Domain: domain,
+	}
+
+	// Check MX records
+	mxRecords, err := lookupMXWithFallback(domain)
+	if err == nil && len(mxRecords) > 0 {
+		result.HasMX = true
+		result.MXRecords = mxRecords
+	}
+
+	// Check SPF (TXT record at apex)
+	txtRecords, err := lookupTXTWithFallback(domain)
+	if err == nil {
+		for _, txt := range txtRecords {
+			if strings.HasPrefix(txt, "v=spf1") {
+				result.HasSPF = true
+				result.SPFRecord = txt
+				break
+			}
+		}
+	}
+
+	// Check DMARC (TXT record at _dmarc subdomain)
+	dmarcRecords, err := lookupTXTWithFallback("_dmarc." + domain)
+	if err == nil && len(dmarcRecords) > 0 {
+		for _, txt := range dmarcRecords {
+			if strings.HasPrefix(txt, "v=DMARC1") {
+				result.HasDMARC = true
+				result.DMARCRecord = txt
+				break
+			}
+		}
+	}
+
+	return result
+}

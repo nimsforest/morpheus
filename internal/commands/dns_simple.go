@@ -579,6 +579,39 @@ func HandleDNSVerify() {
 		fmt.Println("✅ NS delegation verified!")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
+
+		// Also check email DNS records
+		fmt.Println("📧 Checking email DNS records...")
+		fmt.Println()
+		emailResult := dns.VerifyEmailDNS(domain)
+
+		if emailResult.HasMX {
+			fmt.Printf("✅ MX Records (%d found):\n", len(emailResult.MXRecords))
+			for _, mx := range emailResult.MXRecords {
+				fmt.Printf("   %d %s\n", mx.Pref, mx.Host)
+			}
+		} else {
+			fmt.Println("⚠️  No MX records found")
+		}
+		fmt.Println()
+
+		if emailResult.HasSPF {
+			fmt.Println("✅ SPF Record:")
+			fmt.Printf("   %s\n", emailResult.SPFRecord)
+		} else {
+			fmt.Println("⚠️  No SPF record found")
+		}
+		fmt.Println()
+
+		if emailResult.HasDMARC {
+			fmt.Println("✅ DMARC Record:")
+			fmt.Printf("   %s\n", emailResult.DMARCRecord)
+		} else {
+			fmt.Println("⚠️  No DMARC record found")
+		}
+		fmt.Println()
+
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println("You can now create your infrastructure:")
 		fmt.Println("  morpheus plant")
 		fmt.Println()
