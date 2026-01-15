@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/config"
@@ -619,4 +620,167 @@ func printDNSVerifyHelp() {
 	fmt.Println("Examples:")
 	fmt.Println("  morpheus dns verify nimsforest.com")
 	fmt.Println("  morpheus dns verify experiencenet.customer.com")
+}
+
+// HandleDNSVerifyMX handles "morpheus dns verify-mx <domain>"
+// Checks if MX records are configured correctly
+func HandleDNSVerifyMX() {
+	// Check for help flag first
+	for _, arg := range os.Args[3:] {
+		if arg == "--help" || arg == "-h" {
+			printDNSVerifyMXHelp()
+			os.Exit(0)
+		}
+	}
+
+	if len(os.Args) < 4 {
+		printDNSVerifyMXHelp()
+		os.Exit(1)
+	}
+
+	domain := os.Args[3]
+	provider := "gmail"
+
+	// Parse flags
+	for i := 4; i < len(os.Args); i++ {
+		if os.Args[i] == "--provider" && i+1 < len(os.Args) {
+			i++
+			provider = os.Args[i]
+		}
+	}
+
+	// Validate provider
+	if provider != "gmail" {
+		fmt.Fprintf(os.Stderr, "❌ Unknown provider: %s\n", provider)
+		fmt.Fprintf(os.Stderr, "   Supported providers: gmail\n\n")
+		printDNSVerifyMXHelp()
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n🔍 Verifying MX records for %s\n", domain)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	fmt.Printf("Checking MX records against %s configuration...\n\n", provider)
+
+	// Convert GmailMXRecords to dns.MXRecord format
+	expectedMX := make([]dns.MXRecord, len(GmailMXRecords))
+	for i, mx := range GmailMXRecords {
+		expectedMX[i] = dns.MXRecord{
+			Priority: mx.Priority,
+			Server:   mx.Server,
+		}
+	}
+
+	result := dns.VerifyMXRecords(domain, expectedMX)
+
+	if result.Error != nil {
+		fmt.Printf("❌ MX lookup failed: %s\n\n", result.Error)
+		fmt.Println("Possible causes:")
+		fmt.Println("  - Domain does not exist")
+		fmt.Println("  - No MX records configured")
+		fmt.Println("  - Network/DNS resolver issues")
+		fmt.Println()
+		fmt.Println("Try again in a few minutes, or check with:")
+		fmt.Printf("  dig MX %s\n\n", domain)
+		os.Exit(1)
+	}
+
+	fmt.Println("Expected MX records (Gmail/Google Workspace):")
+	for _, mx := range expectedMX {
+		fmt.Printf("   %d %s\n", mx.Priority, mx.Server)
+	}
+	fmt.Println()
+
+	fmt.Println("Actual MX records found:")
+	if len(result.ActualMX) == 0 {
+		fmt.Println("   (none)")
+	} else {
+		for _, mx := range result.ActualMX {
+			status := "⚠️"
+			for _, expected := range expectedMX {
+				if mx.Priority == expected.Priority && strings.EqualFold(mx.Server, expected.Server) {
+					status = "✓"
+					break
+				}
+			}
+			fmt.Printf("   %s %d %s\n", status, mx.Priority, mx.Server)
+		}
+	}
+	fmt.Println()
+
+	if result.Configured {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("✅ MX records verified!")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Printf("All Gmail MX records are correctly configured for %s\n", domain)
+		fmt.Println()
+		fmt.Println("Your email should be working correctly.")
+		fmt.Println("If you experience issues, check SPF and DMARC records:")
+		fmt.Printf("  dig TXT %s\n", domain)
+		fmt.Printf("  dig TXT _dmarc.%s\n\n", domain)
+	} else if result.PartialMatch {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("⚠️  Partial MX configuration")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		if len(result.MatchingMX) > 0 {
+			fmt.Println("Matching:")
+			for _, mx := range result.MatchingMX {
+				fmt.Printf("  ✓ %d %s\n", mx.Priority, mx.Server)
+			}
+			fmt.Println()
+		}
+		if len(result.MissingMX) > 0 {
+			fmt.Println("Missing:")
+			for _, mx := range result.MissingMX {
+				fmt.Printf("  ✗ %d %s\n", mx.Priority, mx.Server)
+			}
+			fmt.Println()
+		}
+		if len(result.ExtraMX) > 0 {
+			fmt.Println("Extra (not in Gmail configuration):")
+			for _, mx := range result.ExtraMX {
+				fmt.Printf("  • %d %s\n", mx.Priority, mx.Server)
+			}
+			fmt.Println()
+		}
+		fmt.Println("Some MX records are correct but not all.")
+		fmt.Println("Update your DNS configuration with the missing records:")
+		fmt.Printf("  morpheus dns add gmail-mx %s\n\n", domain)
+		os.Exit(1)
+	} else {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("❌ MX records NOT configured for Gmail")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Println("The domain's MX records don't match Gmail/Google Workspace.")
+		fmt.Println()
+		fmt.Println("To set up Gmail MX records, run:")
+		fmt.Printf("  morpheus dns add gmail-mx %s\n", domain)
+		fmt.Println()
+		fmt.Println("This will configure MX, SPF, and DMARC records.")
+		fmt.Println()
+		fmt.Println("Then wait for DNS propagation and verify again:")
+		fmt.Printf("  morpheus dns verify-mx %s\n\n", domain)
+		os.Exit(1)
+	}
+}
+
+func printDNSVerifyMXHelp() {
+	fmt.Println("Usage: morpheus dns verify-mx <domain> [--provider PROVIDER]")
+	fmt.Println()
+	fmt.Println("Verify that MX records are configured correctly.")
+	fmt.Println("Checks if the domain's MX records match expected values.")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  --provider PROVIDER   Email provider to verify against (default: gmail)")
+	fmt.Println("  --help, -h            Show this help")
+	fmt.Println()
+	fmt.Println("Supported providers:")
+	fmt.Println("  gmail    Gmail/Google Workspace MX records")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  morpheus dns verify-mx nimsforest.com")
+	fmt.Println("  morpheus dns verify-mx example.com --provider gmail")
 }
