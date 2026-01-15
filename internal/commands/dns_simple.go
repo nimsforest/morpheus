@@ -9,6 +9,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/customer"
 	"github.com/nimsforest/morpheus/pkg/dns"
+	"github.com/nimsforest/morpheus/pkg/dns/hetzner"
 )
 
 // HandleDNSAdd handles "morpheus dns add <type> <domain>"
@@ -370,6 +371,21 @@ var GmailMXRecords = []struct {
 	{10, "ALT4.ASPMX.L.GOOGLE.COM"},
 }
 
+// createGmailMXRRSet creates an RRSet with all Gmail MX records
+func createGmailMXRRSet(ctx context.Context, provider *hetzner.Provider, domain string) error {
+	// We need to create all MX records in a single RRSet via direct API call
+	// since the Cloud API treats name+type as a unique RRSet
+	records := make([]map[string]interface{}, len(GmailMXRecords))
+	for i, mx := range GmailMXRecords {
+		records[i] = map[string]interface{}{
+			"value": fmt.Sprintf("%d %s", mx.Priority, mx.Server),
+		}
+	}
+
+	// Create the RRSet with all MX records
+	return provider.CreateRRSet(ctx, domain, "@", "MX", 3600, records)
+}
+
 // handleAddGmailMX adds Gmail/Google Workspace MX records and email authentication records
 func handleAddGmailMX(domain, customerID string) {
 	provider, err := getDNSProvider(customerID)
@@ -395,32 +411,23 @@ func handleAddGmailMX(domain, customerID string) {
 	totalRecords := 0
 	failedRecords := 0
 
-	// Add MX records
+	// Add MX records - all MX records must be in a single RRSet
 	fmt.Printf("📮 Adding MX records:\n")
-	for _, mx := range GmailMXRecords {
-		value := fmt.Sprintf("%d %s", mx.Priority, mx.Server)
-		fmt.Printf("   MX %s (priority %d)...", mx.Server, mx.Priority)
-
-		_, err := provider.CreateRecord(ctx, dns.CreateRecordRequest{
-			Domain: domain,
-			Name:   "@",
-			Type:   dns.RecordType("MX"),
-			Value:  value,
-			TTL:    3600,
-		})
-		totalRecords++
-		if err != nil {
-			fmt.Printf(" ❌ %s\n", err)
-			failedRecords++
-		} else {
-			fmt.Printf(" ✓\n")
+	err = createGmailMXRRSet(ctx, provider, domain)
+	totalRecords++
+	if err != nil {
+		fmt.Printf("   ❌ %s\n", err)
+		failedRecords++
+	} else {
+		for _, mx := range GmailMXRecords {
+			fmt.Printf("   ✓ MX %s (priority %d)\n", mx.Server, mx.Priority)
 		}
 	}
 
 	// Add SPF record
 	fmt.Printf("\n🔐 Adding SPF record:\n")
-	spfValue := "v=spf1 include:_spf.google.com ~all"
-	fmt.Printf("   TXT @ \"%s\"...", spfValue)
+	spfValue := "\"v=spf1 include:_spf.google.com ~all\""
+	fmt.Printf("   TXT @ %s...", spfValue)
 	_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
 		Domain: domain,
 		Name:   "@",
@@ -438,8 +445,8 @@ func handleAddGmailMX(domain, customerID string) {
 
 	// Add DMARC record
 	fmt.Printf("\n📊 Adding DMARC record:\n")
-	dmarcValue := fmt.Sprintf("v=DMARC1; p=none; rua=mailto:dmarc@%s", domain)
-	fmt.Printf("   TXT _dmarc \"%s\"...", dmarcValue)
+	dmarcValue := fmt.Sprintf("\"v=DMARC1; p=none; rua=mailto:dmarc@%s\"", domain)
+	fmt.Printf("   TXT _dmarc %s...", dmarcValue)
 	_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
 		Domain: domain,
 		Name:   "_dmarc",
