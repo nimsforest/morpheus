@@ -12,6 +12,14 @@ import (
 // HandleDNSAdd handles "morpheus dns add <type> <domain>"
 // Types: apex (we control domain) or subdomain (delegated from parent)
 func HandleDNSAdd() {
+	// Check for help flag first
+	for _, arg := range os.Args[3:] {
+		if arg == "--help" || arg == "-h" {
+			printDNSAddHelp()
+			os.Exit(0)
+		}
+	}
+
 	if len(os.Args) < 5 {
 		printDNSAddHelp()
 		os.Exit(1)
@@ -31,15 +39,9 @@ func HandleDNSAdd() {
 
 	// Parse flags
 	for i := 5; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "--customer":
-			if i+1 < len(os.Args) {
-				i++
-				customerID = os.Args[i]
-			}
-		case "--help", "-h":
-			printDNSAddHelp()
-			os.Exit(0)
+		if os.Args[i] == "--customer" && i+1 < len(os.Args) {
+			i++
+			customerID = os.Args[i]
 		}
 	}
 
