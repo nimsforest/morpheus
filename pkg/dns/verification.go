@@ -1,9 +1,13 @@
 package dns
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
+	"time"
 )
 
 // VerificationResult contains the result of a DNS delegation verification
@@ -19,8 +23,87 @@ type VerificationResult struct {
 	PartialMatch bool     // True if some but not all NS records match
 }
 
+// dohResponse represents the JSON response from DNS-over-HTTPS providers
+type dohResponse struct {
+	Status   int  `json:"Status"`
+	Answer   []dohAnswer `json:"Answer"`
+}
+
+type dohAnswer struct {
+	Name string `json:"name"`
+	Type int    `json:"type"`
+	Data string `json:"data"`
+}
+
+// lookupNSviaDoH performs NS lookup using DNS-over-HTTPS
+// This works even when UDP port 53 is blocked (e.g., in containers)
+func lookupNSviaDoH(ctx context.Context, domain string) ([]*net.NS, error) {
+	// Try multiple DoH providers
+	providers := []string{
+		"https://dns.google/resolve?name=" + domain + "&type=NS",
+		"https://cloudflare-dns.com/dns-query?name=" + domain + "&type=NS",
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	var lastErr error
+	for _, provider := range providers {
+		req, err := http.NewRequestWithContext(ctx, "GET", provider, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Accept", "application/dns-json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("DoH provider returned status %d", resp.StatusCode)
+			continue
+		}
+
+		var dohResp dohResponse
+		if err := json.NewDecoder(resp.Body).Decode(&dohResp); err != nil {
+			lastErr = err
+			continue
+		}
+
+		if dohResp.Status != 0 {
+			lastErr = fmt.Errorf("DoH response status: %d", dohResp.Status)
+			continue
+		}
+
+		// Extract NS records (type 2 is NS)
+		var nsRecords []*net.NS
+		for _, answer := range dohResp.Answer {
+			if answer.Type == 2 { // NS record type
+				nsRecords = append(nsRecords, &net.NS{Host: answer.Data})
+			}
+		}
+
+		if len(nsRecords) > 0 {
+			return nsRecords, nil
+		}
+
+		lastErr = fmt.Errorf("no NS records found in DoH response")
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("all DoH providers failed: %w", lastErr)
+	}
+	return nil, fmt.Errorf("no DoH providers available")
+}
+
 // VerifyNSDelegation checks if a domain's NS records point to expected nameservers
 // Returns a VerificationResult with detailed information about the delegation status
+// Uses a 3-tier fallback system: system resolver → custom UDP resolver → DNS-over-HTTPS
 func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult {
 	result := &VerificationResult{
 		Domain:     domain,
@@ -33,12 +116,53 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 		normalizedExpected[NormalizeNS(ns)] = true
 	}
 
-	// Look up NS records for the domain
-	nsRecords, err := net.LookupNS(domain)
+	// 3-tier fallback system for DNS lookups
+	var nsRecords []*net.NS
+	var err error
+
+	// Tier 1: Try system resolver with 3s timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	resolver := &net.Resolver{}
+	nsRecords, err = resolver.LookupNS(ctx, domain)
+	if err == nil && len(nsRecords) > 0 {
+		// System resolver succeeded
+		goto processRecords
+	}
+
+	// Tier 2: Try custom UDP resolver (8.8.8.8, 1.1.1.1) with 5s timeout
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, dnsServer := range []string{"8.8.8.8:53", "1.1.1.1:53"} {
+		resolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: 5 * time.Second,
+				}
+				return d.DialContext(ctx, "udp", dnsServer)
+			},
+		}
+		nsRecords, err = resolver.LookupNS(ctx, domain)
+		if err == nil && len(nsRecords) > 0 {
+			// Custom UDP resolver succeeded
+			goto processRecords
+		}
+	}
+
+	// Tier 3: Fall back to DNS-over-HTTPS with 15s timeout
+	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	nsRecords, err = lookupNSviaDoH(ctx, domain)
 	if err != nil {
-		result.Error = fmt.Errorf("DNS lookup failed for %s: %w", domain, err)
+		result.Error = fmt.Errorf("all DNS lookup methods failed for %s: %w", domain, err)
 		return result
 	}
+
+processRecords:
 
 	// Extract and normalize actual nameservers
 	for _, ns := range nsRecords {
