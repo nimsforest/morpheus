@@ -580,7 +580,6 @@ func TestIsRemoteRegistry(t *testing.T) {
 		expected bool
 	}{
 		{"storagebox", "storagebox", true},
-		{"s3", "s3", true},
 		{"local", "local", false},
 		{"none", "none", false},
 		{"empty", "", false},

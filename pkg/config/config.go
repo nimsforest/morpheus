@@ -47,16 +47,15 @@ type IPv4Config struct {
 
 // DNSConfig defines DNS provider settings
 type DNSConfig struct {
-	Provider string `yaml:"provider"` // hetzner, cloudflare, hosts, none
+	Provider string `yaml:"provider"` // hetzner, hosts, none
 	Domain   string `yaml:"domain"`   // Base domain for DNS records
 	TTL      int    `yaml:"ttl"`      // TTL for DNS records
 }
 
 // StorageConfig defines storage provider settings
 type StorageConfig struct {
-	Provider   string             `yaml:"provider"` // storagebox, s3, local, none
+	Provider   string             `yaml:"provider"` // storagebox, local, none
 	StorageBox StorageBoxConfig   `yaml:"storagebox"`
-	S3         S3Config           `yaml:"s3"`
 	Local      LocalStorageConfig `yaml:"local"`
 }
 
@@ -67,15 +66,6 @@ type StorageBoxConfig struct {
 	Password string `yaml:"password"` // or ${STORAGEBOX_PASSWORD}
 }
 
-// S3Config defines S3 storage settings
-type S3Config struct {
-	Bucket    string `yaml:"bucket"`
-	Region    string `yaml:"region"`
-	Endpoint  string `yaml:"endpoint"` // Optional: for S3-compatible services
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-}
-
 // LocalStorageConfig defines local storage settings
 type LocalStorageConfig struct {
 	Path string `yaml:"path"` // Path to local registry file
@@ -84,7 +74,7 @@ type LocalStorageConfig struct {
 // RegistryConfig defines remote registry settings for multi-device access
 // DEPRECATED: Use StorageConfig instead
 type RegistryConfig struct {
-	Type           string `yaml:"type"`            // "storagebox", "s3", "local", or "none"
+	Type           string `yaml:"type"`            // "storagebox", "local", or "none"
 	URL            string `yaml:"url"`             // WebDAV URL for storagebox (CLI access), or file path for local
 	Username       string `yaml:"username"`        // Authentication username
 	Password       string `yaml:"password"`        // Authentication password (or ${STORAGEBOX_PASSWORD} env var)
@@ -387,10 +377,10 @@ func (c *Config) Validate() error {
 			if c.Secrets.HetznerDNSToken == "" && c.Secrets.HetznerAPIToken == "" {
 				return fmt.Errorf("hetzner_dns_token is required for Hetzner DNS (set via config or HETZNER_DNS_TOKEN env var)")
 			}
-		case "cloudflare", "hosts":
-			// TODO: Add validation for other DNS providers
+		case "hosts":
+			// hosts provider uses /etc/hosts, no credentials needed
 		default:
-			return fmt.Errorf("unsupported DNS provider: %s (supported: hetzner, cloudflare, hosts, none)", c.DNS.Provider)
+			return fmt.Errorf("unsupported DNS provider: %s (supported: hetzner, hosts, none)", c.DNS.Provider)
 		}
 	}
 
@@ -490,7 +480,7 @@ func (c *Config) GetStorageProvider() string {
 // IsRemoteRegistry returns true if the registry is configured to use remote storage
 func (c *Config) IsRemoteRegistry() bool {
 	provider := c.GetStorageProvider()
-	return provider == "storagebox" || provider == "s3"
+	return provider == "storagebox"
 }
 
 // GetRegistryType returns the registry type with fallback to "local"
