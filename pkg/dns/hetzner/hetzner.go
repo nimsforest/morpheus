@@ -300,7 +300,8 @@ func (p *Provider) DeleteZone(ctx context.Context, zoneName string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	// Cloud API returns 201 with async action, 200/204 for immediate success
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to delete zone: status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
