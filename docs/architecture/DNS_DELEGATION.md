@@ -1,38 +1,79 @@
-# DNS Delegation for Customer Subdomains
+# DNS Management via Hetzner
 
-This document describes the architecture for managing DNS for customer subdomains using Hetzner DNS.
-
-## Overview
-
-Customers delegate a subdomain to our DNS by adding NS records pointing to Hetzner's nameservers on their side. The subdomain corresponds to the venture service they're using (e.g., `experiencenet.customer.com`, `nimsforest.customer.com`). Morpheus manages all records via Hetzner DNS.
+This document describes how Morpheus manages DNS via Hetzner DNS.
 
 ## Architecture
 
 ```
-Customer's DNS Provider                    Hetzner DNS (via Morpheus)
-┌─────────────────────────┐               ┌─────────────────────────────────┐
-│                         │               │                                 │
-│  customer.com           │               │  experiencenet.customer.com     │
-│  └─ experiencenet  NS ──┼──────────────>│  └─ www          A  1.2.3.4     │
-│                         │               │  └─ api          A  1.2.3.5     │
-│  └─ nimsforest     NS ──┼──────────────>│                                 │
-│                         │               │  nimsforest.customer.com        │
-└─────────────────────────┘               │  └─ www          A  5.6.7.8     │
-                                          │  └─ nats         A  5.6.7.9     │
-                                          └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Hetzner DNS                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  NimsForest Project          Customer Project (Acme)                │
+│  ┌─────────────────────┐     ┌─────────────────────────────────┐   │
+│  │ nimsforest.com      │     │ experiencenet.acme.com          │   │
+│  │ experiencenet.io    │     │ nimsforest.acme.com             │   │
+│  └─────────────────────┘     └─────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                    │                         │
+                    │                         │
+                    ▼                         ▼
+              Morpheus CLI              Morpheus CLI
+           (maintainer token)        (maintainer token)
 ```
 
 ### Key Concepts
 
 - **One Hetzner project per customer**: Each customer has an isolated Hetzner project
-- **Project-scoped API token**: Each project has its own Morpheus API token (token determines project/org scope)
-- **Delegated zones**: DNS zones for all delegated subdomains live in the customer's project
+- **One Morpheus API token per maintainer**: Maintainers use their own tokens
+- **DNS zones in customer's project**: Zones for delegated subdomains live in the customer's project
 - **NimsForest compute**: Runs on Hetzner servers within the same project
-- **ExperienceNet edge nodes**: May be bare metal outside Hetzner, but DNS records are managed through Hetzner DNS
+- **ExperienceNet edge nodes**: May be bare metal outside Hetzner, but DNS records pointing to them are managed through Hetzner DNS
 
-## Customer DNS Setup
+---
 
-Customers add NS records on their existing DNS provider to delegate the subdomain:
+## Use Case 1: We Control the Apex Domain (Internal Ventures)
+
+For domains we own (e.g., `nimsforest.com`, `experiencenet.io`):
+
+### Setup
+
+1. Set nameservers at the registrar to Hetzner:
+   ```
+   hydrogen.ns.hetzner.com
+   oxygen.ns.hetzner.com
+   helium.ns.hetzner.de
+   ```
+
+2. Create zone in Hetzner DNS
+
+3. Morpheus manages all records
+
+### Example Zone Structure
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  nimsforest.com (Hetzner DNS - NimsForest Project)       │
+│                                                          │
+│  @              A      <server-ip>                       │
+│  @              AAAA   <server-ipv6>                     │
+│  www            CNAME  @                                 │
+│  api            A      <api-server-ip>                   │
+│  app            A      <app-server-ip>                   │
+│  *.forests      A      <forest-lb-ip>                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Use Case 2: Customer Delegates a Subdomain
+
+Customers delegate a subdomain to our DNS by adding NS records pointing to Hetzner's nameservers on their side. The subdomain corresponds to the venture service they're using.
+
+### Customer DNS Setup
+
+Customer adds NS records on their existing DNS provider:
 
 ```
 experiencenet.customer.com  NS  hydrogen.ns.hetzner.com
@@ -52,105 +93,7 @@ nimsforest.customer.com     NS  oxygen.ns.hetzner.com
 nimsforest.customer.com     NS  helium.ns.hetzner.de
 ```
 
-## Apex Domain Management
-
-Apex domains (zone roots like `customer.com` or `nimsforest.com`) require special handling because CNAME records are not allowed at the apex per RFC 1034.
-
-### Scenario 1: Customer Subdomain Delegation (Default)
-
-Customer keeps their apex and delegates a subdomain to us. When we host their website:
-
-**Option A: ALIAS/ANAME (Preferred)**
-
-If the customer's DNS provider supports ALIAS/ANAME:
-
-```
-www.customer.com     CNAME  www.nimsforest.customer.com
-customer.com         ALIAS  www.nimsforest.customer.com
-```
-
-**Option B: Static IP (Fallback)**
-
-For providers without ALIAS support, we provision a Hetzner Floating IP:
-
-```
-www.customer.com     CNAME  www.nimsforest.customer.com
-customer.com         A      <floating-ip>
-```
-
-### Scenario 2: Full Domain Delegation
-
-For customers who want us to manage their entire domain (including apex), they change their domain's nameservers to Hetzner:
-
-```
-customer.com  NS  hydrogen.ns.hetzner.com
-customer.com  NS  oxygen.ns.hetzner.com
-customer.com  NS  helium.ns.hetzner.de
-```
-
-This is configured at the registrar level, not in DNS records. Once delegated:
-- Morpheus creates the zone for `customer.com` in Hetzner DNS
-- We have full control including apex A/AAAA records
-- Customer loses ability to manage DNS elsewhere
-
-**Use cases:**
-- Customer has no existing DNS infrastructure
-- Customer wants turnkey solution
-- Simpler setup, single point of management
-
-### Scenario 3: NimsForest's Own Domains
-
-For domains we own (e.g., `nimsforest.com`):
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  nimsforest.com (Hetzner DNS - NimsForest Project)       │
-│                                                          │
-│  @              A      <primary-floating-ip>             │
-│  @              AAAA   <primary-ipv6>                    │
-│  www            CNAME  @                                 │
-│  api            A      <api-server-ip>                   │
-│  app            A      <app-server-ip>                   │
-│  *.forests      A      <forest-lb-ip>                    │
-└──────────────────────────────────────────────────────────┘
-```
-
-**Floating IP strategy:**
-- Provision a Hetzner Floating IP for the apex
-- Floating IP can be reassigned between servers without DNS changes
-- Provides failover capability
-
-### Apex Solutions Comparison
-
-| Solution | Apex Support | Failover | Complexity | Best For |
-|----------|--------------|----------|------------|----------|
-| ALIAS/ANAME | Yes | Via target | Low | Modern DNS providers |
-| Floating IP | Yes | IP reassignment | Medium | Full control needed |
-| Full delegation | Yes | Full control | High | Turnkey customers |
-| Static A record | Yes | Manual | Low | Simple setups |
-
-### Floating IP Management
-
-For apex domains requiring direct A records, use Hetzner Floating IPs:
-
-```bash
-# Create floating IP
-hcloud floating-ip create --type ipv4 --home-location fsn1 --name customer-apex
-
-# Assign to server
-hcloud floating-ip assign <floating-ip-id> <server-id>
-
-# Reassign during failover
-hcloud floating-ip assign <floating-ip-id> <new-server-id>
-```
-
-Morpheus should:
-1. Provision Floating IP when apex hosting is requested
-2. Create A record pointing to the Floating IP
-3. Manage Floating IP assignment based on server health
-4. Clean up Floating IP on teardown
-
-## Customer Onboarding Flow
+### Customer Onboarding Flow
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -166,10 +109,10 @@ Morpheus should:
 │  3. [Morpheus] Create DNS zone(s) using project-specific token         │
 │         │                                                              │
 │         ▼                                                              │
-│  4. [Customer] Add NS records on their DNS provider                    │
+│  4. [Morpheus] Provision records based on enabled venture services     │
 │         │                                                              │
 │         ▼                                                              │
-│  5. [Morpheus] Provision records based on enabled venture services     │
+│  5. [Customer] Add NS records on their DNS provider                    │
 │                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -189,13 +132,42 @@ Morpheus should:
    - Using the customer-specific token
    - Zone name = delegated subdomain (e.g., `experiencenet.customer.com`)
 
-4. **Customer configures NS records**
+4. **Morpheus provisions records**
+   - Based on which venture services are enabled
+   - Based on where infrastructure is deployed
+
+5. **Customer configures NS records**
    - Customer adds NS records pointing to Hetzner nameservers
    - Provide customer with copy-paste instructions
 
-5. **Morpheus provisions records**
-   - Based on which venture services are enabled
-   - Based on where infrastructure is deployed
+### Root Domain Hosting
+
+If NimsForest manages the customer's marketing website, we create a record under the delegated subdomain (e.g., `www.nimsforest.customer.com`). Customer then adds:
+
+**Option A: CNAME + ALIAS (Preferred)**
+
+```
+www.customer.com     CNAME  www.nimsforest.customer.com
+customer.com         ALIAS  www.nimsforest.customer.com  (or ANAME)
+```
+
+**Option B: Static IP (Fallback)**
+
+For customers whose DNS provider doesn't support ALIAS/ANAME at the apex:
+
+```
+www.customer.com     CNAME  www.nimsforest.customer.com
+customer.com         A      <static-ip-we-provision>
+```
+
+---
+
+## What We Need to Build
+
+- Zone creation and record management via Hetzner DNS API
+- Support for multiple venture prefixes per customer
+
+---
 
 ## Hetzner DNS API
 
@@ -212,7 +184,7 @@ Morpheus should:
 
 ```bash
 curl -X POST "https://dns.hetzner.com/api/v1/zones" \
-  -H "Auth-API-Token: <customer-token>" \
+  -H "Auth-API-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{"name": "experiencenet.customer.com", "ttl": 86400}'
 ```
@@ -221,7 +193,7 @@ curl -X POST "https://dns.hetzner.com/api/v1/zones" \
 
 ```bash
 curl -X POST "https://dns.hetzner.com/api/v1/records" \
-  -H "Auth-API-Token: <customer-token>" \
+  -H "Auth-API-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "zone_id": "<zone-id>",
@@ -231,6 +203,8 @@ curl -X POST "https://dns.hetzner.com/api/v1/records" \
     "ttl": 300
   }'
 ```
+
+---
 
 ## Security Considerations
 
@@ -251,6 +225,8 @@ Document the following in customer terms of service:
 - Customer retains control of their root domain
 - Changes to DNS are automated based on infrastructure deployments
 
+---
+
 ## Post-MVP Enhancements
 
 ### Audit Logging
@@ -269,6 +245,8 @@ Document the following in customer terms of service:
 - Define rotation policy (e.g., quarterly)
 - Automate rotation process
 - Update Bitwarden entries automatically
+
+---
 
 ## Related Documentation
 

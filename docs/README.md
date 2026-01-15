@@ -25,7 +25,7 @@ Technical documentation about how Morpheus works.
 | [SEPARATION_OF_CONCERNS.md](architecture/SEPARATION_OF_CONCERNS.md) | How Morpheus and NimsForest work together |
 | [BINARY_DEPLOYMENT.md](architecture/BINARY_DEPLOYMENT.md) | Why we use direct binaries instead of Docker |
 | [OS_SELECTION.md](architecture/OS_SELECTION.md) | Ubuntu vs Debian: Which OS to use for Forest and Nims nodes |
-| [DNS_DELEGATION.md](architecture/DNS_DELEGATION.md) | DNS delegation for customer subdomains via Hetzner DNS |
+| [DNS_DELEGATION.md](architecture/DNS_DELEGATION.md) | DNS management via Hetzner (internal ventures + customer subdomains) |
 
 ## 🛠️ Development
 
