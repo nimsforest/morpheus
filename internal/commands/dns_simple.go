@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/customer"
 	"github.com/nimsforest/morpheus/pkg/dns"
 )
@@ -70,7 +71,17 @@ func HandleDNSAdd() {
 		fmt.Fprintf(os.Stderr, "❌ Failed to create zone: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("   ✓ Zone created: %s\n\n", zone.Name)
+	fmt.Printf("   ✓ Zone created: %s\n", zone.Name)
+
+	// Save domain to config for plant integration (only for our own zones, not customer zones)
+	if customerID == "" {
+		if err := saveDomainToConfig(domain); err != nil {
+			fmt.Printf("   ⚠️  Could not save domain to config: %s\n", err)
+		} else {
+			fmt.Printf("   ✓ Domain saved to config (plant will auto-add DNS records)\n")
+		}
+	}
+	fmt.Println()
 
 	// Success output
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
@@ -106,8 +117,12 @@ func printApexInstructions(domain string, nameservers []string) {
 	fmt.Printf("2. Replace existing nameservers with the ones above\n")
 	fmt.Printf("3. Wait for propagation (up to 48 hours)\n\n")
 
-	fmt.Printf("4. Create your infrastructure:\n")
-	fmt.Printf("   morpheus plant\n\n")
+	fmt.Printf("4. Verify NS delegation:\n")
+	fmt.Printf("   morpheus dns verify %s\n\n", domain)
+
+	fmt.Printf("5. Create your infrastructure:\n")
+	fmt.Printf("   morpheus plant\n")
+	fmt.Printf("   (DNS records will be added automatically)\n\n")
 }
 
 func printSubdomainInstructions(domain string, nameservers []string) {
@@ -128,8 +143,12 @@ func printSubdomainInstructions(domain string, nameservers []string) {
 	fmt.Printf("2. Add the NS records shown above\n")
 	fmt.Printf("3. Wait for propagation (usually minutes)\n\n")
 
-	fmt.Printf("4. Create your infrastructure:\n")
-	fmt.Printf("   morpheus plant\n\n")
+	fmt.Printf("4. Verify NS delegation:\n")
+	fmt.Printf("   morpheus dns verify %s\n\n", domain)
+
+	fmt.Printf("5. Create your infrastructure:\n")
+	fmt.Printf("   morpheus plant\n")
+	fmt.Printf("   (DNS records will be added automatically)\n\n")
 }
 
 func splitDomain(domain string) []string {
@@ -291,6 +310,18 @@ func showAllZones(ctx context.Context, provider dns.Provider) {
 
 func startsWithDash(s string) bool {
 	return len(s) > 0 && s[0] == '-'
+}
+
+// saveDomainToConfig saves the DNS domain to config file
+func saveDomainToConfig(domain string) error {
+	configPath := config.FindConfigPath()
+	if configPath == "" {
+		if err := config.EnsureConfigDir(); err != nil {
+			return err
+		}
+		configPath = config.GetDefaultConfigPath()
+	}
+	return config.SetConfigValue(configPath, "dns_domain", domain)
 }
 
 func printDNSAddHelp() {
