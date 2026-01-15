@@ -49,7 +49,7 @@ func printDNSHelp() {
 	fmt.Println("  add apex <domain>        Create zone for domain you own")
 	fmt.Println("  add subdomain <domain>   Create zone delegated from parent")
 	fmt.Println("  add gmail-mx <domain>    Add Gmail/Google Workspace MX records")
-	fmt.Println("  verify <domain>          Check NS delegation is working")
+	fmt.Println("  verify <domain>          Check NS delegation and MX records")
 	fmt.Println("  status [domain]          Show zones or zone details")
 	fmt.Println("  remove <domain>          Delete zone and all records")
 	fmt.Println()
