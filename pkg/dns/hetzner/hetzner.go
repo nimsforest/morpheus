@@ -230,6 +230,7 @@ func (p *Provider) CreateZone(ctx context.Context, req dns.CreateZoneRequest) (*
 	body := map[string]interface{}{
 		"name": req.Name,
 		"ttl":  ttl,
+		"mode": "primary", // Required by Cloud API - "primary" for zones we manage
 	}
 
 	jsonBody, err := json.Marshal(body)
