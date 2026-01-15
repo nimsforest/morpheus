@@ -30,7 +30,7 @@ machine:
 # DNS Provider Configuration (optional)
 # ─────────────────────────────────────────────────────────────────────────────
 dns:
-  provider: none       # "hetzner", "cloudflare", "hosts", or "none"
+  provider: none       # "hetzner", "hosts", or "none"
   domain: ""           # Base domain for DNS records (e.g., morpheus.example.com)
   ttl: 300             # TTL for DNS records in seconds
 
@@ -38,7 +38,7 @@ dns:
 # Storage Provider Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 storage:
-  provider: local  # "storagebox", "s3", "local", or "none"
+  provider: local  # "storagebox", "local", or "none"
   
   # StorageBox settings (for Hetzner StorageBox via WebDAV)
   storagebox:
@@ -129,7 +129,7 @@ secrets:
 #
 # DNS (optional):
 #   - Configure DNS to automatically create records for your servers
-#   - Supports Hetzner DNS, Cloudflare, or custom hosts file
+#   - Supports Hetzner DNS or custom hosts file
 #   - Records: <forest-id>-node-<n>.<domain> → server IP
 #
 # Cost Estimates:
