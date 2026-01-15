@@ -1,10 +1,37 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
+	"time"
 )
+
+// createCustomResolver creates a DNS resolver with fallback to public DNS servers
+// This is needed when the system's DNS resolver is broken or unavailable
+func createCustomResolver() *net.Resolver {
+	// Try to detect if we need custom DNS
+	// We'll always create a custom resolver as fallback for robustness
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 10 * time.Second}
+			// Try Google DNS first
+			conn, err := d.DialContext(ctx, "udp", "8.8.8.8:53")
+			if err != nil {
+				// Fallback to Cloudflare DNS
+				conn, err = d.DialContext(ctx, "udp", "1.1.1.1:53")
+			}
+			if err != nil {
+				// Last fallback to Quad9
+				conn, err = d.DialContext(ctx, "udp", "9.9.9.9:53")
+			}
+			return conn, err
+		},
+	}
+	return resolver
+}
 
 // VerificationResult contains the result of a DNS delegation verification
 type VerificationResult struct {
@@ -33,8 +60,13 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 		normalizedExpected[NormalizeNS(ns)] = true
 	}
 
-	// Look up NS records for the domain
-	nsRecords, err := net.LookupNS(domain)
+	// Create custom resolver with fallback to public DNS servers
+	resolver := createCustomResolver()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Look up NS records for the domain using custom resolver
+	nsRecords, err := resolver.LookupNS(ctx, domain)
 	if err != nil {
 		result.Error = fmt.Errorf("DNS lookup failed for %s: %w", domain, err)
 		return result
@@ -145,8 +177,13 @@ func VerifyMXRecords(domain string, expectedMX []MXRecord) *MXVerificationResult
 		ExpectedMX: expectedMX,
 	}
 
-	// Look up MX records for the domain
-	mxRecords, err := net.LookupMX(domain)
+	// Create custom resolver with fallback to public DNS servers
+	resolver := createCustomResolver()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Look up MX records for the domain using custom resolver
+	mxRecords, err := resolver.LookupMX(ctx, domain)
 	if err != nil {
 		result.Error = fmt.Errorf("MX lookup failed for %s: %w", domain, err)
 		return result
