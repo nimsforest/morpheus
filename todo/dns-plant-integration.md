@@ -10,7 +10,7 @@ Wire up `morpheus plant` to automatically add DNS records after infrastructure i
 
 ### Phase 1: DNS Verification for Apex Domains
 
-- [ ] Task 1.1 - Add `morpheus dns verify <domain>` command
+- [x] Task 1.1 - Add `morpheus dns verify <domain>` command
   - Checks if NS records point to Hetzner nameservers
   - Works for both apex and subdomain zones
   - Shows clear pass/fail status
