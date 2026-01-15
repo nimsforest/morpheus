@@ -653,3 +653,276 @@ secrets:
 		t.Error("Expected EnableIPv4Fallback to default to false")
 	}
 }
+
+func TestSetConfigValue(t *testing.T) {
+	tests := []struct {
+		name      string
+		key       string
+		value     string
+		checkFunc func(*Config) bool
+	}{
+		{
+			name:  "set hetzner_api_token",
+			key:   "hetzner_api_token",
+			value: "test-token-123",
+			checkFunc: func(c *Config) bool {
+				return c.Secrets.HetznerAPIToken == "test-token-123"
+			},
+		},
+		{
+			name:  "set hetzner-api-token (with hyphens)",
+			key:   "hetzner-api-token",
+			value: "test-token-456",
+			checkFunc: func(c *Config) bool {
+				return c.Secrets.HetznerAPIToken == "test-token-456"
+			},
+		},
+		{
+			name:  "set machine_provider",
+			key:   "machine_provider",
+			value: "hetzner",
+			checkFunc: func(c *Config) bool {
+				return c.Machine.Provider == "hetzner"
+			},
+		},
+		{
+			name:  "set ipv4_enabled true",
+			key:   "ipv4_enabled",
+			value: "true",
+			checkFunc: func(c *Config) bool {
+				return c.Machine.IPv4.Enabled == true
+			},
+		},
+		{
+			name:  "set ipv4_enabled false",
+			key:   "ipv4_enabled",
+			value: "false",
+			checkFunc: func(c *Config) bool {
+				return c.Machine.IPv4.Enabled == false
+			},
+		},
+		{
+			name:  "set server_type",
+			key:   "server_type",
+			value: "cx22",
+			checkFunc: func(c *Config) bool {
+				return c.Machine.Hetzner.ServerType == "cx22"
+			},
+		},
+		{
+			name:  "set location",
+			key:   "location",
+			value: "nbg1",
+			checkFunc: func(c *Config) bool {
+				return c.Machine.Hetzner.Location == "nbg1"
+			},
+		},
+		{
+			name:  "set dns_provider",
+			key:   "dns_provider",
+			value: "hetzner",
+			checkFunc: func(c *Config) bool {
+				return c.DNS.Provider == "hetzner"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.yaml")
+
+			// Set the value
+			err := SetConfigValue(configPath, tt.key, tt.value)
+			if err != nil {
+				t.Fatalf("SetConfigValue failed: %v", err)
+			}
+
+			// Load and verify
+			cfg, err := LoadConfig(configPath)
+			if err != nil {
+				t.Fatalf("LoadConfig failed: %v", err)
+			}
+
+			if !tt.checkFunc(cfg) {
+				t.Errorf("Config value not set correctly for key %s", tt.key)
+			}
+		})
+	}
+}
+
+func TestSetConfigValueUnknownKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	err := SetConfigValue(configPath, "unknown_key", "value")
+	if err == nil {
+		t.Error("Expected error for unknown config key")
+	}
+}
+
+func TestSetConfigValueUpdateExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Create initial config
+	initialConfig := `
+machine:
+  provider: hetzner
+  hetzner:
+    server_type: cx11
+    location: fsn1
+
+secrets:
+  hetzner_api_token: old-token
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	// Update the token
+	err := SetConfigValue(configPath, "hetzner_api_token", "new-token")
+	if err != nil {
+		t.Fatalf("SetConfigValue failed: %v", err)
+	}
+
+	// Load and verify
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	// Check new value is set
+	if cfg.Secrets.HetznerAPIToken != "new-token" {
+		t.Errorf("Expected new-token, got %s", cfg.Secrets.HetznerAPIToken)
+	}
+
+	// Check that other values are preserved
+	if cfg.Machine.Provider != "hetzner" {
+		t.Errorf("Expected provider 'hetzner' to be preserved, got %s", cfg.Machine.Provider)
+	}
+}
+
+func TestSaveConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	cfg := &Config{
+		Machine: MachineConfig{
+			Provider: "hetzner",
+			Hetzner: HetznerConfig{
+				ServerType: "cx22",
+				Location:   "fsn1",
+				Image:      "ubuntu-24.04",
+			},
+		},
+		Secrets: SecretsConfig{
+			HetznerAPIToken: "my-secret-token",
+		},
+	}
+
+	err := SaveConfig(configPath, cfg)
+	if err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	// Verify file was created with correct permissions
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("Config file not created: %v", err)
+	}
+
+	// Check permissions (should be 0600 for security)
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("Expected file permissions 0600, got %v", info.Mode().Perm())
+	}
+
+	// Load and verify contents
+	loadedCfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load saved config: %v", err)
+	}
+
+	if loadedCfg.Machine.Provider != "hetzner" {
+		t.Errorf("Expected provider 'hetzner', got %s", loadedCfg.Machine.Provider)
+	}
+
+	if loadedCfg.Secrets.HetznerAPIToken != "my-secret-token" {
+		t.Errorf("Expected token 'my-secret-token', got %s", loadedCfg.Secrets.HetznerAPIToken)
+	}
+}
+
+func TestGetConfigValue(t *testing.T) {
+	cfg := &Config{
+		Machine: MachineConfig{
+			Provider: "hetzner",
+			Hetzner: HetznerConfig{
+				ServerType: "cx22",
+				Location:   "fsn1",
+			},
+			IPv4: IPv4Config{
+				Enabled: true,
+			},
+		},
+		Secrets: SecretsConfig{
+			HetznerAPIToken: "test-token",
+		},
+	}
+
+	tests := []struct {
+		key      string
+		expected string
+	}{
+		{"hetzner_api_token", "test-token"},
+		{"machine_provider", "hetzner"},
+		{"server_type", "cx22"},
+		{"location", "fsn1"},
+		{"ipv4_enabled", "true"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			value, _ := GetConfigValue(cfg, tt.key)
+			if value != tt.expected {
+				t.Errorf("GetConfigValue(%s) = %s, want %s", tt.key, value, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMaskToken(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", "(not set)"},
+		{"short", "****"},
+		{"12345678", "****"},
+		{"123456789", "1234...6789"},
+		{"abcdefghijklmnop", "abcd...mnop"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := MaskToken(tt.input)
+			if result != tt.expected {
+				t.Errorf("MaskToken(%s) = %s, want %s", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFindConfigPath(t *testing.T) {
+	// This test verifies the function doesn't crash
+	// The actual path depends on the environment
+	path := FindConfigPath()
+	// Just check it returns something (could be empty if no config exists)
+	_ = path
+}
+
+func TestGetDefaultConfigPath(t *testing.T) {
+	path := GetDefaultConfigPath()
+	if path == "" {
+		t.Error("GetDefaultConfigPath() returned empty string")
+	}
+}

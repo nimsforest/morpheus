@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -528,4 +529,185 @@ func (c *Config) applyInfrastructureDefaults() {
 // DEPRECATED: Use applyDefaults instead
 func (c *Config) applyRegistryDefaults() {
 	c.applyDefaults()
+}
+
+// GetDefaultConfigPath returns the default config file path
+func GetDefaultConfigPath() string {
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir = "/tmp"
+	}
+	return filepath.Join(homeDir, ".morpheus", "config.yaml")
+}
+
+// FindConfigPath searches for an existing config file
+// Returns empty string if no config file is found
+func FindConfigPath() string {
+	configPaths := []string{
+		"./config.yaml",
+		filepath.Join(os.Getenv("HOME"), ".morpheus", "config.yaml"),
+		"/etc/morpheus/config.yaml",
+	}
+
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// EnsureConfigDir creates the config directory if it doesn't exist
+func EnsureConfigDir() error {
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		return fmt.Errorf("HOME environment variable not set")
+	}
+
+	configDir := filepath.Join(homeDir, ".morpheus")
+	return os.MkdirAll(configDir, 0755)
+}
+
+// SaveConfig saves the configuration to a YAML file
+func SaveConfig(path string, config *Config) error {
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Write with restrictive permissions since it may contain secrets
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// SetConfigValue sets a specific configuration value and saves to file
+// Supported keys: hetzner_api_token, hetzner_dns_token, storagebox_password,
+// machine_provider, ssh_key_name, ipv4_enabled, dns_provider, dns_domain
+func SetConfigValue(configPath, key, value string) error {
+	var config *Config
+	var err error
+
+	// Try to load existing config, or create new one
+	if _, statErr := os.Stat(configPath); statErr == nil {
+		config, err = LoadConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load existing config: %w", err)
+		}
+	} else {
+		config = &Config{}
+		config.applyDefaults()
+	}
+
+	// Set the value based on key
+	switch key {
+	case "hetzner_api_token", "hetzner-api-token":
+		config.Secrets.HetznerAPIToken = strings.TrimSpace(value)
+	case "hetzner_dns_token", "hetzner-dns-token":
+		config.Secrets.HetznerDNSToken = strings.TrimSpace(value)
+	case "storagebox_password", "storagebox-password":
+		config.Storage.StorageBox.Password = strings.TrimSpace(value)
+	case "machine_provider", "machine-provider":
+		config.Machine.Provider = strings.TrimSpace(value)
+	case "ssh_key_name", "ssh-key-name":
+		config.Machine.SSH.KeyName = strings.TrimSpace(value)
+	case "ssh_key_path", "ssh-key-path":
+		config.Machine.SSH.KeyPath = strings.TrimSpace(value)
+	case "ipv4_enabled", "ipv4-enabled":
+		config.Machine.IPv4.Enabled = strings.ToLower(strings.TrimSpace(value)) == "true"
+	case "dns_provider", "dns-provider":
+		config.DNS.Provider = strings.TrimSpace(value)
+	case "dns_domain", "dns-domain":
+		config.DNS.Domain = strings.TrimSpace(value)
+	case "server_type", "server-type":
+		config.Machine.Hetzner.ServerType = strings.TrimSpace(value)
+	case "location":
+		config.Machine.Hetzner.Location = strings.TrimSpace(value)
+	case "image":
+		config.Machine.Hetzner.Image = strings.TrimSpace(value)
+	default:
+		return fmt.Errorf("unknown config key: %s", key)
+	}
+
+	return SaveConfig(configPath, config)
+}
+
+// GetConfigValue gets a specific configuration value
+// Returns the value and whether it came from environment variable
+func GetConfigValue(config *Config, key string) (value string, fromEnv bool) {
+	switch key {
+	case "hetzner_api_token", "hetzner-api-token":
+		// Check if it came from env
+		if envVal := strings.TrimSpace(os.Getenv("HETZNER_API_TOKEN")); envVal != "" && envVal == config.Secrets.HetznerAPIToken {
+			return config.Secrets.HetznerAPIToken, true
+		}
+		return config.Secrets.HetznerAPIToken, false
+	case "hetzner_dns_token", "hetzner-dns-token":
+		if envVal := strings.TrimSpace(os.Getenv("HETZNER_DNS_TOKEN")); envVal != "" && envVal == config.Secrets.HetznerDNSToken {
+			return config.Secrets.HetznerDNSToken, true
+		}
+		return config.Secrets.HetznerDNSToken, false
+	case "storagebox_password", "storagebox-password":
+		if envVal := strings.TrimSpace(os.Getenv("STORAGEBOX_PASSWORD")); envVal != "" && envVal == config.Storage.StorageBox.Password {
+			return config.Storage.StorageBox.Password, true
+		}
+		return config.Storage.StorageBox.Password, false
+	case "machine_provider", "machine-provider":
+		return config.GetMachineProvider(), false
+	case "ssh_key_name", "ssh-key-name":
+		return config.GetSSHKeyName(), false
+	case "ssh_key_path", "ssh-key-path":
+		return config.GetSSHKeyPath(), false
+	case "ipv4_enabled", "ipv4-enabled":
+		return fmt.Sprintf("%v", config.IsIPv4Enabled()), false
+	case "dns_provider", "dns-provider":
+		return config.DNS.Provider, false
+	case "dns_domain", "dns-domain":
+		return config.DNS.Domain, false
+	case "server_type", "server-type":
+		return config.GetServerType(), false
+	case "location":
+		return config.GetLocation(), false
+	case "image":
+		return config.GetImage(), false
+	default:
+		return "", false
+	}
+}
+
+// MaskToken masks a token for display (shows first 4 and last 4 chars)
+func MaskToken(token string) string {
+	if token == "" {
+		return "(not set)"
+	}
+	if len(token) > 8 {
+		return token[:4] + "..." + token[len(token)-4:]
+	}
+	return "****"
+}
+
+// ListConfigKeys returns all supported config keys
+func ListConfigKeys() []string {
+	return []string{
+		"hetzner_api_token",
+		"hetzner_dns_token",
+		"storagebox_password",
+		"machine_provider",
+		"ssh_key_name",
+		"ssh_key_path",
+		"ipv4_enabled",
+		"dns_provider",
+		"dns_domain",
+		"server_type",
+		"location",
+		"image",
+	}
 }
