@@ -28,6 +28,9 @@ go.work
 config.local.yaml
 config.yaml
 secrets.yaml
+.env
+.env.local
+.env.*.local
 
 # OS files
 .DS_Store
