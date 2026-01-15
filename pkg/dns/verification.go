@@ -30,7 +30,7 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 	// Normalize expected nameservers (lowercase, remove trailing dots)
 	normalizedExpected := make(map[string]bool)
 	for _, ns := range expectedNS {
-		normalizedExpected[normalizeNS(ns)] = true
+		normalizedExpected[NormalizeNS(ns)] = true
 	}
 
 	// Look up NS records for the domain
@@ -48,7 +48,7 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 	// Build normalized actual NS set
 	normalizedActual := make(map[string]bool)
 	for _, ns := range result.ActualNS {
-		normalizedActual[normalizeNS(ns)] = true
+		normalizedActual[NormalizeNS(ns)] = true
 	}
 
 	// Calculate matching, missing, and extra nameservers
@@ -74,8 +74,8 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 	return result
 }
 
-// normalizeNS normalizes a nameserver string by lowercasing and removing trailing dots
-func normalizeNS(ns string) string {
+// NormalizeNS normalizes a nameserver string by lowercasing and removing trailing dots
+func NormalizeNS(ns string) string {
 	ns = strings.ToLower(strings.TrimSpace(ns))
 	return strings.TrimSuffix(ns, ".")
 }

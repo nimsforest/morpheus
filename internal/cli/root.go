@@ -107,6 +107,7 @@ func PrintHelp() {
 	fmt.Println("  dns <subcommand>         DNS management via Hetzner")
 	fmt.Println("    add apex <domain>      Create zone (you own the domain)")
 	fmt.Println("    add subdomain <domain> Create zone (delegated from parent)")
+	fmt.Println("    verify <domain>        Check NS delegation is working")
 	fmt.Println("    status [domain]        Show zones or zone details")
 	fmt.Println()
 	fmt.Println("  venture <subcommand>     Venture service management")

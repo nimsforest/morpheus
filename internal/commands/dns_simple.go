@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nimsforest/morpheus/pkg/customer"
 	"github.com/nimsforest/morpheus/pkg/dns"
 )
 
@@ -308,4 +309,111 @@ func printDNSAddHelp() {
 	fmt.Println("Examples:")
 	fmt.Println("  morpheus dns add apex nimsforest.com")
 	fmt.Println("  morpheus dns add subdomain experiencenet.customer.com --customer acme")
+}
+
+// HandleDNSVerify handles "morpheus dns verify <domain>"
+// Checks if NS records point to Hetzner nameservers
+func HandleDNSVerify() {
+	// Check for help flag first
+	for _, arg := range os.Args[3:] {
+		if arg == "--help" || arg == "-h" {
+			printDNSVerifyHelp()
+			os.Exit(0)
+		}
+	}
+
+	if len(os.Args) < 4 {
+		printDNSVerifyHelp()
+		os.Exit(1)
+	}
+
+	domain := os.Args[3]
+
+	fmt.Printf("\n🔍 Verifying DNS delegation for %s\n", domain)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	fmt.Printf("Checking NS records...\n\n")
+
+	result := dns.VerifyNSDelegation(domain, customer.HetznerNameservers)
+
+	if result.Error != nil {
+		fmt.Printf("❌ DNS lookup failed: %s\n\n", result.Error)
+		fmt.Println("Possible causes:")
+		fmt.Println("  - Domain does not exist")
+		fmt.Println("  - NS records not yet propagated")
+		fmt.Println("  - Network/DNS resolver issues")
+		fmt.Println()
+		fmt.Println("Try again in a few minutes, or check with:")
+		fmt.Printf("  dig NS %s\n\n", domain)
+		os.Exit(1)
+	}
+
+	fmt.Println("Expected nameservers:")
+	for _, ns := range customer.HetznerNameservers {
+		fmt.Printf("   %s\n", ns)
+	}
+	fmt.Println()
+
+	fmt.Println("Actual nameservers found:")
+	if len(result.ActualNS) == 0 {
+		fmt.Println("   (none)")
+	} else {
+		for _, ns := range result.ActualNS {
+			status := "⚠️"
+			for _, expected := range customer.HetznerNameservers {
+				if dns.NormalizeNS(ns) == dns.NormalizeNS(expected) {
+					status = "✓"
+					break
+				}
+			}
+			fmt.Printf("   %s %s\n", status, ns)
+		}
+	}
+	fmt.Println()
+
+	if result.Delegated {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("✅ NS delegation verified!")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Println("You can now create your infrastructure:")
+		fmt.Println("  morpheus plant")
+		fmt.Println()
+	} else if result.PartialMatch {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("⚠️  Partial NS delegation")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Printf("Matching:  %v\n", result.MatchingNS)
+		fmt.Printf("Missing:   %v\n", result.MissingNS)
+		fmt.Println()
+		fmt.Println("Some nameservers are configured but not all.")
+		fmt.Println("This may still work, but check your registrar settings.")
+		fmt.Println()
+		os.Exit(1)
+	} else {
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("❌ NS delegation NOT configured")
+		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println()
+		fmt.Println("The domain's nameservers don't point to Hetzner.")
+		fmt.Println()
+		fmt.Println("For apex domains, update nameservers at your registrar.")
+		fmt.Println("For subdomains, add NS records to the parent domain.")
+		fmt.Println()
+		fmt.Println("Then wait for propagation and try again:")
+		fmt.Printf("  morpheus dns verify %s\n\n", domain)
+		os.Exit(1)
+	}
+}
+
+func printDNSVerifyHelp() {
+	fmt.Println("Usage: morpheus dns verify <domain>")
+	fmt.Println()
+	fmt.Println("Verify that NS delegation is configured correctly.")
+	fmt.Println("Checks if the domain's nameservers point to Hetzner DNS.")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  morpheus dns verify nimsforest.com")
+	fmt.Println("  morpheus dns verify experiencenet.customer.com")
 }
