@@ -1,6 +1,6 @@
 module github.com/nimsforest/morpheus
 
-go 1.25.5
+go 1.24.7
 
 require (
 	github.com/hetznercloud/hcloud-go/v2 v2.6.0

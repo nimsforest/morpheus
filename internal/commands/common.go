@@ -69,25 +69,37 @@ func CreateMachineProvider(cfg *config.Config) (machine.Provider, string, error)
 }
 
 // CreateDNSProvider creates a DNS provider based on the configuration.
+// Auto-detects Hetzner if dns_domain and hetzner_dns_token are set.
 func CreateDNSProvider(cfg *config.Config) dns.Provider {
-	if cfg.DNS.Provider == "" || cfg.DNS.Provider == "none" {
+	// If no domain configured, no DNS integration
+	if cfg.DNS.Domain == "" {
 		return nil
 	}
 
-	switch cfg.DNS.Provider {
-	case "hetzner":
-		dnsToken := cfg.GetDNSToken()
+	// If token is available, use Hetzner DNS
+	dnsToken := cfg.GetDNSToken()
+	if dnsToken != "" {
 		dnsProv, err := dnshetzner.NewProvider(dnsToken)
 		if err != nil {
 			fmt.Printf("⚠️  Warning: DNS provider not available: %s\n", err)
 			return nil
 		}
 		return dnsProv
-	default:
-		// Use no-op provider for unsupported providers
-		dnsProv, _ := dnsnone.NewProvider()
-		return dnsProv
 	}
+
+	// Explicit provider config (legacy)
+	if cfg.DNS.Provider != "" && cfg.DNS.Provider != "none" {
+		switch cfg.DNS.Provider {
+		case "hetzner":
+			// Token already checked above
+			return nil
+		default:
+			dnsProv, _ := dnsnone.NewProvider()
+			return dnsProv
+		}
+	}
+
+	return nil
 }
 
 // CreateStorage creates a local registry storage.
