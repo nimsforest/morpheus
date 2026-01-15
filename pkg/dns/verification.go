@@ -23,6 +23,19 @@ type VerificationResult struct {
 	PartialMatch bool     // True if some but not all NS records match
 }
 
+// MXVerificationResult contains the result of MX record verification
+type MXVerificationResult struct {
+	Domain      string   // The domain that was verified
+	Configured  bool     // Whether MX records are configured correctly
+	ExpectedMX  []string // Expected MX servers
+	ActualMX    []string // Actual MX servers found
+	MatchingMX  []string // MX servers that match expected
+	MissingMX   []string // Expected MX servers not found
+	ExtraMX     []string // Actual MX servers not in expected list
+	Error       error    // Any error that occurred during lookup
+	HasPartial  bool     // True if some but not all MX records match
+}
+
 // dohResponse represents the JSON response from DNS-over-HTTPS providers
 type dohResponse struct {
 	Status   int  `json:"Status"`
@@ -93,6 +106,78 @@ func lookupNSviaDoH(ctx context.Context, domain string) ([]*net.NS, error) {
 		}
 
 		lastErr = fmt.Errorf("no NS records found in DoH response")
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("all DoH providers failed: %w", lastErr)
+	}
+	return nil, fmt.Errorf("no DoH providers available")
+}
+
+// lookupMXviaDoH performs MX lookup using DNS-over-HTTPS
+func lookupMXviaDoH(ctx context.Context, domain string) ([]*net.MX, error) {
+	// Try multiple DoH providers
+	providers := []string{
+		"https://dns.google/resolve?name=" + domain + "&type=MX",
+		"https://cloudflare-dns.com/dns-query?name=" + domain + "&type=MX",
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	var lastErr error
+	for _, provider := range providers {
+		req, err := http.NewRequestWithContext(ctx, "GET", provider, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Accept", "application/dns-json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("DoH provider returned status %d", resp.StatusCode)
+			continue
+		}
+
+		var dohResp dohResponse
+		if err := json.NewDecoder(resp.Body).Decode(&dohResp); err != nil {
+			lastErr = err
+			continue
+		}
+
+		if dohResp.Status != 0 {
+			lastErr = fmt.Errorf("DoH response status: %d", dohResp.Status)
+			continue
+		}
+
+		// Extract MX records (type 15 is MX)
+		var mxRecords []*net.MX
+		for _, answer := range dohResp.Answer {
+			if answer.Type == 15 { // MX record type
+				// MX data format is: "priority hostname"
+				// e.g., "10 mail.example.com."
+				parts := strings.Fields(answer.Data)
+				if len(parts) >= 2 {
+					mxRecords = append(mxRecords, &net.MX{
+						Host: parts[1],
+					})
+				}
+			}
+		}
+
+		if len(mxRecords) > 0 {
+			return mxRecords, nil
+		}
+
+		lastErr = fmt.Errorf("no MX records found in DoH response")
 	}
 
 	if lastErr != nil {
@@ -240,4 +325,110 @@ func FormatVerificationResult(result *VerificationResult) string {
 	}
 
 	return sb.String()
+}
+
+// VerifyMXRecords checks if a domain's MX records match expected mail servers
+// Returns an MXVerificationResult with detailed information about the MX configuration
+// Uses a 3-tier fallback system: system resolver → custom UDP resolver → DNS-over-HTTPS
+func VerifyMXRecords(domain string, expectedMX []string) *MXVerificationResult {
+	result := &MXVerificationResult{
+		Domain:     domain,
+		ExpectedMX: expectedMX,
+	}
+
+	// Normalize expected MX servers (lowercase, remove trailing dots)
+	normalizedExpected := make(map[string]bool)
+	for _, mx := range expectedMX {
+		normalizedExpected[NormalizeNS(mx)] = true
+	}
+
+	// 3-tier fallback system for MX lookups
+	var mxRecords []*net.MX
+	var err error
+
+	// Tier 1: Try system resolver with 3s timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	resolver := &net.Resolver{}
+	mxRecords, err = resolver.LookupMX(ctx, domain)
+	if err == nil && len(mxRecords) > 0 {
+		// System resolver succeeded
+		goto processRecords
+	}
+
+	// Tier 2: Try custom UDP resolver (8.8.8.8, 1.1.1.1) with 5s timeout
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, dnsServer := range []string{"8.8.8.8:53", "1.1.1.1:53"} {
+		resolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: 5 * time.Second,
+				}
+				return d.DialContext(ctx, "udp", dnsServer)
+			},
+		}
+		mxRecords, err = resolver.LookupMX(ctx, domain)
+		if err == nil && len(mxRecords) > 0 {
+			// Custom UDP resolver succeeded
+			goto processRecords
+		}
+	}
+
+	// Tier 3: Fall back to DNS-over-HTTPS with 15s timeout
+	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	mxRecords, err = lookupMXviaDoH(ctx, domain)
+	if err != nil {
+		result.Error = fmt.Errorf("all DNS lookup methods failed for %s: %w", domain, err)
+		return result
+	}
+
+processRecords:
+
+	// Extract and normalize actual MX servers
+	for _, mx := range mxRecords {
+		result.ActualMX = append(result.ActualMX, mx.Host)
+	}
+
+	// Build normalized actual MX set
+	normalizedActual := make(map[string]bool)
+	for _, mx := range result.ActualMX {
+		normalizedActual[NormalizeNS(mx)] = true
+	}
+
+	// Calculate matching, missing, and extra MX servers
+	for mx := range normalizedExpected {
+		if normalizedActual[mx] {
+			result.MatchingMX = append(result.MatchingMX, mx)
+		} else {
+			result.MissingMX = append(result.MissingMX, mx)
+		}
+	}
+
+	for mx := range normalizedActual {
+		if !normalizedExpected[mx] {
+			result.ExtraMX = append(result.ExtraMX, mx)
+		}
+	}
+
+	// Determine configuration status
+	// Consider configured if all expected MX records are present
+	result.Configured = len(result.MatchingMX) == len(expectedMX) && len(result.MissingMX) == 0
+	result.HasPartial = len(result.MatchingMX) > 0 && len(result.MissingMX) > 0
+
+	return result
+}
+
+// GmailMXServers is the list of expected Gmail/Google Workspace MX servers
+var GmailMXServers = []string{
+	"aspmx.l.google.com",
+	"alt1.aspmx.l.google.com",
+	"alt2.aspmx.l.google.com",
+	"alt3.aspmx.l.google.com",
+	"alt4.aspmx.l.google.com",
 }

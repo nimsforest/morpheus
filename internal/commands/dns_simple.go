@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nimsforest/morpheus/pkg/config"
@@ -360,15 +361,16 @@ func printDNSAddHelp() {
 }
 
 // GmailMXRecords contains the standard Gmail/Google Workspace MX records
+// Note: Trailing dots are required to make these absolute FQDNs
 var GmailMXRecords = []struct {
 	Priority int
 	Server   string
 }{
-	{1, "ASPMX.L.GOOGLE.COM"},
-	{5, "ALT1.ASPMX.L.GOOGLE.COM"},
-	{5, "ALT2.ASPMX.L.GOOGLE.COM"},
-	{10, "ALT3.ASPMX.L.GOOGLE.COM"},
-	{10, "ALT4.ASPMX.L.GOOGLE.COM"},
+	{1, "ASPMX.L.GOOGLE.COM."},
+	{5, "ALT1.ASPMX.L.GOOGLE.COM."},
+	{5, "ALT2.ASPMX.L.GOOGLE.COM."},
+	{10, "ALT3.ASPMX.L.GOOGLE.COM."},
+	{10, "ALT4.ASPMX.L.GOOGLE.COM."},
 }
 
 // createGmailMXRRSet creates an RRSet with all Gmail MX records
@@ -579,6 +581,10 @@ func HandleDNSVerify() {
 		fmt.Println("✅ NS delegation verified!")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
+
+		// Check for Gmail MX records
+		checkGmailMX(domain)
+
 		fmt.Println("You can now create your infrastructure:")
 		fmt.Println("  morpheus plant")
 		fmt.Println()
@@ -615,8 +621,95 @@ func printDNSVerifyHelp() {
 	fmt.Println()
 	fmt.Println("Verify that NS delegation is configured correctly.")
 	fmt.Println("Checks if the domain's nameservers point to Hetzner DNS.")
+	fmt.Println("Also checks for Gmail/Google Workspace MX records if configured.")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  morpheus dns verify nimsforest.com")
 	fmt.Println("  morpheus dns verify experiencenet.customer.com")
+}
+
+// checkGmailMX verifies Gmail/Google Workspace MX records for a domain
+func checkGmailMX(domain string) {
+	fmt.Println("📧 Checking Gmail/Google Workspace MX records...")
+	fmt.Println()
+
+	mxResult := dns.VerifyMXRecords(domain, dns.GmailMXServers)
+
+	if mxResult.Error != nil {
+		// MX lookup failed - might not have MX records configured
+		fmt.Println("   ⚠️  No MX records found")
+		fmt.Println("   If you want to use Gmail/Google Workspace:")
+		fmt.Printf("     morpheus dns add gmail-mx %s\n\n", domain)
+		return
+	}
+
+	if len(mxResult.ActualMX) == 0 {
+		fmt.Println("   ⚠️  No MX records configured")
+		fmt.Println("   If you want to use Gmail/Google Workspace:")
+		fmt.Printf("     morpheus dns add gmail-mx %s\n\n", domain)
+		return
+	}
+
+	// Check if it looks like Gmail
+	if mxResult.Configured {
+		fmt.Println("   ✅ Gmail/Google Workspace MX records verified!")
+		fmt.Println()
+		fmt.Println("   All 5 Gmail MX servers are configured:")
+		for _, mx := range mxResult.MatchingMX {
+			fmt.Printf("      ✓ %s\n", mx)
+		}
+		fmt.Println()
+	} else if mxResult.HasPartial {
+		fmt.Println("   ⚠️  Partial Gmail MX configuration")
+		fmt.Println()
+		if len(mxResult.MatchingMX) > 0 {
+			fmt.Println("   Matching:")
+			for _, mx := range mxResult.MatchingMX {
+				fmt.Printf("      ✓ %s\n", mx)
+			}
+		}
+		if len(mxResult.MissingMX) > 0 {
+			fmt.Println("   Missing:")
+			for _, mx := range mxResult.MissingMX {
+				fmt.Printf("      ✗ %s\n", mx)
+			}
+		}
+		fmt.Println()
+	} else {
+		// Check if MX records look like Gmail but with domain appended (misconfigured)
+		isMisconfiguredGmail := false
+		for _, mx := range mxResult.ActualMX {
+			mxLower := strings.ToLower(dns.NormalizeNS(mx))
+			// Check if it looks like "aspmx.l.google.com.example.com" pattern
+			if strings.Contains(mxLower, "google.com."+strings.ToLower(domain)) {
+				isMisconfiguredGmail = true
+				break
+			}
+		}
+
+		if isMisconfiguredGmail {
+			fmt.Println("   ❌ Gmail MX records are MISCONFIGURED!")
+			fmt.Println()
+			fmt.Println("   The MX records have the domain name appended incorrectly:")
+			for _, mx := range mxResult.ActualMX {
+				fmt.Printf("      ✗ %s\n", mx)
+			}
+			fmt.Println()
+			fmt.Println("   This happens when MX records are created without trailing dots.")
+			fmt.Println("   These records will NOT work for email delivery!")
+			fmt.Println()
+			fmt.Println("   To fix:")
+			fmt.Println("   1. Remove the existing MX records:")
+			fmt.Printf("      morpheus dns record delete %s @ MX\n", domain)
+			fmt.Println("   2. Re-add Gmail MX records (now with proper trailing dots):")
+			fmt.Printf("      morpheus dns add gmail-mx %s\n\n", domain)
+		} else {
+			// Has MX records but not Gmail
+			fmt.Println("   ℹ️  MX records found (not Gmail):")
+			for _, mx := range mxResult.ActualMX {
+				fmt.Printf("      • %s\n", mx)
+			}
+			fmt.Println()
+		}
+	}
 }
