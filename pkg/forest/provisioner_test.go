@@ -2,6 +2,7 @@ package forest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -133,7 +134,7 @@ func TestClassifySSHError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var err error
 			if tt.errMsg != "" {
-				err = fmt.Errorf(tt.errMsg)
+				err = errors.New(tt.errMsg)
 			}
 			result := classifySSHError(err)
 			if result != tt.expected {
