@@ -516,7 +516,7 @@ func handleAddGmailMX(domain, customerID string) {
 }
 
 // HandleDNSVerify handles "morpheus dns verify <domain>"
-// Checks if NS records point to Hetzner nameservers
+// Checks both NS delegation and MX records
 func HandleDNSVerify() {
 	// Check for help flag first
 	for _, arg := range os.Args[3:] {
@@ -533,15 +533,16 @@ func HandleDNSVerify() {
 
 	domain := os.Args[3]
 
-	fmt.Printf("\n🔍 Verifying DNS delegation for %s\n", domain)
+	fmt.Printf("\n🔍 Verifying DNS configuration for %s\n", domain)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	fmt.Printf("Checking NS records...\n\n")
+	// Check NS delegation
+	fmt.Printf("📍 Checking NS delegation...\n\n")
 
-	result := dns.VerifyNSDelegation(domain, customer.HetznerNameservers)
+	nsResult := dns.VerifyNSDelegation(domain, customer.HetznerNameservers)
 
-	if result.Error != nil {
-		fmt.Printf("❌ DNS lookup failed: %s\n\n", result.Error)
+	if nsResult.Error != nil {
+		fmt.Printf("❌ DNS lookup failed: %s\n\n", nsResult.Error)
 		fmt.Println("Possible causes:")
 		fmt.Println("  - Domain does not exist")
 		fmt.Println("  - NS records not yet propagated")
@@ -559,10 +560,10 @@ func HandleDNSVerify() {
 	fmt.Println()
 
 	fmt.Println("Actual nameservers found:")
-	if len(result.ActualNS) == 0 {
+	if len(nsResult.ActualNS) == 0 {
 		fmt.Println("   (none)")
 	} else {
-		for _, ns := range result.ActualNS {
+		for _, ns := range nsResult.ActualNS {
 			status := "⚠️"
 			for _, expected := range customer.HetznerNameservers {
 				if dns.NormalizeNS(ns) == dns.NormalizeNS(expected) {
@@ -575,92 +576,22 @@ func HandleDNSVerify() {
 	}
 	fmt.Println()
 
-	if result.Delegated {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	nsDelegated := false
+	if nsResult.Delegated {
 		fmt.Println("✅ NS delegation verified!")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		fmt.Println("You can now create your infrastructure:")
-		fmt.Println("  morpheus plant")
-		fmt.Println()
-	} else if result.PartialMatch {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		nsDelegated = true
+	} else if nsResult.PartialMatch {
 		fmt.Println("⚠️  Partial NS delegation")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		fmt.Printf("Matching:  %v\n", result.MatchingNS)
-		fmt.Printf("Missing:   %v\n", result.MissingNS)
-		fmt.Println()
-		fmt.Println("Some nameservers are configured but not all.")
-		fmt.Println("This may still work, but check your registrar settings.")
-		fmt.Println()
-		os.Exit(1)
+		fmt.Printf("   Matching:  %v\n", nsResult.MatchingNS)
+		fmt.Printf("   Missing:   %v\n", nsResult.MissingNS)
 	} else {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println("❌ NS delegation NOT configured")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		fmt.Println("The domain's nameservers don't point to Hetzner.")
-		fmt.Println()
-		fmt.Println("For apex domains, update nameservers at your registrar.")
-		fmt.Println("For subdomains, add NS records to the parent domain.")
-		fmt.Println()
-		fmt.Println("Then wait for propagation and try again:")
-		fmt.Printf("  morpheus dns verify %s\n\n", domain)
-		os.Exit(1)
+		fmt.Println("   Update nameservers at your registrar or add NS records to parent domain")
 	}
-}
-
-func printDNSVerifyHelp() {
-	fmt.Println("Usage: morpheus dns verify <domain>")
 	fmt.Println()
-	fmt.Println("Verify that NS delegation is configured correctly.")
-	fmt.Println("Checks if the domain's nameservers point to Hetzner DNS.")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  morpheus dns verify nimsforest.com")
-	fmt.Println("  morpheus dns verify experiencenet.customer.com")
-}
 
-// HandleDNSVerifyMX handles "morpheus dns verify-mx <domain>"
-// Checks if MX records are configured correctly
-func HandleDNSVerifyMX() {
-	// Check for help flag first
-	for _, arg := range os.Args[3:] {
-		if arg == "--help" || arg == "-h" {
-			printDNSVerifyMXHelp()
-			os.Exit(0)
-		}
-	}
-
-	if len(os.Args) < 4 {
-		printDNSVerifyMXHelp()
-		os.Exit(1)
-	}
-
-	domain := os.Args[3]
-	provider := "gmail"
-
-	// Parse flags
-	for i := 4; i < len(os.Args); i++ {
-		if os.Args[i] == "--provider" && i+1 < len(os.Args) {
-			i++
-			provider = os.Args[i]
-		}
-	}
-
-	// Validate provider
-	if provider != "gmail" {
-		fmt.Fprintf(os.Stderr, "❌ Unknown provider: %s\n", provider)
-		fmt.Fprintf(os.Stderr, "   Supported providers: gmail\n\n")
-		printDNSVerifyMXHelp()
-		os.Exit(1)
-	}
-
-	fmt.Printf("\n🔍 Verifying MX records for %s\n", domain)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-
-	fmt.Printf("Checking MX records against %s configuration...\n\n", provider)
+	// Check MX records
+	fmt.Printf("📧 Checking MX records (Gmail/Google Workspace)...\n\n")
 
 	// Convert GmailMXRecords to dns.MXRecord format
 	expectedMX := make([]dns.MXRecord, len(GmailMXRecords))
@@ -671,116 +602,87 @@ func HandleDNSVerifyMX() {
 		}
 	}
 
-	result := dns.VerifyMXRecords(domain, expectedMX)
+	mxResult := dns.VerifyMXRecords(domain, expectedMX)
 
-	if result.Error != nil {
-		fmt.Printf("❌ MX lookup failed: %s\n\n", result.Error)
-		fmt.Println("Possible causes:")
-		fmt.Println("  - Domain does not exist")
-		fmt.Println("  - No MX records configured")
-		fmt.Println("  - Network/DNS resolver issues")
-		fmt.Println()
-		fmt.Println("Try again in a few minutes, or check with:")
-		fmt.Printf("  dig MX %s\n\n", domain)
-		os.Exit(1)
-	}
-
-	fmt.Println("Expected MX records (Gmail/Google Workspace):")
-	for _, mx := range expectedMX {
-		fmt.Printf("   %d %s\n", mx.Priority, mx.Server)
-	}
-	fmt.Println()
-
-	fmt.Println("Actual MX records found:")
-	if len(result.ActualMX) == 0 {
-		fmt.Println("   (none)")
+	mxConfigured := false
+	if mxResult.Error != nil {
+		fmt.Printf("⚠️  MX lookup failed: %s\n", mxResult.Error)
+		fmt.Println("   (MX records may not be configured yet)")
 	} else {
-		for _, mx := range result.ActualMX {
-			status := "⚠️"
-			for _, expected := range expectedMX {
-				if mx.Priority == expected.Priority && strings.EqualFold(mx.Server, expected.Server) {
-					status = "✓"
-					break
+		fmt.Println("Actual MX records found:")
+		if len(mxResult.ActualMX) == 0 {
+			fmt.Println("   (none)")
+		} else {
+			for _, mx := range mxResult.ActualMX {
+				status := "⚠️"
+				for _, expected := range expectedMX {
+					if mx.Priority == expected.Priority && strings.EqualFold(mx.Server, expected.Server) {
+						status = "✓"
+						break
+					}
 				}
+				fmt.Printf("   %s %d %s\n", status, mx.Priority, mx.Server)
 			}
-			fmt.Printf("   %s %d %s\n", status, mx.Priority, mx.Server)
+		}
+		fmt.Println()
+
+		if mxResult.Configured {
+			fmt.Println("✅ MX records verified (Gmail/Google Workspace)")
+			mxConfigured = true
+		} else if mxResult.PartialMatch {
+			fmt.Println("⚠️  Partial MX configuration")
+			if len(mxResult.MissingMX) > 0 {
+				fmt.Printf("   Missing: %d records\n", len(mxResult.MissingMX))
+			}
+		} else if len(mxResult.ActualMX) > 0 {
+			fmt.Println("ℹ️  MX records found (not Gmail/Google Workspace)")
+		} else {
+			fmt.Println("⚠️  No MX records configured")
 		}
 	}
 	fmt.Println()
 
-	if result.Configured {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("✅ MX records verified!")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println()
-		fmt.Printf("All Gmail MX records are correctly configured for %s\n", domain)
-		fmt.Println()
-		fmt.Println("Your email should be working correctly.")
-		fmt.Println("If you experience issues, check SPF and DMARC records:")
-		fmt.Printf("  dig TXT %s\n", domain)
-		fmt.Printf("  dig TXT _dmarc.%s\n\n", domain)
-	} else if result.PartialMatch {
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("⚠️  Partial MX configuration")
+	// Final summary
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	if nsDelegated && mxConfigured {
+		fmt.Println("✅ All checks passed!")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
-		if len(result.MatchingMX) > 0 {
-			fmt.Println("Matching:")
-			for _, mx := range result.MatchingMX {
-				fmt.Printf("  ✓ %d %s\n", mx.Priority, mx.Server)
-			}
-			fmt.Println()
-		}
-		if len(result.MissingMX) > 0 {
-			fmt.Println("Missing:")
-			for _, mx := range result.MissingMX {
-				fmt.Printf("  ✗ %d %s\n", mx.Priority, mx.Server)
-			}
-			fmt.Println()
-		}
-		if len(result.ExtraMX) > 0 {
-			fmt.Println("Extra (not in Gmail configuration):")
-			for _, mx := range result.ExtraMX {
-				fmt.Printf("  • %d %s\n", mx.Priority, mx.Server)
-			}
-			fmt.Println()
-		}
-		fmt.Println("Some MX records are correct but not all.")
-		fmt.Println("Update your DNS configuration with the missing records:")
-		fmt.Printf("  morpheus dns add gmail-mx %s\n\n", domain)
-		os.Exit(1)
+		fmt.Printf("Domain %s is fully configured.\n", domain)
+		fmt.Println("You can now create your infrastructure:")
+		fmt.Println("  morpheus plant")
+		fmt.Println()
 	} else {
+		fmt.Println("⚠️  Configuration incomplete")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		fmt.Println("❌ MX records NOT configured for Gmail")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 		fmt.Println()
-		fmt.Println("The domain's MX records don't match Gmail/Google Workspace.")
-		fmt.Println()
-		fmt.Println("To set up Gmail MX records, run:")
-		fmt.Printf("  morpheus dns add gmail-mx %s\n", domain)
-		fmt.Println()
-		fmt.Println("This will configure MX, SPF, and DMARC records.")
-		fmt.Println()
-		fmt.Println("Then wait for DNS propagation and verify again:")
-		fmt.Printf("  morpheus dns verify-mx %s\n\n", domain)
+
+		if !nsDelegated {
+			fmt.Println("📍 NS delegation needs attention:")
+			fmt.Println("   For apex domains, update nameservers at your registrar.")
+			fmt.Println("   For subdomains, add NS records to the parent domain.")
+			fmt.Println()
+		}
+
+		if !mxConfigured && mxResult.Error == nil {
+			fmt.Println("📧 To set up Gmail/Google Workspace MX records:")
+			fmt.Printf("   morpheus dns add gmail-mx %s\n", domain)
+			fmt.Println()
+		}
+
+		fmt.Println("After making changes, verify again:")
+		fmt.Printf("  morpheus dns verify %s\n\n", domain)
 		os.Exit(1)
 	}
 }
 
-func printDNSVerifyMXHelp() {
-	fmt.Println("Usage: morpheus dns verify-mx <domain> [--provider PROVIDER]")
+func printDNSVerifyHelp() {
+	fmt.Println("Usage: morpheus dns verify <domain>")
 	fmt.Println()
-	fmt.Println("Verify that MX records are configured correctly.")
-	fmt.Println("Checks if the domain's MX records match expected values.")
-	fmt.Println()
-	fmt.Println("Options:")
-	fmt.Println("  --provider PROVIDER   Email provider to verify against (default: gmail)")
-	fmt.Println("  --help, -h            Show this help")
-	fmt.Println()
-	fmt.Println("Supported providers:")
-	fmt.Println("  gmail    Gmail/Google Workspace MX records")
+	fmt.Println("Verify DNS configuration for a domain.")
+	fmt.Println("Checks NS delegation and MX records (Gmail/Google Workspace).")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  morpheus dns verify-mx nimsforest.com")
-	fmt.Println("  morpheus dns verify-mx example.com --provider gmail")
+	fmt.Println("  morpheus dns verify nimsforest.com")
+	fmt.Println("  morpheus dns verify experiencenet.customer.com")
 }

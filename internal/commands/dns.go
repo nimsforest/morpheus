@@ -23,8 +23,6 @@ func HandleDNS() {
 		HandleDNSStatus()
 	case "verify":
 		HandleDNSVerify()
-	case "verify-mx":
-		HandleDNSVerifyMX()
 
 	// Advanced commands
 	case "zone":
@@ -51,8 +49,7 @@ func printDNSHelp() {
 	fmt.Println("  add apex <domain>        Create zone for domain you own")
 	fmt.Println("  add subdomain <domain>   Create zone delegated from parent")
 	fmt.Println("  add gmail-mx <domain>    Add Gmail/Google Workspace MX records")
-	fmt.Println("  verify <domain>          Check NS delegation is working")
-	fmt.Println("  verify-mx <domain>       Check MX records (Gmail/Google Workspace)")
+	fmt.Println("  verify <domain>          Check NS delegation and MX records")
 	fmt.Println("  status [domain]          Show zones or zone details")
 	fmt.Println("  remove <domain>          Delete zone and all records")
 	fmt.Println()
@@ -64,7 +61,6 @@ func printDNSHelp() {
 	fmt.Println("  morpheus dns add apex nimsforest.com")
 	fmt.Println("  morpheus dns add gmail-mx nimsforest.com")
 	fmt.Println("  morpheus dns verify nimsforest.com")
-	fmt.Println("  morpheus dns verify-mx nimsforest.com")
 	fmt.Println("  morpheus dns status nimsforest.com")
 	fmt.Println()
 	fmt.Println("Use 'morpheus dns <command> --help' for more info.")
