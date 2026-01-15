@@ -52,6 +52,8 @@ func main() {
 		handleGrow()
 	case "mode":
 		handleMode()
+	case "config":
+		handleConfig()
 	case "version":
 		fmt.Printf("morpheus version %s\n", version)
 	case "update":
@@ -1637,18 +1639,19 @@ func runConfigCheck(exitOnResult bool) bool {
 	}
 
 	fmt.Println()
-	fmt.Println("   Environment Variables:")
+	fmt.Println("   Secrets & Credentials:")
 
-	// Check required environment variables
-	type envVar struct {
+	// Check required secrets (can come from env or config file)
+	type secretVar struct {
 		name        string
 		description string
 		required    bool
 		hasValue    bool
 		masked      string
+		source      string // "env", "config", or ""
 	}
 
-	vars := []envVar{
+	vars := []secretVar{
 		{
 			name:        "HETZNER_API_TOKEN",
 			description: "Hetzner Cloud API token",
@@ -1681,50 +1684,57 @@ func runConfigCheck(exitOnResult bool) bool {
 		},
 	}
 
-	// Check each variable
+	// Helper to mask a value
+	maskValue := func(val string) string {
+		if len(val) > 8 {
+			return val[:4] + "..." + val[len(val)-4:]
+		}
+		return "****"
+	}
+
+	// Check each variable - first check env, then config file
 	for i := range vars {
-		val := os.Getenv(vars[i].name)
-		vars[i].hasValue = val != ""
-		if vars[i].hasValue && len(val) > 8 {
-			vars[i].masked = val[:4] + "..." + val[len(val)-4:]
-		} else if vars[i].hasValue {
-			vars[i].masked = "****"
+		envVal := os.Getenv(vars[i].name)
+		if envVal != "" {
+			vars[i].hasValue = true
+			vars[i].masked = maskValue(envVal)
+			vars[i].source = "env"
 		}
 	}
 
-	// Also check config file for values (they might be set there instead of env)
+	// Check config file for values (only if not already set from env)
 	if cfg != nil {
-		// HETZNER_API_TOKEN can come from config
-		if cfg.Secrets.HetznerAPIToken != "" {
-			for i := range vars {
-				if vars[i].name == "HETZNER_API_TOKEN" {
+		// HETZNER_API_TOKEN
+		for i := range vars {
+			if vars[i].name == "HETZNER_API_TOKEN" && vars[i].source == "" {
+				if cfg.Secrets.HetznerAPIToken != "" {
 					vars[i].hasValue = true
-					token := cfg.Secrets.HetznerAPIToken
-					if len(token) > 8 {
-						vars[i].masked = token[:4] + "..." + token[len(token)-4:]
-					} else {
-						vars[i].masked = "****"
-					}
-					break
+					vars[i].masked = maskValue(cfg.Secrets.HetznerAPIToken)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
-		// HETZNER_DNS_TOKEN can come from config
-		if cfg.Secrets.HetznerDNSToken != "" {
-			for i := range vars {
-				if vars[i].name == "HETZNER_DNS_TOKEN" {
+		// HETZNER_DNS_TOKEN
+		for i := range vars {
+			if vars[i].name == "HETZNER_DNS_TOKEN" && vars[i].source == "" {
+				if cfg.Secrets.HetznerDNSToken != "" {
 					vars[i].hasValue = true
-					break
+					vars[i].masked = maskValue(cfg.Secrets.HetznerDNSToken)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
-		// STORAGEBOX_PASSWORD can come from config
-		if cfg.Storage.StorageBox.Password != "" {
-			for i := range vars {
-				if vars[i].name == "STORAGEBOX_PASSWORD" {
+		// STORAGEBOX_PASSWORD
+		for i := range vars {
+			if vars[i].name == "STORAGEBOX_PASSWORD" && vars[i].source == "" {
+				if cfg.Storage.StorageBox.Password != "" {
 					vars[i].hasValue = true
-					break
+					vars[i].masked = maskValue(cfg.Storage.StorageBox.Password)
+					vars[i].source = "config"
 				}
+				break
 			}
 		}
 	}
@@ -1737,15 +1747,24 @@ func runConfigCheck(exitOnResult bool) bool {
 		}
 
 		if v.hasValue {
+			sourceLabel := ""
+			switch v.source {
+			case "env":
+				sourceLabel = " ← from environment variable"
+			case "config":
+				sourceLabel = " ← from config file (persistent)"
+			}
+
 			if v.required {
-				fmt.Printf("      ✅ %s: %s\n", v.name, v.masked)
+				fmt.Printf("      ✅ %s: %s%s\n", v.name, v.masked, sourceLabel)
 			} else {
-				fmt.Printf("      ✅ %s: %s (optional)\n", v.name, v.masked)
+				fmt.Printf("      ✅ %s: %s (optional)%s\n", v.name, v.masked, sourceLabel)
 			}
 		} else {
 			if v.required {
 				fmt.Printf("      ❌ %s: not set (REQUIRED)\n", v.name)
 				fmt.Printf("         %s\n", v.description)
+				fmt.Printf("         Set with: morpheus config set %s <value>\n", strings.ToLower(strings.ReplaceAll(v.name, "_", "_")))
 			} else {
 				fmt.Printf("      ○  %s: not set (optional)\n", v.name)
 			}
@@ -2511,6 +2530,261 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%ds", s)
 }
 
+func handleConfig() {
+	if len(os.Args) < 3 {
+		printConfigHelp()
+		os.Exit(1)
+	}
+
+	subcommand := os.Args[2]
+
+	switch subcommand {
+	case "set":
+		handleConfigSet()
+	case "get":
+		handleConfigGet()
+	case "list":
+		handleConfigList()
+	case "path":
+		handleConfigPath()
+	case "help", "--help", "-h":
+		printConfigHelp()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config subcommand: %s\n\n", subcommand)
+		printConfigHelp()
+		os.Exit(1)
+	}
+}
+
+func printConfigHelp() {
+	fmt.Println("⚙️  Morpheus Config - Manage Configuration")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  morpheus config <command> [arguments]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  set <key> <value>    Set a configuration value (persists to file)")
+	fmt.Println("  get <key>            Get a configuration value")
+	fmt.Println("  list                 List all configurable keys")
+	fmt.Println("  path                 Show config file location")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  morpheus config set hetzner_api_token YOUR_TOKEN_HERE")
+	fmt.Println("  morpheus config set machine_provider hetzner")
+	fmt.Println("  morpheus config set ipv4_enabled true")
+	fmt.Println("  morpheus config get hetzner_api_token")
+	fmt.Println("  morpheus config list")
+	fmt.Println()
+	fmt.Println("Common Keys:")
+	fmt.Println("  hetzner_api_token    Hetzner Cloud API token")
+	fmt.Println("  hetzner_dns_token    Hetzner DNS API token")
+	fmt.Println("  machine_provider     Machine provider (hetzner, local, none)")
+	fmt.Println("  ipv4_enabled         Enable IPv4 (true/false)")
+	fmt.Println("  server_type          Server type (e.g., cx22)")
+	fmt.Println("  location             Datacenter location (e.g., fsn1)")
+	fmt.Println()
+	fmt.Println("Note:")
+	fmt.Println("  Values set with 'config set' are persisted to the config file.")
+	fmt.Println("  Environment variables still override config file values at runtime.")
+}
+
+func handleConfigSet() {
+	if len(os.Args) < 5 {
+		fmt.Fprintln(os.Stderr, "Usage: morpheus config set <key> <value>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Examples:")
+		fmt.Fprintln(os.Stderr, "  morpheus config set hetzner_api_token YOUR_TOKEN_HERE")
+		fmt.Fprintln(os.Stderr, "  morpheus config set machine_provider hetzner")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Run 'morpheus config list' to see all available keys.")
+		os.Exit(1)
+	}
+
+	key := os.Args[3]
+	value := os.Args[4]
+
+	// Find or create config path
+	configPath := config.FindConfigPath()
+	if configPath == "" {
+		// Create default config path
+		if err := config.EnsureConfigDir(); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Failed to create config directory: %s\n", err)
+			os.Exit(1)
+		}
+		configPath = config.GetDefaultConfigPath()
+	}
+
+	// Set the value
+	if err := config.SetConfigValue(configPath, key, value); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to set config value: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Show success message
+	maskedValue := value
+	if strings.Contains(strings.ToLower(key), "token") || strings.Contains(strings.ToLower(key), "password") {
+		maskedValue = config.MaskToken(value)
+	}
+
+	fmt.Printf("✅ Set %s = %s\n", key, maskedValue)
+	fmt.Printf("   Saved to: %s\n", configPath)
+
+	// Verify the config is valid after the change
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		fmt.Printf("\n⚠️  Warning: Config file has issues: %s\n", err)
+	} else if err := cfg.Validate(); err != nil {
+		fmt.Printf("\n💡 Note: Config validation: %s\n", err)
+		fmt.Println("   This may be okay if you haven't set all required values yet.")
+	}
+}
+
+func handleConfigGet() {
+	if len(os.Args) < 4 {
+		fmt.Fprintln(os.Stderr, "Usage: morpheus config get <key>")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Examples:")
+		fmt.Fprintln(os.Stderr, "  morpheus config get hetzner_api_token")
+		fmt.Fprintln(os.Stderr, "  morpheus config get machine_provider")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Run 'morpheus config list' to see all available keys.")
+		os.Exit(1)
+	}
+
+	key := os.Args[3]
+
+	// Load config
+	cfg, err := loadConfig()
+	if err != nil {
+		// If no config file, show empty
+		fmt.Printf("%s = (not configured)\n", key)
+		fmt.Println()
+		fmt.Println("No config file found. Create one with:")
+		fmt.Printf("  morpheus config set %s <value>\n", key)
+		os.Exit(0)
+	}
+
+	value, fromEnv := config.GetConfigValue(cfg, key)
+	if value == "" {
+		fmt.Printf("%s = (not set)\n", key)
+	} else {
+		// Mask tokens and passwords
+		displayValue := value
+		if strings.Contains(strings.ToLower(key), "token") || strings.Contains(strings.ToLower(key), "password") {
+			displayValue = config.MaskToken(value)
+		}
+
+		if fromEnv {
+			envVar := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
+			fmt.Printf("%s = %s (from env: %s)\n", key, displayValue, envVar)
+		} else {
+			fmt.Printf("%s = %s\n", key, displayValue)
+		}
+	}
+}
+
+func handleConfigList() {
+	fmt.Println("⚙️  Available Configuration Keys")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	keys := config.ListConfigKeys()
+
+	// Group keys by category
+	secretKeys := []string{}
+	machineKeys := []string{}
+	dnsKeys := []string{}
+	otherKeys := []string{}
+
+	for _, key := range keys {
+		switch {
+		case strings.Contains(key, "token") || strings.Contains(key, "password"):
+			secretKeys = append(secretKeys, key)
+		case strings.Contains(key, "machine") || strings.Contains(key, "ssh") || strings.Contains(key, "ipv4") || strings.Contains(key, "server") || strings.Contains(key, "location") || strings.Contains(key, "image"):
+			machineKeys = append(machineKeys, key)
+		case strings.Contains(key, "dns"):
+			dnsKeys = append(dnsKeys, key)
+		default:
+			otherKeys = append(otherKeys, key)
+		}
+	}
+
+	// Load config to show current values
+	cfg, _ := loadConfig()
+
+	fmt.Println("🔐 Secrets:")
+	for _, key := range secretKeys {
+		printConfigKeyValue(cfg, key)
+	}
+
+	fmt.Println()
+	fmt.Println("🖥️  Machine:")
+	for _, key := range machineKeys {
+		printConfigKeyValue(cfg, key)
+	}
+
+	if len(dnsKeys) > 0 {
+		fmt.Println()
+		fmt.Println("🌐 DNS:")
+		for _, key := range dnsKeys {
+			printConfigKeyValue(cfg, key)
+		}
+	}
+
+	if len(otherKeys) > 0 {
+		fmt.Println()
+		fmt.Println("📋 Other:")
+		for _, key := range otherKeys {
+			printConfigKeyValue(cfg, key)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("💡 Set a value: morpheus config set <key> <value>")
+}
+
+func printConfigKeyValue(cfg *config.Config, key string) {
+	if cfg == nil {
+		fmt.Printf("   %-22s (not configured)\n", key)
+		return
+	}
+
+	value, fromEnv := config.GetConfigValue(cfg, key)
+	if value == "" {
+		fmt.Printf("   %-22s (not set)\n", key)
+	} else {
+		// Mask tokens and passwords
+		displayValue := value
+		if strings.Contains(strings.ToLower(key), "token") || strings.Contains(strings.ToLower(key), "password") {
+			displayValue = config.MaskToken(value)
+		}
+
+		source := ""
+		if fromEnv {
+			source = " (env)"
+		}
+		fmt.Printf("   %-22s %s%s\n", key, displayValue, source)
+	}
+}
+
+func handleConfigPath() {
+	configPath := config.FindConfigPath()
+	if configPath != "" {
+		fmt.Printf("Config file: %s\n", configPath)
+	} else {
+		fmt.Println("No config file found.")
+		fmt.Println()
+		fmt.Println("Searched locations:")
+		fmt.Println("  • ./config.yaml")
+		fmt.Printf("  • %s\n", config.GetDefaultConfigPath())
+		fmt.Println("  • /etc/morpheus/config.yaml")
+		fmt.Println()
+		fmt.Println("Create a config file with:")
+		fmt.Println("  morpheus config set hetzner_api_token YOUR_TOKEN_HERE")
+		fmt.Printf("\nThis will create: %s\n", config.GetDefaultConfigPath())
+	}
+}
+
 func printHelp() {
 	fmt.Println("🌲 Morpheus - Infrastructure Provisioning")
 	fmt.Println()
@@ -2529,6 +2803,12 @@ func printHelp() {
 	fmt.Println("  list                     List all forests")
 	fmt.Println("  status <forest-id>       Show forest details")
 	fmt.Println("  teardown <forest-id>     Delete a forest")
+	fmt.Println()
+	fmt.Println("  config <subcommand>      Manage configuration")
+	fmt.Println("    set <key> <value>      Set a config value (persists to file)")
+	fmt.Println("    get <key>              Get a config value")
+	fmt.Println("    list                   List all configurable keys")
+	fmt.Println("    path                   Show config file location")
 	fmt.Println()
 	fmt.Println("  mode <subcommand>        VR node boot mode management")
 	fmt.Println("    list                   List available modes")
@@ -2552,6 +2832,9 @@ func printHelp() {
 	fmt.Println("  morpheus list               # View all forests")
 	fmt.Println("  morpheus teardown forest-123  # Delete forest")
 	fmt.Println()
+	fmt.Println("  morpheus config set hetzner_api_token YOUR_TOKEN")
+	fmt.Println("  morpheus config list        # View all settings")
+	fmt.Println()
 	fmt.Println("  morpheus mode status        # Check VR node mode")
 	fmt.Println("  morpheus mode linux         # Switch to Linux VR mode")
 	fmt.Println("  morpheus mode windows       # Switch to Windows VR mode")
@@ -2561,6 +2844,8 @@ func printHelp() {
 	fmt.Println("    - ./config.yaml")
 	fmt.Println("    - ~/.morpheus/config.yaml")
 	fmt.Println("    - /etc/morpheus/config.yaml")
+	fmt.Println()
+	fmt.Println("  Use 'morpheus config set' to persist settings to config file.")
 	fmt.Println()
 	fmt.Println("More info: https://github.com/nimsforest/morpheus")
 }
