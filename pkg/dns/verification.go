@@ -231,13 +231,16 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 	// 3-tier fallback system for DNS lookups
 	var nsRecords []*net.NS
 	var err error
+	var ctx context.Context
+	var cancel context.CancelFunc
+	var resolver *net.Resolver
 
 	// In restricted environments (Termux/Android), we MUST use system resolver
 	// because direct UDP connections to external DNS servers are blocked
 	isRestricted := httputil.IsRestrictedEnvironment()
 
 	// Tier 1: Try system resolver with 3s timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	nsRecords, err = net.DefaultResolver.LookupNS(ctx, domain)
@@ -256,7 +259,7 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resolver := createCustomResolver()
+	resolver = createCustomResolver()
 	nsRecords, err = resolver.LookupNS(ctx, domain)
 	if err == nil && len(nsRecords) > 0 {
 		// Custom UDP resolver succeeded
@@ -371,13 +374,16 @@ func VerifyMXRecords(domain string, expectedMX []string) *MXVerificationResult {
 	// 3-tier fallback system for MX lookups
 	var mxRecords []*net.MX
 	var err error
+	var ctx context.Context
+	var cancel context.CancelFunc
+	var resolver *net.Resolver
 
 	// In restricted environments (Termux/Android), we MUST use system resolver
 	// because direct UDP connections to external DNS servers are blocked
 	isRestricted := httputil.IsRestrictedEnvironment()
 
 	// Tier 1: Try system resolver with 3s timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	mxRecords, err = net.DefaultResolver.LookupMX(ctx, domain)
@@ -396,7 +402,7 @@ func VerifyMXRecords(domain string, expectedMX []string) *MXVerificationResult {
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resolver := createCustomResolver()
+	resolver = createCustomResolver()
 	mxRecords, err = resolver.LookupMX(ctx, domain)
 	if err == nil && len(mxRecords) > 0 {
 		// Custom UDP resolver succeeded
