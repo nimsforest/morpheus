@@ -27,24 +27,30 @@ func HandleDNSAdd() {
 		os.Exit(1)
 	}
 
-	zoneType := os.Args[3] // "apex" or "subdomain"
+	zoneType := os.Args[3] // "apex", "subdomain", or "gmail-mx"
 	domain := os.Args[4]
 	var customerID string
 
-	// Validate zone type
-	if zoneType != "apex" && zoneType != "subdomain" {
-		fmt.Fprintf(os.Stderr, "❌ Unknown zone type: %s\n", zoneType)
-		fmt.Fprintf(os.Stderr, "   Use 'apex' or 'subdomain'\n\n")
-		printDNSAddHelp()
-		os.Exit(1)
-	}
-
-	// Parse flags
+	// Parse flags first
 	for i := 5; i < len(os.Args); i++ {
 		if os.Args[i] == "--customer" && i+1 < len(os.Args) {
 			i++
 			customerID = os.Args[i]
 		}
+	}
+
+	// Handle gmail-mx as a special case (adds MX records to existing zone)
+	if zoneType == "gmail-mx" || zoneType == "gmail" {
+		handleAddGmailMX(domain, customerID)
+		return
+	}
+
+	// Validate zone type
+	if zoneType != "apex" && zoneType != "subdomain" {
+		fmt.Fprintf(os.Stderr, "❌ Unknown zone type: %s\n", zoneType)
+		fmt.Fprintf(os.Stderr, "   Use 'apex', 'subdomain', or 'gmail-mx'\n\n")
+		printDNSAddHelp()
+		os.Exit(1)
 	}
 
 	// Get DNS provider
@@ -112,7 +118,11 @@ func printApexInstructions(domain string, nameservers []string) {
 		fmt.Printf("   %s\n", ns)
 	}
 
-	fmt.Printf("\n🎯 What's next?\n\n")
+	fmt.Printf("\n📧 Using Gmail/Google Workspace for email?\n")
+	fmt.Printf("   Add MX records BEFORE changing nameservers:\n")
+	fmt.Printf("   morpheus dns add gmail-mx %s\n\n", domain)
+
+	fmt.Printf("🎯 What's next?\n\n")
 	fmt.Printf("1. Log into your domain registrar\n")
 	fmt.Printf("2. Replace existing nameservers with the ones above\n")
 	fmt.Printf("3. Wait for propagation (up to 48 hours)\n\n")
@@ -327,11 +337,12 @@ func saveDomainToConfig(domain string) error {
 func printDNSAddHelp() {
 	fmt.Println("Usage: morpheus dns add <type> <domain> [--customer ID]")
 	fmt.Println()
-	fmt.Println("Create a DNS zone in Hetzner DNS.")
+	fmt.Println("Create a DNS zone or add records in Hetzner DNS.")
 	fmt.Println()
 	fmt.Println("Types:")
 	fmt.Println("  apex        You control the domain (update nameservers at registrar)")
 	fmt.Println("  subdomain   Delegated from parent (add NS records to parent)")
+	fmt.Println("  gmail-mx    Add Gmail/Google Workspace MX records to existing zone")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --customer ID    Use customer-specific DNS token")
@@ -340,6 +351,81 @@ func printDNSAddHelp() {
 	fmt.Println("Examples:")
 	fmt.Println("  morpheus dns add apex nimsforest.com")
 	fmt.Println("  morpheus dns add subdomain experiencenet.customer.com --customer acme")
+	fmt.Println("  morpheus dns add gmail-mx nimsforest.com")
+}
+
+// GmailMXRecords contains the standard Gmail/Google Workspace MX records
+var GmailMXRecords = []struct {
+	Priority int
+	Server   string
+}{
+	{1, "ASPMX.L.GOOGLE.COM"},
+	{5, "ALT1.ASPMX.L.GOOGLE.COM"},
+	{5, "ALT2.ASPMX.L.GOOGLE.COM"},
+	{10, "ALT3.ASPMX.L.GOOGLE.COM"},
+	{10, "ALT4.ASPMX.L.GOOGLE.COM"},
+}
+
+// handleAddGmailMX adds Gmail/Google Workspace MX records to an existing zone
+func handleAddGmailMX(domain, customerID string) {
+	provider, err := getDNSProvider(customerID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ %s\n", err)
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Check if zone exists
+	zone, err := provider.GetZone(ctx, domain)
+	if err != nil || zone == nil {
+		fmt.Fprintf(os.Stderr, "❌ Zone not found: %s\n", domain)
+		fmt.Fprintf(os.Stderr, "   Create the zone first with: morpheus dns add apex %s\n", domain)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n📧 Adding Gmail MX records to %s\n", domain)
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	successCount := 0
+	for _, mx := range GmailMXRecords {
+		// MX record value format: "priority server"
+		value := fmt.Sprintf("%d %s", mx.Priority, mx.Server)
+
+		fmt.Printf("   Adding MX %s (priority %d)...", mx.Server, mx.Priority)
+
+		_, err := provider.CreateRecord(ctx, dns.CreateRecordRequest{
+			Domain: domain,
+			Name:   "@",
+			Type:   dns.RecordType("MX"),
+			Value:  value,
+			TTL:    3600,
+		})
+		if err != nil {
+			fmt.Printf(" ❌ %s\n", err)
+		} else {
+			fmt.Printf(" ✓\n")
+			successCount++
+		}
+	}
+
+	fmt.Println()
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	if successCount == len(GmailMXRecords) {
+		fmt.Printf("✅ All %d Gmail MX records added!\n", successCount)
+	} else if successCount > 0 {
+		fmt.Printf("⚠️  Added %d of %d MX records\n", successCount, len(GmailMXRecords))
+	} else {
+		fmt.Printf("❌ Failed to add MX records\n")
+		os.Exit(1)
+	}
+	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+
+	fmt.Println("📋 Your email will work once DNS propagates (usually within an hour).")
+	fmt.Println()
+	fmt.Println("Verify records with:")
+	fmt.Printf("   morpheus dns status %s\n\n", domain)
 }
 
 // HandleDNSVerify handles "morpheus dns verify <domain>"
