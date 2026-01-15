@@ -20,7 +20,7 @@ func TestLoadCustomerConfig(t *testing.T) {
       - wholesale
     hetzner:
       project_id: proj-123
-      dns_token: secret-token
+      api_token: secret-token
   - id: globex
     name: Globex Corporation
     domain: globex.example.com
@@ -28,7 +28,7 @@ func TestLoadCustomerConfig(t *testing.T) {
       - manufacturing
     hetzner:
       project_id: proj-456
-      dns_token: ${GLOBEX_DNS_TOKEN}
+      api_token: ${GLOBEX_API_TOKEN}
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
@@ -59,8 +59,8 @@ func TestLoadCustomerConfig(t *testing.T) {
 	if cfg.Customers[0].Hetzner.ProjectID != "proj-123" {
 		t.Errorf("expected project_id 'proj-123', got %q", cfg.Customers[0].Hetzner.ProjectID)
 	}
-	if cfg.Customers[0].Hetzner.DNSToken != "secret-token" {
-		t.Errorf("expected dns_token 'secret-token', got %q", cfg.Customers[0].Hetzner.DNSToken)
+	if cfg.Customers[0].Hetzner.APIToken != "secret-token" {
+		t.Errorf("expected api_token 'secret-token', got %q", cfg.Customers[0].Hetzner.APIToken)
 	}
 }
 

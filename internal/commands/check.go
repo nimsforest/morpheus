@@ -516,13 +516,8 @@ func runConfigCheck(exitOnResult bool) bool {
 	vars := []secretVar{
 		{
 			name:        "HETZNER_API_TOKEN",
-			description: "Hetzner Cloud API token",
+			description: "Hetzner Cloud API token (used for both Cloud and DNS)",
 			required:    cfg == nil || cfg.GetMachineProvider() == "hetzner" || cfg.GetMachineProvider() == "",
-		},
-		{
-			name:        "HETZNER_DNS_TOKEN",
-			description: "Hetzner DNS API token (optional, uses HETZNER_API_TOKEN as fallback)",
-			required:    false,
 		},
 		{
 			name:        "STORAGEBOX_PASSWORD",
@@ -572,17 +567,6 @@ func runConfigCheck(exitOnResult bool) bool {
 				if cfg.Secrets.HetznerAPIToken != "" {
 					vars[i].hasValue = true
 					vars[i].masked = maskValue(cfg.Secrets.HetznerAPIToken)
-					vars[i].source = "config"
-				}
-				break
-			}
-		}
-		// HETZNER_DNS_TOKEN
-		for i := range vars {
-			if vars[i].name == "HETZNER_DNS_TOKEN" && vars[i].source == "" {
-				if cfg.Secrets.HetznerDNSToken != "" {
-					vars[i].hasValue = true
-					vars[i].masked = maskValue(cfg.Secrets.HetznerDNSToken)
 					vars[i].source = "config"
 				}
 				break

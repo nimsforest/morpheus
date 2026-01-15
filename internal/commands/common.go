@@ -69,7 +69,7 @@ func CreateMachineProvider(cfg *config.Config) (machine.Provider, string, error)
 }
 
 // CreateDNSProvider creates a DNS provider based on the configuration.
-// Auto-detects Hetzner if dns_domain and hetzner_dns_token are set.
+// Auto-detects Hetzner if dns_domain and hetzner_api_token are set.
 func CreateDNSProvider(cfg *config.Config) dns.Provider {
 	// If no domain configured, no DNS integration
 	if cfg.DNS.Domain == "" {

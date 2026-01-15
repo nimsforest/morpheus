@@ -139,7 +139,7 @@ func GenerateOnboardingChecklist(cust Customer) string {
 	sb.WriteString(fmt.Sprintf("Onboarding Checklist for %s (%s)\n", cust.ID, cust.Domain))
 	sb.WriteString(strings.Repeat("-", 50) + "\n")
 	sb.WriteString("\n")
-	sb.WriteString("[ ] 1. Get Hetzner DNS API token from customer\n")
+	sb.WriteString("[ ] 1. Get Hetzner API token from customer\n")
 	sb.WriteString("[ ] 2. Configure customer in Morpheus (morpheus customer init)\n")
 	sb.WriteString("[ ] 3. Customer adds NS records at their registrar\n")
 	sb.WriteString("[ ] 4. Verify NS delegation (morpheus customer verify)\n")
@@ -163,13 +163,13 @@ func FormatCustomerInfo(cust *Customer) string {
 		sb.WriteString(fmt.Sprintf("  Project:  %s\n", cust.Hetzner.ProjectID))
 	}
 
-	if cust.Hetzner.DNSToken != "" {
+	if cust.Hetzner.APIToken != "" {
 		// Show token status but mask the actual value
-		if strings.HasPrefix(cust.Hetzner.DNSToken, "${") {
-			sb.WriteString(fmt.Sprintf("  DNS Token: %s (env var reference)\n", cust.Hetzner.DNSToken))
+		if strings.HasPrefix(cust.Hetzner.APIToken, "${") {
+			sb.WriteString(fmt.Sprintf("  API Token: %s (env var reference)\n", cust.Hetzner.APIToken))
 		} else {
-			masked := maskToken(cust.Hetzner.DNSToken)
-			sb.WriteString(fmt.Sprintf("  DNS Token: %s\n", masked))
+			masked := maskToken(cust.Hetzner.APIToken)
+			sb.WriteString(fmt.Sprintf("  API Token: %s\n", masked))
 		}
 	}
 

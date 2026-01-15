@@ -67,7 +67,6 @@ storage:
 
 secrets:
   hetzner_api_token: ${HETZNER_API_TOKEN}
-  hetzner_dns_token: ${HETZNER_DNS_TOKEN}
 ```
 
 ---
