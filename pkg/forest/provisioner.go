@@ -17,10 +17,10 @@ import (
 
 // Provisioner handles forest provisioning
 type Provisioner struct {
-	machine  machine.Provider
-	storage  storage.Registry
-	dns      dns.Provider
-	config   *config.Config
+	machine machine.Provider
+	storage storage.Registry
+	dns     dns.Provider
+	config  *config.Config
 }
 
 // NewProvisioner creates a new forest provisioner
@@ -47,7 +47,7 @@ func NewProvisionerWithDNS(m machine.Provider, s storage.Registry, d dns.Provide
 // ProvisionRequest contains parameters for provisioning a forest
 type ProvisionRequest struct {
 	ForestID   string
-	NodeCount  int    // Number of nodes to provision
+	NodeCount  int // Number of nodes to provision
 	Location   string
 	ServerType string // Provider-specific server type
 	Image      string // OS image to use
@@ -456,14 +456,14 @@ func (p *Provisioner) Teardown(ctx context.Context, forestID string) error {
 		fmt.Printf("Deleting DNS records...\n")
 		for i, node := range nodes {
 			recordName := fmt.Sprintf("%s-node-%d", forestID, i+1)
-			
+
 			// Delete A record
 			if node.IPv4 != "" {
 				if err := p.dns.DeleteRecord(ctx, p.config.DNS.Domain, recordName, string(dns.RecordTypeA)); err != nil {
 					fmt.Printf("   ⚠️  Warning: failed to delete A record: %s\n", err)
 				}
 			}
-			
+
 			// Delete AAAA record
 			if node.IPv6 != "" {
 				if err := p.dns.DeleteRecord(ctx, p.config.DNS.Domain, recordName, string(dns.RecordTypeAAAA)); err != nil {

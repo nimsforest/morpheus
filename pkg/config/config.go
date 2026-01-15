@@ -26,10 +26,10 @@ type Config struct {
 
 // MachineConfig defines machine provider settings
 type MachineConfig struct {
-	Provider string         `yaml:"provider"` // hetzner, local, none
-	Hetzner  HetznerConfig  `yaml:"hetzner"`
-	SSH      SSHConfig      `yaml:"ssh"`
-	IPv4     IPv4Config     `yaml:"ipv4"`
+	Provider string        `yaml:"provider"` // hetzner, local, none
+	Hetzner  HetznerConfig `yaml:"hetzner"`
+	SSH      SSHConfig     `yaml:"ssh"`
+	IPv4     IPv4Config    `yaml:"ipv4"`
 }
 
 // HetznerConfig defines Hetzner-specific machine settings
@@ -54,9 +54,9 @@ type DNSConfig struct {
 
 // StorageConfig defines storage provider settings
 type StorageConfig struct {
-	Provider   string            `yaml:"provider"` // storagebox, s3, local, none
-	StorageBox StorageBoxConfig  `yaml:"storagebox"`
-	S3         S3Config          `yaml:"s3"`
+	Provider   string             `yaml:"provider"` // storagebox, s3, local, none
+	StorageBox StorageBoxConfig   `yaml:"storagebox"`
+	S3         S3Config           `yaml:"s3"`
 	Local      LocalStorageConfig `yaml:"local"`
 }
 
@@ -71,7 +71,7 @@ type StorageBoxConfig struct {
 type S3Config struct {
 	Bucket    string `yaml:"bucket"`
 	Region    string `yaml:"region"`
-	Endpoint  string `yaml:"endpoint"`  // Optional: for S3-compatible services
+	Endpoint  string `yaml:"endpoint"` // Optional: for S3-compatible services
 	AccessKey string `yaml:"access_key"`
 	SecretKey string `yaml:"secret_key"`
 }
@@ -198,7 +198,7 @@ func LoadConfig(path string) (*Config, error) {
 func (c *Config) expandStoragePassword() {
 	// Check for STORAGEBOX_PASSWORD env var first - it always overrides
 	envPass := strings.TrimSpace(os.Getenv("STORAGEBOX_PASSWORD"))
-	
+
 	// New storage config
 	if strings.HasPrefix(c.Storage.StorageBox.Password, "${") && strings.HasSuffix(c.Storage.StorageBox.Password, "}") {
 		envVar := c.Storage.StorageBox.Password[2 : len(c.Storage.StorageBox.Password)-1]

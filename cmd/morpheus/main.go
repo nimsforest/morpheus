@@ -1040,11 +1040,11 @@ func expandCluster(forestID string, forestInfo *storage.Forest, reg storage.Regi
 	_ = reg.UpdateForest(forestInfo)
 
 	ctx := context.Background()
-	
+
 	// Provision additional nodes (using a modified request that starts at the right index)
 	// Note: The provisioner will handle the node naming based on existing nodes
 	_ = startIndex // Used for future enhancement
-	
+
 	if err := provisioner.Provision(ctx, req); err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ Expansion failed: %s\n", err)
 		return

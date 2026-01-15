@@ -728,4 +728,3 @@ func TestIntersectLocationsPreserveOrder(t *testing.T) {
 		})
 	}
 }
-

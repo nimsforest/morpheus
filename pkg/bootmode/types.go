@@ -15,15 +15,15 @@ const (
 
 // Mode represents a bootable OS configuration on a VR node
 type Mode struct {
-	Name        string        `json:"name"`         // "linux" or "windows"
-	OS          OSType        `json:"os"`           // Operating system type
-	Description string        `json:"description"`  // Human-readable description
-	VMID        int           `json:"vmid"`         // Proxmox VM ID
-	Status      ModeStatus    `json:"status"`       // Current status
-	IPAddress   string        `json:"ip_address"`   // VM IP address (when running)
-	Uptime      time.Duration `json:"uptime"`       // How long running
-	VRSoftware  string        `json:"vr_software"`  // "wivrn" or "steamlink"
-	Services    []Service     `json:"services"`     // Running services
+	Name        string        `json:"name"`        // "linux" or "windows"
+	OS          OSType        `json:"os"`          // Operating system type
+	Description string        `json:"description"` // Human-readable description
+	VMID        int           `json:"vmid"`        // Proxmox VM ID
+	Status      ModeStatus    `json:"status"`      // Current status
+	IPAddress   string        `json:"ip_address"`  // VM IP address (when running)
+	Uptime      time.Duration `json:"uptime"`      // How long running
+	VRSoftware  string        `json:"vr_software"` // "wivrn" or "steamlink"
+	Services    []Service     `json:"services"`    // Running services
 }
 
 // Service represents a service running in a mode
@@ -98,7 +98,7 @@ type VRNodeConfig struct {
 type VMConfig struct {
 	VMID     int    `yaml:"vmid"`
 	Name     string `yaml:"name"`
-	Memory   int    `yaml:"memory"`    // MB
+	Memory   int    `yaml:"memory"` // MB
 	Cores    int    `yaml:"cores"`
 	DiskSize int    `yaml:"disk_size"` // GB
 }
