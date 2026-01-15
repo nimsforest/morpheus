@@ -196,6 +196,156 @@ func (p *Provider) GetRecord(ctx context.Context, domain, name, recordType strin
 	return nil, nil // Not found
 }
 
+// CreateZone creates a new DNS zone in Hetzner DNS
+func (p *Provider) CreateZone(ctx context.Context, req dns.CreateZoneRequest) (*dns.Zone, error) {
+	// Set default TTL if not specified
+	ttl := req.TTL
+	if ttl == 0 {
+		ttl = 86400 // 24 hours default
+	}
+
+	body := map[string]interface{}{
+		"name": req.Name,
+		"ttl":  ttl,
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", hetznerDNSAPIURL+"/zones", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create zone: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create zone: status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Zone hetznerZone `json:"zone"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Cache the zone ID
+	p.zoneCache[result.Zone.Name] = result.Zone.ID
+
+	return &dns.Zone{
+		ID:          result.Zone.ID,
+		Name:        result.Zone.Name,
+		TTL:         result.Zone.TTL,
+		Nameservers: result.Zone.NS,
+	}, nil
+}
+
+// DeleteZone deletes a DNS zone from Hetzner DNS
+func (p *Provider) DeleteZone(ctx context.Context, zoneName string) error {
+	// Get the zone to find its ID
+	zone, err := p.GetZone(ctx, zoneName)
+	if err != nil {
+		return fmt.Errorf("failed to get zone: %w", err)
+	}
+	if zone == nil {
+		// Zone doesn't exist - consider this success
+		return nil
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", hetznerDNSAPIURL+"/zones/"+zone.ID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to delete zone: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete zone: status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Remove from cache
+	delete(p.zoneCache, zoneName)
+
+	return nil
+}
+
+// GetZone retrieves a DNS zone by name from Hetzner DNS
+func (p *Provider) GetZone(ctx context.Context, zoneName string) (*dns.Zone, error) {
+	zones, err := p.ListZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, zone := range zones {
+		if zone.Name == zoneName {
+			return zone, nil
+		}
+	}
+
+	return nil, nil // Not found
+}
+
+// ListZones lists all DNS zones in Hetzner DNS
+func (p *Provider) ListZones(ctx context.Context) ([]*dns.Zone, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerDNSAPIURL+"/zones", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list zones: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to list zones: status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result struct {
+		Zones []hetznerZone `json:"zones"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse zones response: %w", err)
+	}
+
+	zones := make([]*dns.Zone, len(result.Zones))
+	for i, z := range result.Zones {
+		// Cache zone IDs
+		p.zoneCache[z.Name] = z.ID
+
+		zones[i] = &dns.Zone{
+			ID:          z.ID,
+			Name:        z.Name,
+			TTL:         z.TTL,
+			Nameservers: z.NS,
+		}
+	}
+
+	return zones, nil
+}
+
 // getZoneID returns the zone ID for a domain, using cache if available
 func (p *Provider) getZoneID(ctx context.Context, domain string) (string, error) {
 	// Check cache first
@@ -282,8 +432,10 @@ func (p *Provider) listRecordsByZone(ctx context.Context, zoneID string) ([]hetz
 
 // hetznerZone represents a DNS zone in Hetzner's API
 type hetznerZone struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	TTL  int      `json:"ttl"`
+	NS   []string `json:"ns"`
 }
 
 // hetznerRecord represents a DNS record in Hetzner's API

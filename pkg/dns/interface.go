@@ -17,6 +17,20 @@ type Provider interface {
 
 	// GetRecord retrieves a specific DNS record
 	GetRecord(ctx context.Context, domain, name, recordType string) (*Record, error)
+
+	// Zone management methods
+
+	// CreateZone creates a new DNS zone
+	CreateZone(ctx context.Context, req CreateZoneRequest) (*Zone, error)
+
+	// DeleteZone deletes a DNS zone by name
+	DeleteZone(ctx context.Context, zoneName string) error
+
+	// GetZone retrieves a DNS zone by name
+	GetZone(ctx context.Context, zoneName string) (*Zone, error)
+
+	// ListZones lists all DNS zones
+	ListZones(ctx context.Context) ([]*Zone, error)
 }
 
 // CreateRecordRequest contains parameters for creating a DNS record
@@ -48,6 +62,20 @@ const (
 	RecordTypeTXT   RecordType = "TXT"
 	RecordTypeSRV   RecordType = "SRV"
 )
+
+// Zone represents a DNS zone
+type Zone struct {
+	ID          string   // Provider-specific zone ID
+	Name        string   // The zone name (e.g., "example.com")
+	TTL         int      // Default TTL for the zone in seconds
+	Nameservers []string // Authoritative nameservers for the zone
+}
+
+// CreateZoneRequest contains parameters for creating a DNS zone
+type CreateZoneRequest struct {
+	Name string // The zone name (e.g., "example.com")
+	TTL  int    // Default TTL in seconds (0 means use provider default, typically 86400)
+}
 
 // ForestDNSConfig contains DNS settings for a forest
 type ForestDNSConfig struct {

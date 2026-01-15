@@ -367,6 +367,47 @@ morpheus version  # Show version
 morpheus help     # Show help
 ```
 
+## DNS Management
+
+Morpheus provides DNS management capabilities via Hetzner DNS for managing zones and records across customer deployments.
+
+### DNS Commands
+
+```bash
+# Zone management
+morpheus dns zone create example.com          # Create a DNS zone
+morpheus dns zone list                         # List all zones
+morpheus dns zone get example.com              # Get zone details
+morpheus dns zone delete example.com           # Delete a zone
+
+# Record management
+morpheus dns record create www.example.com A 1.2.3.4      # Create A record
+morpheus dns record create mail.example.com AAAA 2001:db8::1  # Create AAAA record
+morpheus dns record list example.com                      # List records in zone
+morpheus dns record delete www.example.com A              # Delete a record
+```
+
+### Customer & Venture Management
+
+For multi-tenant deployments, Morpheus supports customer onboarding with DNS delegation:
+
+```bash
+# Customer management
+morpheus customer init acme --domain acme.example.com    # Initialize customer
+morpheus customer list                                    # List customers
+morpheus customer verify acme                             # Verify NS delegation
+
+# Venture (service) management
+morpheus venture list                                     # List available ventures
+morpheus venture enable acme experiencenet --server-ip 1.2.3.4  # Enable venture
+morpheus venture status acme experiencenet               # Check venture status
+morpheus venture disable acme experiencenet              # Disable venture
+```
+
+See [Customer Onboarding Guide](docs/guides/CUSTOMER_ONBOARDING.md) for detailed setup instructions.
+
+---
+
 ## Architecture
 
 ### Separation of Concerns
@@ -556,8 +597,10 @@ MIT License - see [LICENSE](LICENSE)
     - [Android/Termux Guide](docs/guides/ANDROID_TERMUX.md) - Complete guide (primary mobile approach)
     - [Mobile Philosophy](docs/guides/MOBILE_PHILOSOPHY.md) - Why Termux is the natural way for CLI tools
     - [Control Server Setup](docs/guides/CONTROL_SERVER_SETUP.md) - Alternative for 24/7, teams, CI/CD
+    - [Customer Onboarding](docs/guides/CUSTOMER_ONBOARDING.md) - DNS delegation setup for customers
   - **Architecture:**
     - [Separation of Concerns](docs/architecture/SEPARATION_OF_CONCERNS.md) - Architecture details
+    - [DNS Delegation](docs/architecture/DNS_DELEGATION.md) - DNS management architecture
   - **Development:**
     - [Contributing](docs/development/CONTRIBUTING.md) - How to contribute
     - [Release Process](docs/development/RELEASE.md) - For maintainers
