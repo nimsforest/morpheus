@@ -9,6 +9,7 @@ import (
 	"github.com/nimsforest/morpheus/pkg/config"
 	"github.com/nimsforest/morpheus/pkg/customer"
 	"github.com/nimsforest/morpheus/pkg/dns"
+	"github.com/nimsforest/morpheus/pkg/dns/hetzner"
 )
 
 // HandleDNSAdd handles "morpheus dns add <type> <domain>"
@@ -119,8 +120,9 @@ func printApexInstructions(domain string, nameservers []string) {
 	}
 
 	fmt.Printf("\n📧 Using Gmail/Google Workspace for email?\n")
-	fmt.Printf("   Add MX records BEFORE changing nameservers:\n")
-	fmt.Printf("   morpheus dns add gmail-mx %s\n\n", domain)
+	fmt.Printf("   Set up complete email configuration BEFORE changing nameservers:\n")
+	fmt.Printf("   morpheus dns add gmail-mx %s\n", domain)
+	fmt.Printf("   (Adds MX, SPF, and DMARC records)\n\n")
 
 	fmt.Printf("🎯 What's next?\n\n")
 	fmt.Printf("1. Log into your domain registrar\n")
@@ -342,7 +344,7 @@ func printDNSAddHelp() {
 	fmt.Println("Types:")
 	fmt.Println("  apex        You control the domain (update nameservers at registrar)")
 	fmt.Println("  subdomain   Delegated from parent (add NS records to parent)")
-	fmt.Println("  gmail-mx    Add Gmail/Google Workspace MX records to existing zone")
+	fmt.Println("  gmail-mx    Complete Gmail/Google Workspace setup (MX, SPF, DMARC)")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --customer ID    Use customer-specific DNS token")
@@ -352,6 +354,9 @@ func printDNSAddHelp() {
 	fmt.Println("  morpheus dns add apex nimsforest.com")
 	fmt.Println("  morpheus dns add subdomain experiencenet.customer.com --customer acme")
 	fmt.Println("  morpheus dns add gmail-mx nimsforest.com")
+	fmt.Println()
+	fmt.Println("Note: gmail-mx adds MX records, SPF, and DMARC. DKIM requires")
+	fmt.Println("      additional setup in Google Workspace Admin Console.")
 }
 
 // GmailMXRecords contains the standard Gmail/Google Workspace MX records
@@ -366,7 +371,22 @@ var GmailMXRecords = []struct {
 	{10, "ALT4.ASPMX.L.GOOGLE.COM"},
 }
 
-// handleAddGmailMX adds Gmail/Google Workspace MX records to an existing zone
+// createGmailMXRRSet creates an RRSet with all Gmail MX records
+func createGmailMXRRSet(ctx context.Context, provider *hetzner.Provider, domain string) error {
+	// We need to create all MX records in a single RRSet via direct API call
+	// since the Cloud API treats name+type as a unique RRSet
+	records := make([]map[string]interface{}, len(GmailMXRecords))
+	for i, mx := range GmailMXRecords {
+		records[i] = map[string]interface{}{
+			"value": fmt.Sprintf("%d %s", mx.Priority, mx.Server),
+		}
+	}
+
+	// Create the RRSet with all MX records
+	return provider.CreateRRSet(ctx, domain, "@", "MX", 3600, records)
+}
+
+// handleAddGmailMX adds Gmail/Google Workspace MX records and email authentication records
 func handleAddGmailMX(domain, customerID string) {
 	provider, err := getDNSProvider(customerID)
 	if err != nil {
@@ -385,47 +405,113 @@ func handleAddGmailMX(domain, customerID string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n📧 Adding Gmail MX records to %s\n", domain)
+	fmt.Printf("\n📧 Setting up Gmail/Google Workspace for %s\n", domain)
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	successCount := 0
-	for _, mx := range GmailMXRecords {
-		// MX record value format: "priority server"
-		value := fmt.Sprintf("%d %s", mx.Priority, mx.Server)
+	totalRecords := 0
+	failedRecords := 0
 
-		fmt.Printf("   Adding MX %s (priority %d)...", mx.Server, mx.Priority)
-
-		_, err := provider.CreateRecord(ctx, dns.CreateRecordRequest{
-			Domain: domain,
-			Name:   "@",
-			Type:   dns.RecordType("MX"),
-			Value:  value,
-			TTL:    3600,
-		})
-		if err != nil {
-			fmt.Printf(" ❌ %s\n", err)
-		} else {
-			fmt.Printf(" ✓\n")
-			successCount++
+	// Add MX records - all MX records must be in a single RRSet
+	fmt.Printf("📮 Adding MX records:\n")
+	err = createGmailMXRRSet(ctx, provider, domain)
+	totalRecords++
+	if err != nil {
+		fmt.Printf("   ❌ %s\n", err)
+		failedRecords++
+	} else {
+		for _, mx := range GmailMXRecords {
+			fmt.Printf("   ✓ MX %s (priority %d)\n", mx.Server, mx.Priority)
 		}
 	}
 
+	// Add SPF record
+	fmt.Printf("\n🔐 Adding SPF record:\n")
+	spfValue := "\"v=spf1 include:_spf.google.com ~all\""
+	fmt.Printf("   TXT @ %s...", spfValue)
+	_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
+		Domain: domain,
+		Name:   "@",
+		Type:   dns.RecordType("TXT"),
+		Value:  spfValue,
+		TTL:    3600,
+	})
+	totalRecords++
+	if err != nil {
+		fmt.Printf(" ❌ %s\n", err)
+		failedRecords++
+	} else {
+		fmt.Printf(" ✓\n")
+	}
+
+	// Add DMARC record
+	fmt.Printf("\n📊 Adding DMARC record:\n")
+	dmarcValue := fmt.Sprintf("\"v=DMARC1; p=none; rua=mailto:dmarc@%s\"", domain)
+	fmt.Printf("   TXT _dmarc %s...", dmarcValue)
+	_, err = provider.CreateRecord(ctx, dns.CreateRecordRequest{
+		Domain: domain,
+		Name:   "_dmarc",
+		Type:   dns.RecordType("TXT"),
+		Value:  dmarcValue,
+		TTL:    3600,
+	})
+	totalRecords++
+	if err != nil {
+		fmt.Printf(" ❌ %s\n", err)
+		failedRecords++
+	} else {
+		fmt.Printf(" ✓\n")
+	}
+
+	// Summary
 	fmt.Println()
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	if successCount == len(GmailMXRecords) {
-		fmt.Printf("✅ All %d Gmail MX records added!\n", successCount)
+	successCount := totalRecords - failedRecords
+	if failedRecords == 0 {
+		fmt.Printf("✅ All %d records added successfully!\n", totalRecords)
 	} else if successCount > 0 {
-		fmt.Printf("⚠️  Added %d of %d MX records\n", successCount, len(GmailMXRecords))
+		fmt.Printf("⚠️  Added %d of %d records (%d failed)\n", successCount, totalRecords, failedRecords)
 	} else {
-		fmt.Printf("❌ Failed to add MX records\n")
+		fmt.Printf("❌ Failed to add records\n")
 		os.Exit(1)
 	}
 	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
 
-	fmt.Println("📋 Your email will work once DNS propagates (usually within an hour).")
+	// DKIM setup instructions
+	fmt.Println("🔑 DKIM Setup Required:")
+	fmt.Println()
+	fmt.Println("DKIM requires configuration in Google Workspace Admin Console:")
+	fmt.Println()
+	fmt.Println("1. Go to admin.google.com")
+	fmt.Println("2. Navigate to Apps → Google Workspace → Gmail → Authenticate email")
+	fmt.Println("3. Click 'Generate new record' for your domain")
+	fmt.Println("4. Copy the DKIM TXT record values provided by Google")
+	fmt.Println("5. Add the DKIM record using:")
+	fmt.Printf("   morpheus dns record create <selector>._domainkey.%s TXT \"<dkim-value>\"\n", domain)
+	fmt.Println()
+	fmt.Println("   Example:")
+	fmt.Printf("   morpheus dns record create google._domainkey.%s TXT \"v=DKIM1; k=rsa; p=MIGfMA...\"\n", domain)
+	fmt.Println()
+	fmt.Println("6. Return to Google Admin Console and click 'Start authentication'")
+	fmt.Println()
+
+	// Final instructions
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("📋 What's been configured:")
+	fmt.Println()
+	fmt.Println("✓ MX records    - Routes email to Gmail servers")
+	fmt.Println("✓ SPF record    - Authorizes Gmail to send email for your domain")
+	fmt.Println("✓ DMARC record  - Email authentication policy (set to monitoring mode)")
+	fmt.Println("⚠ DKIM record   - Requires manual setup (see instructions above)")
+	fmt.Println()
+	fmt.Println("📧 Your email will work once DNS propagates (usually within an hour).")
 	fmt.Println()
 	fmt.Println("Verify records with:")
-	fmt.Printf("   morpheus dns status %s\n\n", domain)
+	fmt.Printf("   morpheus dns status %s\n", domain)
+	fmt.Println()
+	fmt.Println("Test email authentication:")
+	fmt.Println("   dig TXT " + domain + " +short")
+	fmt.Println("   dig TXT _dmarc." + domain + " +short")
+	fmt.Println()
 }
 
 // HandleDNSVerify handles "morpheus dns verify <domain>"

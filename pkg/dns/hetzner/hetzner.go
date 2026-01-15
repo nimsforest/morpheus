@@ -56,14 +56,15 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 		ttl = 300 // 5 minutes default
 	}
 
-	// Cloud API uses RRSets - we use add_records_to_rrset action to add a record
+	// Cloud API uses RRSets - create or update an RRSet
+	// TTL is at RRSet level, records don't have individual TTLs
 	body := map[string]interface{}{
 		"name": req.Name,
 		"type": string(req.Type),
+		"ttl":  ttl,
 		"records": []map[string]interface{}{
 			{
 				"value": req.Value,
-				"ttl":   ttl,
 			},
 		},
 	}
@@ -73,9 +74,9 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Use add_records_to_rrset action to add record to existing or new RRSet
+	// Create RRSet via POST to /rrsets
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets/actions/add_records_to_rrset",
+		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets",
 		bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -105,45 +106,20 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 	}, nil
 }
 
-// DeleteRecord removes a DNS record from Hetzner DNS using the Cloud API
-func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType string) error {
+// CreateRRSet creates an RRSet with multiple records (e.g., multiple MX records)
+func (p *Provider) CreateRRSet(ctx context.Context, domain, name, recordType string, ttl int, records []map[string]interface{}) error {
 	// Get zone ID for the domain
 	zoneID, err := p.getZoneID(ctx, domain)
 	if err != nil {
 		return fmt.Errorf("failed to get zone: %w", err)
 	}
 
-	// Find the record value to delete
-	records, err := p.listRecordsByZone(ctx, zoneID)
-	if err != nil {
-		return fmt.Errorf("failed to list records: %w", err)
-	}
-
-	var recordValue string
-	var recordTTL int
-	for _, r := range records {
-		if r.Name == name && r.Type == recordType {
-			recordValue = r.Value
-			recordTTL = r.TTL
-			break
-		}
-	}
-
-	if recordValue == "" {
-		// Record doesn't exist - consider this success
-		return nil
-	}
-
-	// Use remove_records_from_rrset action
+	// Cloud API uses RRSets - create an RRSet with multiple records
 	body := map[string]interface{}{
-		"name": name,
-		"type": recordType,
-		"records": []map[string]interface{}{
-			{
-				"value": recordValue,
-				"ttl":   recordTTL,
-			},
-		},
+		"name":    name,
+		"type":    recordType,
+		"ttl":     ttl,
+		"records": records,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -151,8 +127,9 @@ func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType st
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Create RRSet via POST to /rrsets
 	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets/actions/remove_records_from_rrset",
+		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets",
 		bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -163,9 +140,47 @@ func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType st
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		return fmt.Errorf("failed to create rrset: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create rrset: status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
+// DeleteRecord removes a DNS record from Hetzner DNS using the Cloud API
+func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType string) error {
+	// Get zone ID for the domain
+	zoneID, err := p.getZoneID(ctx, domain)
+	if err != nil {
+		return fmt.Errorf("failed to get zone: %w", err)
+	}
+
+	// Cloud API uses RRSet ID in format "{name}/{type}"
+	rrsetID := fmt.Sprintf("%s/%s", name, recordType)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE",
+		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets/"+rrsetID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
 		return fmt.Errorf("failed to delete record: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// 404 means already deleted - consider success
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)

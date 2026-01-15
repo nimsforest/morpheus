@@ -486,7 +486,7 @@ func (c *Config) GetRegistryType() string {
 }
 
 // GetDNSToken returns the API token for DNS operations
-// Hetzner uses the same token for both Cloud and DNS APIs
+// Hetzner Cloud API token works for both Cloud and DNS APIs
 func (c *Config) GetDNSToken() string {
 	return c.Secrets.HetznerAPIToken
 }
