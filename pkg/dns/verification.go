@@ -6,6 +6,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/nimsforest/morpheus/pkg/httputil"
 )
 
 // createCustomResolver creates a DNS resolver with fallback to public DNS servers
@@ -60,13 +62,22 @@ func VerifyNSDelegation(domain string, expectedNS []string) *VerificationResult 
 		normalizedExpected[NormalizeNS(ns)] = true
 	}
 
-	// Create custom resolver with fallback to public DNS servers
-	resolver := createCustomResolver()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Look up NS records for the domain using custom resolver
-	nsRecords, err := resolver.LookupNS(ctx, domain)
+	// In restricted environments (Termux/Android), we MUST use system resolver
+	// because direct UDP connections to external DNS servers are blocked
+	isRestricted := httputil.IsRestrictedEnvironment()
+
+	// Try system resolver first (works in all environments)
+	nsRecords, err := net.DefaultResolver.LookupNS(ctx, domain)
+	if err != nil && !isRestricted {
+		// Only try custom resolver in non-restricted environments
+		// (won't work in Termux due to UDP port 53 blocks)
+		resolver := createCustomResolver()
+		nsRecords, err = resolver.LookupNS(ctx, domain)
+	}
+
 	if err != nil {
 		result.Error = fmt.Errorf("DNS lookup failed for %s: %w", domain, err)
 		return result
@@ -177,13 +188,22 @@ func VerifyMXRecords(domain string, expectedMX []MXRecord) *MXVerificationResult
 		ExpectedMX: expectedMX,
 	}
 
-	// Create custom resolver with fallback to public DNS servers
-	resolver := createCustomResolver()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Look up MX records for the domain using custom resolver
-	mxRecords, err := resolver.LookupMX(ctx, domain)
+	// In restricted environments (Termux/Android), we MUST use system resolver
+	// because direct UDP connections to external DNS servers are blocked
+	isRestricted := httputil.IsRestrictedEnvironment()
+
+	// Try system resolver first (works in all environments)
+	mxRecords, err := net.DefaultResolver.LookupMX(ctx, domain)
+	if err != nil && !isRestricted {
+		// Only try custom resolver in non-restricted environments
+		// (won't work in Termux due to UDP port 53 blocks)
+		resolver := createCustomResolver()
+		mxRecords, err = resolver.LookupMX(ctx, domain)
+	}
+
 	if err != nil {
 		result.Error = fmt.Errorf("MX lookup failed for %s: %w", domain, err)
 		return result
