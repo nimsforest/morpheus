@@ -62,8 +62,7 @@ provisioning:
 # API Tokens and Secrets
 # ─────────────────────────────────────────────────────────────────────────────
 secrets:
-  hetzner_api_token: ""   # Or set via HETZNER_API_TOKEN env var
-  hetzner_dns_token: ""   # Separate token for DNS API (or reuse hetzner_api_token)
+  hetzner_api_token: ""   # Or set via HETZNER_API_TOKEN env var (used for both Cloud and DNS)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Legacy Configuration (for backward compatibility)

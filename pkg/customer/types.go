@@ -12,7 +12,7 @@ type Customer struct {
 // HetznerConfig contains Hetzner-specific configuration
 type HetznerConfig struct {
 	ProjectID string `yaml:"project_id" json:"project_id"`
-	DNSToken  string `yaml:"dns_token" json:"dns_token"` // Can be env var reference like ${ENV_VAR}
+	APIToken  string `yaml:"api_token" json:"api_token"` // Can be env var reference like ${ENV_VAR}
 }
 
 // CustomerConfig holds all customer configurations

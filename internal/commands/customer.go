@@ -120,14 +120,14 @@ func handleCustomerInit() {
 	}
 	fmt.Println()
 
-	// Ask for DNS token
-	fmt.Println("📝 Hetzner DNS Token Configuration")
+	// Ask for API token
+	fmt.Println("📝 Hetzner API Token Configuration")
 	fmt.Println()
 	fmt.Println("  You can provide either:")
 	fmt.Println("    1. A direct API token")
-	fmt.Println("    2. An environment variable reference (e.g., ${ACME_DNS_TOKEN})")
+	fmt.Println("    2. An environment variable reference (e.g., ${ACME_API_TOKEN})")
 	fmt.Println()
-	fmt.Print("  Enter DNS token or env var reference: ")
+	fmt.Print("  Enter API token or env var reference: ")
 
 	reader := bufio.NewReader(os.Stdin)
 	tokenInput, err := reader.ReadString('\n')
@@ -149,7 +149,7 @@ func handleCustomerInit() {
 		Name:   name,
 		Domain: domain,
 		Hetzner: customer.HetznerConfig{
-			DNSToken: tokenInput,
+			APIToken: tokenInput,
 		},
 	}
 

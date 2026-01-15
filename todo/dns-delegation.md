@@ -154,7 +154,7 @@ type Customer struct {
 
 type HetznerConfig struct {
     ProjectID string
-    DNSToken  string // From env or Bitwarden reference
+    APIToken  string // From env or Bitwarden reference
 }
 ```
 

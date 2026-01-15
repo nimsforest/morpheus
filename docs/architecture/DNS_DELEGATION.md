@@ -126,7 +126,7 @@ nimsforest.customer.com     NS  helium.ns.hetzner.de
 2. **Generate and store API token** (Manual)
    - Generate API token in the Hetzner project
    - Store token as secure note in Bitwarden
-   - Reference format: `morpheus/<customer-name>/hetzner-dns-token`
+   - Reference format: `morpheus/<customer-name>/hetzner-api-token`
 
 3. **Morpheus creates zone(s)**
    - Using the customer-specific token

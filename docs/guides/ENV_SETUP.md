@@ -23,8 +23,7 @@ Morpheus supports the following environment variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `HETZNER_API_TOKEN` | Yes* | Hetzner Cloud API token for provisioning |
-| `HETZNER_DNS_TOKEN` | No | Hetzner DNS API token (falls back to API token) |
+| `HETZNER_API_TOKEN` | Yes* | Hetzner API token (used for both Cloud and DNS) |
 | `STORAGEBOX_PASSWORD` | No | Password for Hetzner StorageBox shared registry |
 
 *Required when using Hetzner as the machine provider.
@@ -51,7 +50,7 @@ Morpheus supports the following environment variables:
 
 ### Getting Your Tokens
 
-#### Hetzner Cloud API Token
+#### Hetzner API Token
 1. Go to [Hetzner Cloud Console](https://console.hetzner.cloud/)
 2. Select your project (or create one)
 3. Navigate to **Security** → **API Tokens**
@@ -59,11 +58,7 @@ Morpheus supports the following environment variables:
 5. Give it a name and select **Read & Write** permissions
 6. Copy the token (it's only shown once!)
 
-#### Hetzner DNS API Token
-1. Go to [Hetzner DNS Console](https://dns.hetzner.com/)
-2. Click **Settings** → **API Tokens**
-3. Click **Create access token**
-4. Copy the token
+Note: The same token is used for both Hetzner Cloud and DNS APIs.
 
 #### Proxmox API Token
 1. Log into your Proxmox web UI (typically `https://your-proxmox-ip:8006`)

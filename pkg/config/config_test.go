@@ -8,6 +8,9 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	// Clear env var to ensure config file value is used
+	os.Unsetenv("HETZNER_API_TOKEN")
+
 	// Create temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")

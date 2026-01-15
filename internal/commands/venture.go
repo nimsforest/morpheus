@@ -433,9 +433,9 @@ func createDNSProviderForCustomer(cust *customer.Customer) (dns.Provider, error)
 		return nil, fmt.Errorf("customer is nil")
 	}
 
-	token := customer.ResolveToken(cust.Hetzner.DNSToken)
+	token := customer.ResolveToken(cust.Hetzner.APIToken)
 	if token == "" {
-		return nil, fmt.Errorf("no DNS token configured for customer %s", cust.ID)
+		return nil, fmt.Errorf("no API token configured for customer %s", cust.ID)
 	}
 
 	return dnshetzner.NewProvider(token)

@@ -147,7 +147,6 @@ type DefaultServerConfig = DefaultsConfig
 // SecretsConfig contains API tokens and credentials
 type SecretsConfig struct {
 	HetznerAPIToken string `yaml:"hetzner_api_token"`
-	HetznerDNSToken string `yaml:"hetzner_dns_token"` // Separate token for Hetzner DNS API
 }
 
 // LoadConfig loads configuration from a YAML file
@@ -164,15 +163,11 @@ func LoadConfig(path string) (*Config, error) {
 
 	// Trim whitespace/newlines from tokens that may be present in the config
 	config.Secrets.HetznerAPIToken = strings.TrimSpace(config.Secrets.HetznerAPIToken)
-	config.Secrets.HetznerDNSToken = strings.TrimSpace(config.Secrets.HetznerDNSToken)
 
 	// Override with environment variables if set
 	// Trim whitespace/newlines that may be present in the token
 	if token := strings.TrimSpace(os.Getenv("HETZNER_API_TOKEN")); token != "" {
 		config.Secrets.HetznerAPIToken = token
-	}
-	if token := strings.TrimSpace(os.Getenv("HETZNER_DNS_TOKEN")); token != "" {
-		config.Secrets.HetznerDNSToken = token
 	}
 
 	// Expand environment variables in storage password
@@ -375,8 +370,8 @@ func (c *Config) Validate() error {
 	if c.DNS.Provider != "" && c.DNS.Provider != "none" {
 		switch c.DNS.Provider {
 		case "hetzner":
-			if c.Secrets.HetznerDNSToken == "" && c.Secrets.HetznerAPIToken == "" {
-				return fmt.Errorf("hetzner_dns_token is required for Hetzner DNS (set via config or HETZNER_DNS_TOKEN env var)")
+			if c.Secrets.HetznerAPIToken == "" {
+				return fmt.Errorf("hetzner_api_token is required for Hetzner DNS (set via config or HETZNER_API_TOKEN env var)")
 			}
 		case "hosts":
 			// hosts provider uses /etc/hosts, no credentials needed
@@ -490,12 +485,9 @@ func (c *Config) GetRegistryType() string {
 	return c.GetStorageProvider()
 }
 
-// GetDNSToken returns the appropriate DNS token based on provider
+// GetDNSToken returns the API token for DNS operations
+// Hetzner uses the same token for both Cloud and DNS APIs
 func (c *Config) GetDNSToken() string {
-	if c.Secrets.HetznerDNSToken != "" {
-		return c.Secrets.HetznerDNSToken
-	}
-	// Fall back to API token for Hetzner (some users might use same token)
 	return c.Secrets.HetznerAPIToken
 }
 
@@ -590,7 +582,7 @@ func SaveConfig(path string, config *Config) error {
 }
 
 // SetConfigValue sets a specific configuration value and saves to file
-// Supported keys: hetzner_api_token, hetzner_dns_token, storagebox_password,
+// Supported keys: hetzner_api_token, storagebox_password,
 // machine_provider, ssh_key_name, ipv4_enabled, dns_provider, dns_domain
 func SetConfigValue(configPath, key, value string) error {
 	var config *Config
@@ -611,8 +603,6 @@ func SetConfigValue(configPath, key, value string) error {
 	switch key {
 	case "hetzner_api_token", "hetzner-api-token":
 		config.Secrets.HetznerAPIToken = strings.TrimSpace(value)
-	case "hetzner_dns_token", "hetzner-dns-token":
-		config.Secrets.HetznerDNSToken = strings.TrimSpace(value)
 	case "storagebox_password", "storagebox-password":
 		config.Storage.StorageBox.Password = strings.TrimSpace(value)
 	case "machine_provider", "machine-provider":
@@ -650,11 +640,6 @@ func GetConfigValue(config *Config, key string) (value string, fromEnv bool) {
 			return config.Secrets.HetznerAPIToken, true
 		}
 		return config.Secrets.HetznerAPIToken, false
-	case "hetzner_dns_token", "hetzner-dns-token":
-		if envVal := strings.TrimSpace(os.Getenv("HETZNER_DNS_TOKEN")); envVal != "" && envVal == config.Secrets.HetznerDNSToken {
-			return config.Secrets.HetznerDNSToken, true
-		}
-		return config.Secrets.HetznerDNSToken, false
 	case "storagebox_password", "storagebox-password":
 		if envVal := strings.TrimSpace(os.Getenv("STORAGEBOX_PASSWORD")); envVal != "" && envVal == config.Storage.StorageBox.Password {
 			return config.Storage.StorageBox.Password, true
@@ -698,7 +683,6 @@ func MaskToken(token string) string {
 func ListConfigKeys() []string {
 	return []string{
 		"hetzner_api_token",
-		"hetzner_dns_token",
 		"storagebox_password",
 		"machine_provider",
 		"ssh_key_name",
