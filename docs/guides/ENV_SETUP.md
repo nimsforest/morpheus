@@ -19,14 +19,35 @@ morpheus check config
 
 Morpheus supports the following environment variables:
 
+### Hetzner Cloud (for cloud provisioning)
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `HETZNER_API_TOKEN` | Yes* | Hetzner Cloud API token for provisioning |
 | `HETZNER_DNS_TOKEN` | No | Hetzner DNS API token (falls back to API token) |
 | `STORAGEBOX_PASSWORD` | No | Password for Hetzner StorageBox shared registry |
-| `MORPHEUS_CONFIG_PATH` | No | Override default config file location |
 
 *Required when using Hetzner as the machine provider.
+
+### Proxmox VE (for homelab/local VR nodes)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PROXMOX_HOST` | Yes** | Proxmox server IP or hostname |
+| `PROXMOX_API_TOKEN` | Yes** | API token secret |
+| `PROXMOX_TOKEN_ID` | Yes** | API token ID (e.g., `morpheus@pam!token-name`) |
+| `PROXMOX_NODE` | No | Proxmox node name (default: `pve`) |
+| `PROXMOX_LINUX_VMID` | No | VM ID for Linux VR node (default: `101`) |
+| `PROXMOX_WINDOWS_VMID` | No | VM ID for Windows VR node (default: `102`) |
+| `PROXMOX_GPU_PCI` | No | GPU PCI address for passthrough (default: `0000:01:00`) |
+
+**Required when using Proxmox for boot mode management.
+
+### General
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MORPHEUS_CONFIG_PATH` | No | Override default config file location |
 
 ### Getting Your Tokens
 
@@ -43,6 +64,17 @@ Morpheus supports the following environment variables:
 2. Click **Settings** → **API Tokens**
 3. Click **Create access token**
 4. Copy the token
+
+#### Proxmox API Token
+1. Log into your Proxmox web UI (typically `https://your-proxmox-ip:8006`)
+2. Navigate to **Datacenter** → **Permissions** → **API Tokens**
+3. Click **Add** and configure:
+   - **User**: Select a user (e.g., `morpheus@pam` or `root@pam`)
+   - **Token ID**: Give it a name (e.g., `morpheus-token`)
+   - **Privilege Separation**: Uncheck for full access, or configure specific permissions
+4. Click **Add** and copy both:
+   - **Token ID**: `user@realm!token-name` (e.g., `morpheus@pam!morpheus-token`)
+   - **Secret**: The generated secret (only shown once!)
 
 ## Configuration Hierarchy
 
