@@ -14,16 +14,15 @@ import (
 )
 
 const (
-	// Hetzner Cloud API URL (DNS was migrated from dns.hetzner.com in late 2025)
-	hetznerCloudAPIURL = "https://api.hetzner.cloud/v1"
+	hetznerDNSAPIURL = "https://dns.hetzner.com/api/v1"
 )
 
 // Provider implements the DNS Provider interface for Hetzner DNS
 type Provider struct {
 	apiToken string
 	client   *http.Client
-	// Cache zone IDs to avoid repeated lookups (zone name -> zone ID)
-	zoneCache map[string]int64
+	// Cache zone IDs to avoid repeated lookups
+	zoneCache map[string]string
 }
 
 // NewProvider creates a new Hetzner DNS provider
@@ -38,11 +37,11 @@ func NewProvider(apiToken string) (*Provider, error) {
 	return &Provider{
 		apiToken:  apiToken,
 		client:    &http.Client{Timeout: 30 * time.Second},
-		zoneCache: make(map[string]int64),
+		zoneCache: make(map[string]string),
 	}, nil
 }
 
-// CreateRecord creates a DNS record in Hetzner DNS using the Cloud API RRSets endpoint
+// CreateRecord creates a DNS record in Hetzner DNS
 func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest) (*dns.Record, error) {
 	// Get zone ID for the domain
 	zoneID, err := p.getZoneID(ctx, req.Domain)
@@ -56,16 +55,13 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 		ttl = 300 // 5 minutes default
 	}
 
-	// Cloud API uses RRSets - we use add_records_to_rrset action to add a record
+	// Create the record
 	body := map[string]interface{}{
-		"name": req.Name,
-		"type": string(req.Type),
-		"records": []map[string]interface{}{
-			{
-				"value": req.Value,
-				"ttl":   ttl,
-			},
-		},
+		"zone_id": zoneID,
+		"name":    req.Name,
+		"type":    string(req.Type),
+		"value":   req.Value,
+		"ttl":     ttl,
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -73,15 +69,12 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Use add_records_to_rrset action to add record to existing or new RRSet
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets/actions/add_records_to_rrset",
-		bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", hetznerDNSAPIURL+"/records", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.client.Do(httpReq)
@@ -95,17 +88,24 @@ func (p *Provider) CreateRecord(ctx context.Context, req dns.CreateRecordRequest
 		return nil, fmt.Errorf("failed to create record: status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
+	var result struct {
+		Record hetznerRecord `json:"record"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
 	return &dns.Record{
-		ID:     fmt.Sprintf("%s-%s", req.Name, req.Type),
+		ID:     result.Record.ID,
 		Domain: req.Domain,
-		Name:   req.Name,
-		Type:   req.Type,
-		Value:  req.Value,
-		TTL:    ttl,
+		Name:   result.Record.Name,
+		Type:   dns.RecordType(result.Record.Type),
+		Value:  result.Record.Value,
+		TTL:    result.Record.TTL,
 	}, nil
 }
 
-// DeleteRecord removes a DNS record from Hetzner DNS using the Cloud API
+// DeleteRecord removes a DNS record from Hetzner DNS
 func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType string) error {
 	// Get zone ID for the domain
 	zoneID, err := p.getZoneID(ctx, domain)
@@ -113,53 +113,32 @@ func (p *Provider) DeleteRecord(ctx context.Context, domain, name, recordType st
 		return fmt.Errorf("failed to get zone: %w", err)
 	}
 
-	// Find the record value to delete
+	// Find the record
 	records, err := p.listRecordsByZone(ctx, zoneID)
 	if err != nil {
 		return fmt.Errorf("failed to list records: %w", err)
 	}
 
-	var recordValue string
-	var recordTTL int
+	var recordID string
 	for _, r := range records {
 		if r.Name == name && r.Type == recordType {
-			recordValue = r.Value
-			recordTTL = r.TTL
+			recordID = r.ID
 			break
 		}
 	}
 
-	if recordValue == "" {
+	if recordID == "" {
 		// Record doesn't exist - consider this success
 		return nil
 	}
 
-	// Use remove_records_from_rrset action
-	body := map[string]interface{}{
-		"name": name,
-		"type": recordType,
-		"records": []map[string]interface{}{
-			{
-				"value": recordValue,
-				"ttl":   recordTTL,
-			},
-		},
-	}
-
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST",
-		hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets/actions/remove_records_from_rrset",
-		bytes.NewReader(jsonBody))
+	// Delete the record
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", hetznerDNSAPIURL+"/records/"+recordID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -230,7 +209,6 @@ func (p *Provider) CreateZone(ctx context.Context, req dns.CreateZoneRequest) (*
 	body := map[string]interface{}{
 		"name": req.Name,
 		"ttl":  ttl,
-		"mode": "primary", // Required by Cloud API - "primary" for zones we manage
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -238,12 +216,12 @@ func (p *Provider) CreateZone(ctx context.Context, req dns.CreateZoneRequest) (*
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", hetznerCloudAPIURL+"/zones", bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", hetznerDNSAPIURL+"/zones", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.client.Do(httpReq)
@@ -268,10 +246,10 @@ func (p *Provider) CreateZone(ctx context.Context, req dns.CreateZoneRequest) (*
 	p.zoneCache[result.Zone.Name] = result.Zone.ID
 
 	return &dns.Zone{
-		ID:          fmt.Sprintf("%d", result.Zone.ID),
+		ID:          result.Zone.ID,
 		Name:        result.Zone.Name,
 		TTL:         result.Zone.TTL,
-		Nameservers: result.Zone.AuthoritativeNameservers.Assigned,
+		Nameservers: result.Zone.NS,
 	}, nil
 }
 
@@ -287,12 +265,12 @@ func (p *Provider) DeleteZone(ctx context.Context, zoneName string) error {
 		return nil
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", hetznerCloudAPIURL+"/zones/"+zone.ID, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "DELETE", hetznerDNSAPIURL+"/zones/"+zone.ID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -300,8 +278,7 @@ func (p *Provider) DeleteZone(ctx context.Context, zoneName string) error {
 	}
 	defer resp.Body.Close()
 
-	// Cloud API returns 201 with async action, 200/204 for immediate success
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("failed to delete zone: status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
@@ -330,12 +307,12 @@ func (p *Provider) GetZone(ctx context.Context, zoneName string) (*dns.Zone, err
 
 // ListZones lists all DNS zones in Hetzner DNS
 func (p *Provider) ListZones(ctx context.Context) ([]*dns.Zone, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerCloudAPIURL+"/zones", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerDNSAPIURL+"/zones", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -361,10 +338,10 @@ func (p *Provider) ListZones(ctx context.Context) ([]*dns.Zone, error) {
 		p.zoneCache[z.Name] = z.ID
 
 		zones[i] = &dns.Zone{
-			ID:          fmt.Sprintf("%d", z.ID),
+			ID:          z.ID,
 			Name:        z.Name,
 			TTL:         z.TTL,
-			Nameservers: z.AuthoritativeNameservers.Assigned,
+			Nameservers: z.NS,
 		}
 	}
 
@@ -375,16 +352,16 @@ func (p *Provider) ListZones(ctx context.Context) ([]*dns.Zone, error) {
 func (p *Provider) getZoneID(ctx context.Context, domain string) (string, error) {
 	// Check cache first
 	if zoneID, ok := p.zoneCache[domain]; ok {
-		return fmt.Sprintf("%d", zoneID), nil
+		return zoneID, nil
 	}
 
 	// List all zones and find the matching one
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerCloudAPIURL+"/zones", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerDNSAPIURL+"/zones", nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -415,25 +392,24 @@ func (p *Provider) getZoneID(ctx context.Context, domain string) (string, error)
 		}
 	}
 
-	if bestMatch.ID == 0 {
+	if bestMatch.ID == "" {
 		return "", fmt.Errorf("no zone found for domain: %s", domain)
 	}
 
 	// Cache the zone ID
 	p.zoneCache[domain] = bestMatch.ID
 
-	return fmt.Sprintf("%d", bestMatch.ID), nil
+	return bestMatch.ID, nil
 }
 
-// listRecordsByZone lists all records in a zone using the new Cloud API RRSets endpoint
+// listRecordsByZone lists all records in a zone
 func (p *Provider) listRecordsByZone(ctx context.Context, zoneID string) ([]hetznerRecord, error) {
-	// New Cloud API uses /zones/{id}/rrsets for record management
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerCloudAPIURL+"/zones/"+zoneID+"/rrsets", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", hetznerDNSAPIURL+"/records?zone_id="+zoneID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiToken)
+	httpReq.Header.Set("Auth-API-Token", p.apiToken)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -447,59 +423,24 @@ func (p *Provider) listRecordsByZone(ctx context.Context, zoneID string) ([]hetz
 	}
 
 	var result struct {
-		RRSets []hetznerRRSet `json:"rrsets"`
+		Records []hetznerRecord `json:"records"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to parse records response: %w", err)
 	}
 
-	// Convert RRSets to flat record list for compatibility
-	var records []hetznerRecord
-	for _, rrset := range result.RRSets {
-		for _, rec := range rrset.Records {
-			records = append(records, hetznerRecord{
-				ID:     fmt.Sprintf("%s-%s", rrset.Name, rrset.Type),
-				ZoneID: zoneID,
-				Name:   rrset.Name,
-				Type:   rrset.Type,
-				Value:  rec.Value,
-				TTL:    rec.TTL,
-			})
-		}
-	}
-
-	return records, nil
+	return result.Records, nil
 }
 
-// hetznerZone represents a DNS zone in Hetzner's Cloud API
+// hetznerZone represents a DNS zone in Hetzner's API
 type hetznerZone struct {
-	ID                       int64                    `json:"id"`
-	Name                     string                   `json:"name"`
-	TTL                      int                      `json:"ttl"`
-	Mode                     string                   `json:"mode"`
-	Status                   string                   `json:"status"`
-	AuthoritativeNameservers authoritativeNameservers `json:"authoritative_nameservers"`
+	ID   string   `json:"id"`
+	Name string   `json:"name"`
+	TTL  int      `json:"ttl"`
+	NS   []string `json:"ns"`
 }
 
-// authoritativeNameservers holds nameserver info from Cloud API
-type authoritativeNameservers struct {
-	Assigned []string `json:"assigned"`
-}
-
-// hetznerRRSet represents a DNS record set in Hetzner's Cloud API
-type hetznerRRSet struct {
-	Name    string           `json:"name"`
-	Type    string           `json:"type"`
-	Records []hetznerRRValue `json:"records"`
-}
-
-// hetznerRRValue represents a single record value in an RRSet
-type hetznerRRValue struct {
-	Value string `json:"value"`
-	TTL   int    `json:"ttl"`
-}
-
-// hetznerRecord represents a flattened DNS record for internal use
+// hetznerRecord represents a DNS record in Hetzner's API
 type hetznerRecord struct {
 	ID     string `json:"id"`
 	ZoneID string `json:"zone_id"`

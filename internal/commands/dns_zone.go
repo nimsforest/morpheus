@@ -112,13 +112,18 @@ func getDNSProvider(customerID string) (*hetzner.Provider, error) {
 			token = cfg.GetDNSToken()
 		}
 
-		// Fall back to environment variable if no config or no token in config
+		// Fall back to environment variables if no config or no token in config
 		if token == "" {
-			token = os.Getenv("HETZNER_API_TOKEN")
+			// Check for dedicated DNS token first
+			token = os.Getenv("HETZNER_DNS_TOKEN")
+			// Fall back to Cloud API token
+			if token == "" {
+				token = os.Getenv("HETZNER_API_TOKEN")
+			}
 		}
 
 		if token == "" {
-			return nil, fmt.Errorf("no API token configured. Set HETZNER_API_TOKEN env var, or use config file")
+			return nil, fmt.Errorf("no API token configured. Set HETZNER_DNS_TOKEN or HETZNER_API_TOKEN env var, or use config file")
 		}
 	}
 
