@@ -71,6 +71,8 @@ func HandleCheck() {
 		runSSHCheck(true)
 	case "config":
 		runConfigCheck(true)
+	case "dns":
+		runDNSCheck(true)
 	case "":
 		// Run all checks
 		fmt.Println("🔍 Running Morpheus Diagnostics")
@@ -82,11 +84,15 @@ func HandleCheck() {
 		ipv6Ok, ipv4Ok := runNetworkCheck(false)
 		fmt.Println()
 		sshOk := runSSHCheck(false)
+		fmt.Println()
+		dnsOk := runDNSCheck(false)
 
 		fmt.Println()
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-		if configOk && ipv6Ok && sshOk {
+		if configOk && ipv6Ok && sshOk && dnsOk {
 			fmt.Println("✅ All checks passed! You're ready to use Morpheus.")
+		} else if configOk && ipv6Ok && sshOk && !dnsOk {
+			fmt.Println("✅ Core checks passed! DNS is optional - configure it if you want automatic DNS records.")
 		} else if configOk && ipv4Ok && sshOk {
 			fmt.Println("⚠️  IPv6 not available, but IPv4 works.")
 			fmt.Println("   Enable IPv4 fallback in config.yaml:")
@@ -103,13 +109,14 @@ func HandleCheck() {
 		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown check: %s\n\n", subcommand)
-		fmt.Fprintln(os.Stderr, "Usage: morpheus check [config|ipv6|ipv4|network|ssh]")
+		fmt.Fprintln(os.Stderr, "Usage: morpheus check [config|ipv6|ipv4|network|ssh|dns]")
 		fmt.Fprintln(os.Stderr, "  morpheus check         Run all checks")
 		fmt.Fprintln(os.Stderr, "  morpheus check config  Check config file and env variables")
 		fmt.Fprintln(os.Stderr, "  morpheus check ipv6    Check IPv6 connectivity")
 		fmt.Fprintln(os.Stderr, "  morpheus check ipv4    Check IPv4 connectivity")
 		fmt.Fprintln(os.Stderr, "  morpheus check network Check both IPv6 and IPv4")
 		fmt.Fprintln(os.Stderr, "  morpheus check ssh     Check SSH key setup")
+		fmt.Fprintln(os.Stderr, "  morpheus check dns     Check DNS configuration and Hetzner DNS zones")
 		os.Exit(1)
 	}
 }
@@ -665,4 +672,220 @@ func runConfigCheck(exitOnResult bool) bool {
 	}
 
 	return allOk
+}
+
+// runDNSCheck checks DNS configuration and Hetzner DNS connectivity
+func runDNSCheck(exitOnResult bool) bool {
+	fmt.Println("🌐 DNS Configuration")
+
+	allOk := true
+
+	// Load config
+	cfg, err := LoadConfig()
+	if err != nil {
+		fmt.Println("   ⚠️  No config file found - cannot check DNS settings")
+		fmt.Println("   Create a config file first: cp config.example.yaml config.yaml")
+		if exitOnResult {
+			os.Exit(1)
+		}
+		return false
+	}
+
+	// Check DNS provider configuration
+	dnsProvider := cfg.DNS.Provider
+	dnsDomain := cfg.DNS.Domain
+
+	if dnsProvider == "" || dnsProvider == "none" {
+		fmt.Println("   ○  DNS provider: not configured (optional)")
+		fmt.Println("      To enable automatic DNS records, configure:")
+		fmt.Println("        dns:")
+		fmt.Println("          provider: hetzner")
+		fmt.Println("          domain: your-domain.com")
+		fmt.Println()
+		fmt.Println("      Or use: morpheus config set dns_provider hetzner")
+		fmt.Println("              morpheus config set dns_domain your-domain.com")
+		if exitOnResult {
+			os.Exit(0)
+		}
+		return true // DNS is optional, so not configured is OK
+	}
+
+	fmt.Printf("   DNS provider: %s\n", dnsProvider)
+	fmt.Printf("   DNS domain:   %s\n", dnsDomain)
+
+	if dnsDomain == "" {
+		fmt.Println()
+		fmt.Println("   ❌ DNS domain not configured")
+		fmt.Println("      Set with: morpheus config set dns_domain your-domain.com")
+		allOk = false
+	}
+
+	// Check DNS token
+	dnsToken := cfg.GetDNSToken()
+	if dnsToken == "" {
+		fmt.Println()
+		fmt.Println("   ❌ DNS API token not configured")
+		fmt.Println("      For Hetzner DNS, set: morpheus config set hetzner_dns_token YOUR_TOKEN")
+		fmt.Println("      Get your token from: https://dns.hetzner.com/settings/api-token")
+		allOk = false
+	} else {
+		masked := dnsToken[:4] + "..." + dnsToken[len(dnsToken)-4:]
+		fmt.Printf("   DNS token:    %s\n", masked)
+	}
+
+	// If not Hetzner DNS, we can't do further checks
+	if dnsProvider != "hetzner" {
+		fmt.Printf("\n   ⚠️  DNS provider '%s' is not fully supported for validation\n", dnsProvider)
+		if exitOnResult {
+			if allOk {
+				os.Exit(0)
+			} else {
+				os.Exit(1)
+			}
+		}
+		return allOk
+	}
+
+	// Try to connect to Hetzner DNS API and list zones
+	if dnsToken != "" && dnsDomain != "" {
+		fmt.Println()
+		fmt.Println("   Checking Hetzner DNS API connectivity...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		dnsProv := CreateDNSProvider(cfg)
+		if dnsProv == nil {
+			fmt.Println("   ❌ Failed to create DNS provider")
+			allOk = false
+		} else {
+			// Try to list records for the configured domain
+			records, err := dnsProv.ListRecords(ctx, dnsDomain)
+			if err != nil {
+				fmt.Printf("   ❌ Failed to access DNS zone: %s\n", err)
+				fmt.Println()
+				fmt.Println("   Possible causes:")
+				fmt.Println("     • Domain not found in your Hetzner DNS account")
+				fmt.Println("     • Invalid or expired DNS API token")
+				fmt.Println("     • Domain not transferred to Hetzner DNS yet")
+				fmt.Println()
+				fmt.Println("   To add your domain to Hetzner DNS:")
+				fmt.Println("     1. Go to https://dns.hetzner.com/")
+				fmt.Println("     2. Click 'Add zone' and enter your domain")
+				fmt.Println("     3. Update nameservers at your registrar to:")
+				fmt.Println("        • hydrogen.ns.hetzner.com")
+				fmt.Println("        • oxygen.ns.hetzner.com")
+				fmt.Println("        • helium.ns.hetzner.de")
+				fmt.Println()
+				fmt.Println("   DNS propagation can take up to 48 hours after updating nameservers.")
+				allOk = false
+			} else {
+				fmt.Printf("   ✅ DNS zone '%s' is accessible\n", dnsDomain)
+				fmt.Printf("      Found %d existing DNS record(s)\n", len(records))
+
+				// Show some existing records
+				if len(records) > 0 {
+					fmt.Println()
+					fmt.Println("   Existing records (first 5):")
+					maxShow := 5
+					if len(records) < maxShow {
+						maxShow = len(records)
+					}
+					for i := 0; i < maxShow; i++ {
+						r := records[i]
+						name := r.Name
+						if name == "@" {
+							name = dnsDomain
+						} else {
+							name = name + "." + dnsDomain
+						}
+						fmt.Printf("      • %s %s → %s\n", r.Type, name, truncateValue(r.Value, 40))
+					}
+					if len(records) > maxShow {
+						fmt.Printf("      ... and %d more\n", len(records)-maxShow)
+					}
+				}
+
+				// Verify NS records point to Hetzner
+				fmt.Println()
+				fmt.Println("   Checking nameserver delegation...")
+				nsOk := checkNameserverDelegation(dnsDomain)
+				if !nsOk {
+					fmt.Println("   ⚠️  Nameservers may not be pointing to Hetzner DNS yet")
+					fmt.Println("      DNS records will work once nameservers propagate")
+					// This is a warning, not a failure - the zone is accessible
+				}
+			}
+		}
+	}
+
+	fmt.Println()
+	if allOk {
+		fmt.Println("   ✅ DNS configuration is ready for Morpheus")
+		fmt.Println("      Forests will automatically get DNS records like:")
+		fmt.Printf("        forest-<id>.%s\n", dnsDomain)
+		fmt.Printf("        forest-<id>-node-1.%s\n", dnsDomain)
+	}
+
+	if exitOnResult {
+		if allOk {
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
+	}
+
+	return allOk
+}
+
+// truncateValue truncates a string to maxLen, adding "..." if truncated
+func truncateValue(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// checkNameserverDelegation checks if the domain's nameservers point to Hetzner
+func checkNameserverDelegation(domain string) bool {
+	// Try to resolve NS records for the domain
+	nsRecords, err := net.LookupNS(domain)
+	if err != nil {
+		fmt.Printf("   ⚠️  Could not lookup NS records: %s\n", err)
+		return false
+	}
+
+	hetznerNS := []string{
+		"hydrogen.ns.hetzner.com.",
+		"oxygen.ns.hetzner.com.",
+		"helium.ns.hetzner.de.",
+	}
+
+	foundHetzner := 0
+	for _, ns := range nsRecords {
+		nsHost := strings.ToLower(ns.Host)
+		for _, hns := range hetznerNS {
+			if nsHost == hns {
+				foundHetzner++
+				break
+			}
+		}
+	}
+
+	if foundHetzner > 0 {
+		fmt.Printf("   ✅ Domain is using Hetzner nameservers (%d/%d)\n", foundHetzner, len(hetznerNS))
+		return true
+	}
+
+	fmt.Println("   Current nameservers:")
+	for _, ns := range nsRecords {
+		fmt.Printf("      • %s\n", ns.Host)
+	}
+	fmt.Println()
+	fmt.Println("   Expected Hetzner nameservers:")
+	for _, hns := range hetznerNS {
+		fmt.Printf("      • %s\n", hns)
+	}
+
+	return false
 }
