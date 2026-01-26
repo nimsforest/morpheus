@@ -17,8 +17,10 @@ func HandlePlant() {
 	// Parse arguments - simplified CLI
 	// morpheus plant             -> 2 nodes (default)
 	// morpheus plant --nodes 3   -> 3 nodes
+	// morpheus plant --rustdesk  -> Install RustDesk server
 
 	nodeCount := 2
+	installRustDesk := false
 
 	// Parse arguments
 	for i := 2; i < len(os.Args); i++ {
@@ -37,6 +39,8 @@ func HandlePlant() {
 				fmt.Fprintln(os.Stderr, "❌ --nodes requires a number")
 				os.Exit(1)
 			}
+		case "--rustdesk":
+			installRustDesk = true
 		case "--help", "-h":
 			fmt.Println("Usage: morpheus plant [options]")
 			fmt.Println()
@@ -44,11 +48,13 @@ func HandlePlant() {
 			fmt.Println()
 			fmt.Println("Options:")
 			fmt.Println("  --nodes, -n N   Number of nodes to create (default: 2)")
+			fmt.Println("  --rustdesk      Install RustDesk server (hbbs + hbbr)")
 			fmt.Println("  --help, -h      Show this help")
 			fmt.Println()
 			fmt.Println("Examples:")
 			fmt.Println("  morpheus plant              # Create 2-node cluster")
 			fmt.Println("  morpheus plant --nodes 3    # Create 3-node forest")
+			fmt.Println("  morpheus plant --rustdesk   # Create with RustDesk server")
 			os.Exit(0)
 		default:
 			// Support legacy size arguments for backward compatibility
@@ -66,6 +72,11 @@ func HandlePlant() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %s\n", err)
 		os.Exit(1)
+	}
+
+	// Apply command-line flags to config
+	if installRustDesk {
+		cfg.Integration.RustDeskInstall = true
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -162,6 +173,9 @@ func HandlePlant() {
 	fmt.Printf("   Machine:    %s (with automatic fallback if unavailable)\n", serverType)
 	fmt.Printf("   Location:   %s (with automatic fallback if unavailable)\n", hetzner.GetLocationDescription(location))
 	fmt.Printf("   Provider:   %s\n", providerName)
+	if cfg.IsRustDeskInstallEnabled() {
+		fmt.Printf("   RustDesk:   ✅ Will be installed (version %s)\n", cfg.GetRustDeskVersion())
+	}
 	fmt.Printf("   Time:       ~%s\n\n", timeEstimate)
 
 	estimatedCost := hetzner.GetEstimatedCost(serverType) * float64(nodeCount)
@@ -199,6 +213,14 @@ func HandlePlant() {
 
 	fmt.Printf("🌐 Your machines are ready for NATS deployment\n")
 	fmt.Printf("   Infrastructure is configured and waiting\n\n")
+
+	if cfg.IsRustDeskInstallEnabled() {
+		fmt.Printf("🖥️  RustDesk Server is installed:\n")
+		fmt.Printf("   • ID Server (hbbs): port 21116\n")
+		fmt.Printf("   • Relay Server (hbbr): port 21117\n")
+		fmt.Printf("   • Configure clients with the server IP from 'morpheus status'\n")
+		fmt.Printf("   • Public key is at /opt/rustdesk/id_ed25519.pub\n\n")
+	}
 
 	fmt.Printf("📋 View all your forests:\n")
 	fmt.Printf("   morpheus list\n\n")

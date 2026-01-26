@@ -124,6 +124,10 @@ type IntegrationConfig struct {
 	NimsForestInstall     bool   `yaml:"nimsforest_install"`      // Auto-install NimsForest on provisioned machines (default: true)
 	NimsForestDownloadURL string `yaml:"nimsforest_download_url"` // URL to download binary (default: latest from GitHub)
 	NimsForestVersion     string `yaml:"nimsforest_version"`      // Version to download (default: latest)
+
+	// RustDesk server installation settings
+	RustDeskInstall bool   `yaml:"rustdesk_install"` // Auto-install RustDesk server (hbbs + hbbr)
+	RustDeskVersion string `yaml:"rustdesk_version"` // RustDesk server version (default: 1.1.11)
 }
 
 const (
@@ -503,6 +507,19 @@ func (c *Config) GetNimsForestDownloadURL() string {
 		return c.Integration.NimsForestDownloadURL
 	}
 	return DefaultNimsForestDownloadURL
+}
+
+// IsRustDeskInstallEnabled returns whether RustDesk server should be installed
+func (c *Config) IsRustDeskInstallEnabled() bool {
+	return c.Integration.RustDeskInstall
+}
+
+// GetRustDeskVersion returns the RustDesk server version
+func (c *Config) GetRustDeskVersion() string {
+	if c.Integration.RustDeskVersion != "" {
+		return c.Integration.RustDeskVersion
+	}
+	return "1.1.11" // Default version
 }
 
 // applyProvisioningDefaults sets default values for provisioning config

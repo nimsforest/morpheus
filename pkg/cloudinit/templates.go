@@ -26,6 +26,10 @@ type TemplateData struct {
 	StorageBoxHost     string // CIFS host: uXXXXX.your-storagebox.de
 	StorageBoxUser     string // StorageBox username: uXXXXX
 	StorageBoxPassword string // StorageBox password
+
+	// RustDesk server installation
+	RustDeskInstall bool   // Auto-install RustDesk server (hbbs + hbbr)
+	RustDeskVersion string // RustDesk server version (e.g., "1.1.11")
 }
 
 // NodeTemplate is the cloud-init script for all forest nodes
@@ -181,7 +185,101 @@ runcmd:
     fi
   {{end}}
 
-final_message: "Node ready.{{if .NimsForestInstall}} NimsForest running.{{end}}"
+{{if .RustDeskInstall}}
+  # Download and install RustDesk Server (hbbs + hbbr)
+  - |
+    echo "📦 Installing RustDesk Server..."
+    RUSTDESK_VERSION="{{if .RustDeskVersion}}{{.RustDeskVersion}}{{else}}1.1.11{{end}}"
+    RUSTDESK_DIR="/opt/rustdesk"
+    mkdir -p $RUSTDESK_DIR
+
+    # Download rustdesk-server binaries
+    cd /tmp
+    wget -q "https://github.com/rustdesk/rustdesk-server/releases/download/${RUSTDESK_VERSION}/rustdesk-server-linux-amd64.zip" -O rustdesk-server.zip
+
+    if [ -f rustdesk-server.zip ]; then
+      apt-get install -y unzip
+      unzip -o rustdesk-server.zip -d $RUSTDESK_DIR
+      chmod +x $RUSTDESK_DIR/hbbs $RUSTDESK_DIR/hbbr
+      rm rustdesk-server.zip
+      echo "✅ RustDesk Server binaries installed"
+    else
+      echo "❌ Failed to download RustDesk Server"
+      exit 1
+    fi
+
+    # Configure firewall for RustDesk
+    ufw allow 21115/tcp comment 'RustDesk NAT test'
+    ufw allow 21116/tcp comment 'RustDesk ID server TCP'
+    ufw allow 21116/udp comment 'RustDesk ID server UDP'
+    ufw allow 21117/tcp comment 'RustDesk relay'
+    ufw allow 21118/tcp comment 'RustDesk websocket ID'
+    ufw allow 21119/tcp comment 'RustDesk websocket relay'
+
+    # Create systemd service for hbbs (ID/Rendezvous server)
+    cat > /etc/systemd/system/rustdesk-hbbs.service <<'HBBSEOF'
+[Unit]
+Description=RustDesk ID/Rendezvous Server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/rustdesk/hbbs
+WorkingDirectory=/opt/rustdesk
+Restart=always
+RestartSec=5
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+HBBSEOF
+
+    # Create systemd service for hbbr (Relay server)
+    cat > /etc/systemd/system/rustdesk-hbbr.service <<'HBBREOF'
+[Unit]
+Description=RustDesk Relay Server
+After=network.target rustdesk-hbbs.service
+Wants=rustdesk-hbbs.service
+
+[Service]
+Type=simple
+ExecStart=/opt/rustdesk/hbbr
+WorkingDirectory=/opt/rustdesk
+Restart=always
+RestartSec=5
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+HBBREOF
+
+    # Enable and start RustDesk services
+    systemctl daemon-reload
+    systemctl enable rustdesk-hbbs rustdesk-hbbr
+    systemctl start rustdesk-hbbs
+    sleep 2
+    systemctl start rustdesk-hbbr
+
+    # Display public key for client configuration
+    sleep 3
+    if [ -f /opt/rustdesk/id_ed25519.pub ]; then
+      echo "✅ RustDesk Server started"
+      echo "🔑 Public Key (for client configuration):"
+      cat /opt/rustdesk/id_ed25519.pub
+    else
+      echo "✅ RustDesk Server started (key will be generated on first connection)"
+    fi
+
+    # Get server IP for display
+    SERVER_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 2>/dev/null | grep -v "not found" | head -1)
+    if [ -z "$SERVER_IP" ]; then
+      SERVER_IP=$(hostname -I | awk '{print $1}')
+    fi
+    echo "🌐 RustDesk Server IP: $SERVER_IP"
+    echo "📝 Client config: ID Server = $SERVER_IP, Relay Server = $SERVER_IP"
+{{end}}
+
+final_message: "Node ready.{{if .NimsForestInstall}} NimsForest running.{{end}}{{if .RustDeskInstall}} RustDesk Server running.{{end}}"
 `
 
 // Generate creates a cloud-init script for a forest node

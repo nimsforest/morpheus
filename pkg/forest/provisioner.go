@@ -213,6 +213,10 @@ func (p *Provisioner) provisionNode(ctx context.Context, req ProvisionRequest, n
 		StorageBoxHost:     p.config.Storage.StorageBox.Host,
 		StorageBoxUser:     p.config.Storage.StorageBox.Username,
 		StorageBoxPassword: p.config.Storage.StorageBox.Password,
+
+		// RustDesk server installation
+		RustDeskInstall: p.config.IsRustDeskInstallEnabled(),
+		RustDeskVersion: p.config.GetRustDeskVersion(),
 	}
 
 	// Fall back to legacy config if new config is empty
