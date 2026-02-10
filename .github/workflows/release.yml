@@ -55,26 +55,42 @@ jobs:
     - name: Build binaries
       run: |
         VERSION=${{ steps.get_version.outputs.version }}
-        
+
         # Create dist directory
         mkdir -p dist
-        
-        # Build for multiple platforms
+
+        # Build morpheus for multiple platforms
         # Linux AMD64
         GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-amd64 ./cmd/morpheus
-        
+
         # Linux ARM64 (for ARM servers)
         GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-arm64 ./cmd/morpheus
-        
+
         # Linux ARM (for Termux on 32-bit Android)
         GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-linux-arm ./cmd/morpheus
-        
+
         # macOS AMD64
         GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-darwin-amd64 ./cmd/morpheus
-        
+
         # macOS ARM64 (Apple Silicon)
         GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-darwin-arm64 ./cmd/morpheus
-        
+
+        # Build morpheus-azureguard for multiple platforms
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-azureguard-linux-amd64 ./cmd/morpheus-azureguard
+
+        # Linux ARM64 (for ARM servers)
+        GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-azureguard-linux-arm64 ./cmd/morpheus-azureguard
+
+        # Linux ARM (for Termux on 32-bit Android)
+        GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-azureguard-linux-arm ./cmd/morpheus-azureguard
+
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-azureguard-darwin-amd64 ./cmd/morpheus-azureguard
+
+        # macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$VERSION" -o dist/morpheus-azureguard-darwin-arm64 ./cmd/morpheus-azureguard
+
         # Create checksums
         cd dist
         sha256sum * > SHA256SUMS
@@ -92,6 +108,11 @@ jobs:
           dist/morpheus-linux-arm
           dist/morpheus-darwin-amd64
           dist/morpheus-darwin-arm64
+          dist/morpheus-azureguard-linux-amd64
+          dist/morpheus-azureguard-linux-arm64
+          dist/morpheus-azureguard-linux-arm
+          dist/morpheus-azureguard-darwin-amd64
+          dist/morpheus-azureguard-darwin-arm64
           dist/SHA256SUMS
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,7 +121,7 @@ jobs:
       run: |
         echo "✅ Release ${{ steps.get_version.outputs.version }} created successfully!"
         echo ""
-        echo "📦 Binaries available for:"
+        echo "📦 Binaries available for morpheus + morpheus-azureguard:"
         echo "  - Linux AMD64 (standard Linux servers)"
         echo "  - Linux ARM64 (ARM servers, 64-bit Android/Termux)"
         echo "  - Linux ARM (32-bit Android/Termux)"
