@@ -18,6 +18,7 @@ type Config struct {
 	Storage      StorageConfig      `yaml:"storage"`
 	Secrets      SecretsConfig      `yaml:"secrets"`
 	Provisioning ProvisioningConfig `yaml:"provisioning"`
+	Guard        GuardConfig        `yaml:"guard"`
 
 	// Legacy structure (for backward compatibility)
 	Infrastructure InfrastructureConfig `yaml:"infrastructure"`
@@ -29,8 +30,28 @@ type Config struct {
 type MachineConfig struct {
 	Provider string        `yaml:"provider"` // hetzner, local, none
 	Hetzner  HetznerConfig `yaml:"hetzner"`
+	Azure    AzureConfig   `yaml:"azure"`
 	SSH      SSHConfig     `yaml:"ssh"`
 	IPv4     IPv4Config    `yaml:"ipv4"`
+}
+
+// AzureConfig defines Azure-specific machine settings for guard VMs
+type AzureConfig struct {
+	SubscriptionID string `yaml:"subscription_id"` // or ${AZURE_SUBSCRIPTION_ID}
+	TenantID       string `yaml:"tenant_id"`       // or ${AZURE_TENANT_ID}
+	ClientID       string `yaml:"client_id"`       // or ${AZURE_CLIENT_ID}
+	ClientSecret   string `yaml:"client_secret"`   // or ${AZURE_CLIENT_SECRET}
+	ResourceGroup  string `yaml:"resource_group"`  // e.g., morpheus-guards
+	Location       string `yaml:"location"`        // e.g., westeurope
+	VMSize         string `yaml:"vm_size"`          // e.g., Standard_B1s
+	Image          string `yaml:"image"`           // e.g., Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest
+}
+
+// GuardConfig defines settings for WireGuard gateway VMs
+type GuardConfig struct {
+	VNetCIDR   string `yaml:"vnet_cidr"`   // Guard VNet address space (default: 10.100.0.0/16)
+	SubnetCIDR string `yaml:"subnet_cidr"` // Guard VM subnet (default: 10.100.1.0/24)
+	WGPort     int    `yaml:"wg_port"`     // WireGuard listen port (default: 51820)
 }
 
 // HetznerConfig defines Hetzner-specific machine settings
@@ -170,8 +191,9 @@ func LoadConfig(path string) (*Config, error) {
 		config.Secrets.HetznerAPIToken = token
 	}
 
-	// Expand environment variables in storage password
+	// Expand environment variables in storage password and Azure credentials
 	config.expandStoragePassword()
+	config.expandAzureCredentials()
 
 	// Apply defaults and migrate legacy config
 	config.applyDefaults()
@@ -203,6 +225,27 @@ func (c *Config) expandStoragePassword() {
 	if envPass != "" {
 		c.Registry.Password = envPass
 	}
+}
+
+// expandAzureCredentials expands environment variables in Azure config
+func (c *Config) expandAzureCredentials() {
+	expandEnv := func(val, envKey string) string {
+		// Expand ${VAR} syntax
+		if strings.HasPrefix(val, "${") && strings.HasSuffix(val, "}") {
+			envVar := val[2 : len(val)-1]
+			return strings.TrimSpace(os.Getenv(envVar))
+		}
+		// Override with explicit env var if set
+		if envVal := strings.TrimSpace(os.Getenv(envKey)); envVal != "" {
+			return envVal
+		}
+		return val
+	}
+
+	c.Machine.Azure.SubscriptionID = expandEnv(c.Machine.Azure.SubscriptionID, "AZURE_SUBSCRIPTION_ID")
+	c.Machine.Azure.TenantID = expandEnv(c.Machine.Azure.TenantID, "AZURE_TENANT_ID")
+	c.Machine.Azure.ClientID = expandEnv(c.Machine.Azure.ClientID, "AZURE_CLIENT_ID")
+	c.Machine.Azure.ClientSecret = expandEnv(c.Machine.Azure.ClientSecret, "AZURE_CLIENT_SECRET")
 }
 
 // applyDefaults sets default values for the configuration
@@ -251,6 +294,28 @@ func (c *Config) applyDefaults() {
 		c.Integration.NimsForestDownloadURL = DefaultNimsForestDownloadURL
 		// If URL wasn't set, enable install by default
 		c.Integration.NimsForestInstall = true
+	}
+
+	// Guard defaults
+	if c.Guard.VNetCIDR == "" {
+		c.Guard.VNetCIDR = "10.100.0.0/16"
+	}
+	if c.Guard.SubnetCIDR == "" {
+		c.Guard.SubnetCIDR = "10.100.1.0/24"
+	}
+	if c.Guard.WGPort == 0 {
+		c.Guard.WGPort = 51820
+	}
+
+	// Azure defaults
+	if c.Machine.Azure.VMSize == "" {
+		c.Machine.Azure.VMSize = "Standard_B1s"
+	}
+	if c.Machine.Azure.Image == "" {
+		c.Machine.Azure.Image = "Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest"
+	}
+	if c.Machine.Azure.ResourceGroup == "" {
+		c.Machine.Azure.ResourceGroup = "morpheus-guards"
 	}
 }
 
@@ -380,6 +445,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+// ValidateGuard checks if the configuration is valid for guard operations
+func (c *Config) ValidateGuard() error {
+	azure := c.Machine.Azure
+	if azure.SubscriptionID == "" {
+		return fmt.Errorf("machine.azure.subscription_id is required (or set AZURE_SUBSCRIPTION_ID)")
+	}
+	if azure.TenantID == "" {
+		return fmt.Errorf("machine.azure.tenant_id is required (or set AZURE_TENANT_ID)")
+	}
+	if azure.ClientID == "" {
+		return fmt.Errorf("machine.azure.client_id is required (or set AZURE_CLIENT_ID)")
+	}
+	if azure.ClientSecret == "" {
+		return fmt.Errorf("machine.azure.client_secret is required (or set AZURE_CLIENT_SECRET)")
+	}
 	return nil
 }
 
