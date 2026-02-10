@@ -198,3 +198,78 @@ func Generate(data TemplateData) (string, error) {
 
 	return buf.String(), nil
 }
+
+// GuardTemplateData contains data for guard cloud-init template rendering
+type GuardTemplateData struct {
+	WireGuardConf string // Contents of wg0.conf
+	WireGuardPort int    // WireGuard listen port (default: 51820)
+	SSHKeys       []string
+}
+
+// GuardTemplate is the cloud-init script for WireGuard gateway VMs
+const GuardTemplate = `#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - wireguard
+  - wireguard-tools
+  - ufw
+  - curl
+
+write_files:
+  - path: /etc/wireguard/wg0.conf
+    content: |
+{{indent 6 .WireGuardConf}}
+    permissions: '0600'
+  - path: /etc/sysctl.d/99-wireguard.conf
+    content: |
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+
+runcmd:
+  - sysctl -p /etc/sysctl.d/99-wireguard.conf
+  - ufw allow 22/tcp comment 'SSH'
+  - ufw allow {{.WireGuardPort}}/udp comment 'WireGuard'
+  - ufw --force enable
+  - systemctl enable wg-quick@wg0
+  - systemctl start wg-quick@wg0
+
+final_message: "Guard ready. WireGuard running on port {{.WireGuardPort}}."
+`
+
+// GenerateGuard creates a cloud-init script for a WireGuard gateway VM
+func GenerateGuard(data GuardTemplateData) (string, error) {
+	if data.WireGuardPort == 0 {
+		data.WireGuardPort = 51820
+	}
+
+	funcMap := template.FuncMap{
+		"indent": indentStr,
+	}
+
+	tmpl, err := template.New("guard-cloudinit").Funcs(funcMap).Parse(GuardTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse guard template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute guard template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// indentStr indents each line of s by n spaces
+func indentStr(n int, s string) string {
+	pad := fmt.Sprintf("%*s", n, "")
+	lines := bytes.Split([]byte(s), []byte("\n"))
+	for i, line := range lines {
+		if len(line) > 0 {
+			lines[i] = append([]byte(pad), line...)
+		}
+	}
+	return string(bytes.Join(lines, []byte("\n")))
+}
