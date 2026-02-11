@@ -98,6 +98,7 @@ func PrintHelp() {
 	fmt.Println("  check config             Check config file and env variables")
 	fmt.Println("  check ipv6               Check IPv6 connectivity")
 	fmt.Println("  check ssh                Check SSH key setup")
+	fmt.Println("  check dns                Check DNS configuration and Hetzner DNS zones")
 	fmt.Println()
 	fmt.Println("  customer <subcommand>    Customer onboarding management")
 	fmt.Println("    init <id> --domain <d> Initialize a new customer")
